@@ -1,0 +1,12 @@
+bin/
+dist/
+web/node_modules/
+web/dist/
+lsp/node_modules/
+.wrangler/
+
+*.exe
+*.db
+.idea/
+.vscode/
+*.log

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Siroc — Linux hosting control panel</title>
+    <meta name="description" content="Open-source Linux hosting panel. Real Linux users, Nginx in front, PHP, Node.js, Python, Go, Rust, and Docker sites." />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="nav">
+        <div class="brand">
+          <img src="./favicon.svg" alt="" />
+          Siroc
+        </div>
+        <nav class="nav-links">
+          <a href="#install">Install</a>
+          <a href="#features">Features</a>
+          <a href="https://github.com/siroc-dev/siroc">GitHub</a>
+        </nav>
+      </header>
+
+      <section class="hero">
+        <h1>A hosting panel that lives on your server.</h1>
+        <p class="lead">
+          Siroc is an open-source Linux control panel. Each account is a real Linux user.
+          Nginx sits in front. Sites can be PHP, Node.js, Python, Go, Rust, or Docker.
+        </p>
+        <div class="row">
+          <a class="btn btn-primary" id="download" href="https://github.com/siroc-dev/siroc">Download package</a>
+          <a class="btn btn-ghost" href="https://github.com/siroc-dev/siroc">Source on GitHub</a>
+        </div>
+        <div class="install" id="install">
+          <div class="install-top">
+            <span>One-line install</span>
+            <button class="copy" id="copy-install" type="button">Copy</button>
+          </div>
+          <pre id="install-cmd">curl -fsSL __SIROC_SITE_BASE__/install.sh | sudo bash</pre>
+        </div>
+        <p class="meta">Current version <strong id="version">0.2.0</strong> · Channel <code id="channel">set after first R2 publish</code></p>
+      </section>
+
+      <section id="features">
+        <div class="grid">
+          <article class="card">
+            <h3>Linux users, not fake tenants</h3>
+            <p>Every hosting account is a system user with its own home, PHP-FPM pool, and file root.</p>
+          </article>
+          <article class="card">
+            <h3>Apps, not only PHP</h3>
+            <p>Run Node.js, Python, Go, Rust, or Docker with systemd, then proxy through Nginx.</p>
+          </article>
+          <article class="card">
+            <h3>First admin is token-gated</h3>
+            <p>The installer prints a one-time setup URL. No token, no admin form.</p>
+          </article>
+          <article class="card">
+            <h3>Self-update</h3>
+            <p>Check a channel, pull a tarball from R2 or a URL, replace binaries, restart.</p>
+          </article>
+          <article class="card">
+            <h3>Day-to-day hosting</h3>
+            <p>Files, databases, SSL, backups, firewall, scanners, and a web terminal.</p>
+          </article>
+          <article class="card">
+            <h3>Built to ship</h3>
+            <p>Package it, install it, or test the whole stack in Docker with systemd.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>After install</h2>
+        <p class="note">The panel listens on port 8443. Open the token URL printed by the installer.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="num">1</div>
+            <div>
+              <strong>Create the first admin</strong>
+              <p class="note">Use the link saved at <code>/var/lib/siroc/setup.url</code> if you lose the console output.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">2</div>
+            <div>
+              <strong>Install the stack</strong>
+              <p class="note">Nginx, Apache, PHP, then MySQL or MariaDB from Software.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">3</div>
+            <div>
+              <strong>Add an account and a site</strong>
+              <p class="note">Point the update channel at your R2 URL to receive later releases.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="foot">
+        <span>Siroc · Linux hosting panel</span>
+        <span>
+          <a href="https://github.com/siroc-dev/siroc">github.com/siroc-dev/siroc</a>
+        </span>
+      </footer>
+    </div>
+    <script src="./app.js"></script>
+  </body>
+</html>

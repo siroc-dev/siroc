@@ -1,0 +1,16 @@
+[Unit]
+Description=Siroc privileged agent
+After=network.target
+
+[Service]
+Type=simple
+Environment=HOME=/root
+RuntimeDirectory=siroc
+RuntimeDirectoryMode=0750
+RuntimeDirectoryGroup=siroc
+ExecStart=/usr/local/bin/siroc-agent
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

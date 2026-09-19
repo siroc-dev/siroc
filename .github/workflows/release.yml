@@ -1,0 +1,66 @@
+name: Release to R2
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (defaults to VERSION file)"
+        required: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build package
+        run: bash scripts/package.sh
+
+      - name: Write latest.json
+        id: meta
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          RELEASE_BASE: ${{ vars.SIROC_RELEASE_PUBLIC_BASE }}
+        run: |
+          set -euo pipefail
+          VER="${INPUT_VERSION:-}"
+          if [ -z "$VER" ]; then
+            VER="$(tr -d '[:space:]' < VERSION)"
+          fi
+          VER="${VER#v}"
+          BASE="${RELEASE_BASE:-https://releases.siroc.dev}"
+          BASE="${BASE%/}"
+          PKG="dist/siroc-linux-amd64.tar.gz"
+          SHA="$(sha256sum "$PKG" | awk '{print $1}')"
+          URL="${BASE}/siroc-linux-amd64.tar.gz"
+          python3 -c 'import json,sys; print(json.dumps({"version":sys.argv[1],"url":sys.argv[2],"sha256":sys.argv[3]}, indent=2))' "$VER" "$URL" "$SHA" > dist/latest.json
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "Published metadata:"
+          cat dist/latest.json
+
+      - name: Upload to Cloudflare R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npm install --global wrangler@4
+          VER="${{ steps.meta.outputs.version }}"
+          wrangler r2 object put siroc-releases/siroc-linux-amd64.tar.gz --file=dist/siroc-linux-amd64.tar.gz --remote --content-type=application/gzip
+          wrangler r2 object put "siroc-releases/${VER}/siroc-linux-amd64.tar.gz" --file=dist/siroc-linux-amd64.tar.gz --remote --content-type=application/gzip
+          wrangler r2 object put siroc-releases/latest.json --file=dist/latest.json --remote --content-type=application/json

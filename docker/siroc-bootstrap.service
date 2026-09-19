@@ -1,0 +1,17 @@
+[Unit]
+Description=Build and install Siroc inside the test VPS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=GOPATH=/root/go
+Environment=GOMODCACHE=/root/go/pkg/mod
+Environment=GOCACHE=/root/.cache/go-build
+Environment=HOME=/root
+ExecStart=/bin/bash /opt/siroc/scripts/docker-bootstrap.sh
+
+[Install]
+WantedBy=multi-user.target

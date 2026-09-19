@@ -1,0 +1,31 @@
+services:
+  vps:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    hostname: siroc-vps
+    privileged: true
+    cgroup: host
+    stop_grace_period: 10s
+    ports:
+      - "8443:8443"
+      - "8080:80"
+      - "8444:443"
+    extra_hosts:
+      - "site.test:127.0.0.1"
+    environment:
+      SIROC_TLS: "0"
+      SIROC_LISTEN: ":8443"
+      SIROC_ROOT: /opt/siroc
+    volumes:
+      - siroc-data:/var/lib/siroc
+      - siroc-home:/home
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /tmp
+      - /run
+      - /run/lock
+
+volumes:
+  siroc-data:
+  siroc-home:

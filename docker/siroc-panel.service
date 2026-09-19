@@ -1,0 +1,19 @@
+[Unit]
+Description=Siroc web panel
+After=siroc-agent.service
+Wants=siroc-agent.service
+
+[Service]
+Type=simple
+User=siroc
+Group=siroc
+Environment=SIROC_TLS=0
+Environment=SIROC_LISTEN=:8443
+Environment=SIROC_ROOT=/opt/siroc
+Environment=SIROC_WEB_DIR=/opt/siroc/web/dist
+ExecStart=/usr/local/bin/siroc-panel
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

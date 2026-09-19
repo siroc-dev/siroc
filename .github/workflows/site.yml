@@ -1,0 +1,35 @@
+name: Deploy site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "VERSION"
+      - "wrangler.toml"
+      - "scripts/stamp-site.sh"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stamp public URLs
+        env:
+          SIROC_RELEASE_PUBLIC_BASE: ${{ vars.SIROC_RELEASE_PUBLIC_BASE }}
+          SIROC_SITE_PUBLIC_BASE: ${{ vars.SIROC_SITE_PUBLIC_BASE }}
+        run: bash scripts/stamp-site.sh
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site --project-name=siroc --branch=${{ github.ref_name }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
