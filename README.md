@@ -2,7 +2,7 @@
 
 Open-source Linux hosting control panel. Each hosting account is a Linux user. Nginx reverse-proxies to Apache; PHP-FPM, Node.js, Python, Go, Rust, and Docker sites run per account.
 
-Public repo: [github.com/siroc-dev/siroc](https://github.com/siroc-dev/siroc)
+Public repo: [github.com/siroc-dev/siroc](https://github.com/siroc-dev/siroc) · License: [MIT](LICENSE)
 
 ## Install on Ubuntu / Debian
 
