@@ -72,9 +72,10 @@ Then:
 
 1. Attach custom domain **siroc.dev** to the Worker (wrangler already routes `siroc.dev` and `www.siroc.dev`).
 2. On R2 bucket **siroc-cp**, add custom domain **get.siroc.dev** and allow public reads.
-3. Optional GitHub Actions secrets for the release workflow:
-   - `CLOUDFLARE_API_TOKEN` — Workers + R2 (bucket `siroc-cp`)
+3. GitHub Actions secrets for the release workflow (R2 uses the S3 API, not Wrangler):
    - `CLOUDFLARE_ACCOUNT_ID`
+   - `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` from Cloudflare → R2 → **Manage R2 API Tokens** → Object Read & Write on `siroc-cp`
+   - `CLOUDFLARE_API_TOKEN` is only for Worker deploys, not for uploading packages
 
 ### What CI does
 

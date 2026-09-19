@@ -55,12 +55,26 @@ jobs:
 
       - name: Upload to Cloudflare R2
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          npm install --global wrangler@4
+          if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            echo "Add GitHub secrets R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY." >&2
+            echo "Create them in Cloudflare → R2 → Manage R2 API Tokens → Object Read & Write on siroc-cp." >&2
+            exit 1
+          fi
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "Add GitHub secret CLOUDFLARE_ACCOUNT_ID." >&2
+            exit 1
+          fi
+          ENDPOINT="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
           VER="${{ steps.meta.outputs.version }}"
-          wrangler r2 object put siroc-cp/siroc-linux-amd64.tar.gz --file=dist/siroc-linux-amd64.tar.gz --remote --content-type=application/gzip
-          wrangler r2 object put "siroc-cp/${VER}/siroc-linux-amd64.tar.gz" --file=dist/siroc-linux-amd64.tar.gz --remote --content-type=application/gzip
-          wrangler r2 object put siroc-cp/latest.json --file=dist/latest.json --remote --content-type=application/json
+          aws s3 cp dist/siroc-linux-amd64.tar.gz "s3://siroc-cp/siroc-linux-amd64.tar.gz" \
+            --endpoint-url "$ENDPOINT" --content-type application/gzip
+          aws s3 cp dist/siroc-linux-amd64.tar.gz "s3://siroc-cp/${VER}/siroc-linux-amd64.tar.gz" \
+            --endpoint-url "$ENDPOINT" --content-type application/gzip
+          aws s3 cp dist/latest.json "s3://siroc-cp/latest.json" \
+            --endpoint-url "$ENDPOINT" --content-type application/json
