@@ -55,24 +55,33 @@ Example `latest.json` (published to Cloudflare R2 by CI):
 
 ## Website and auto-deploy
 
-The public site lives in `site/` and deploys to **Cloudflare Pages**. Release tarballs go to **Cloudflare R2**.
+The public site lives in `site/` and deploys with **Cloudflare Workers static assets** (`npx wrangler deploy`). Release tarballs go to **Cloudflare R2**.
 
 ### One-time Cloudflare setup
 
-1. Create a Pages project named `siroc` (or let the first GitHub Action create it).
-2. Create an R2 bucket named `siroc-releases`.
-3. Allow public reads on that bucket (R2.dev subdomain or a custom host such as `releases.siroc.dev`).
-4. In GitHub → Settings → Secrets and variables → Actions:
-   - Secret `CLOUDFLARE_API_TOKEN` — token with **Account / Cloudflare Pages / Edit** and **Account / Workers R2 Storage / Admin Read & Write**
-   - Secret `CLOUDFLARE_ACCOUNT_ID` — from the Cloudflare dashboard URL
-   - Variable `SIROC_RELEASE_PUBLIC_BASE` — public URL of the bucket, e.g. `https://releases.siroc.dev`
-   - Variable `SIROC_SITE_PUBLIC_BASE` — Pages URL, e.g. `https://siroc.pages.dev`
+In the Cloudflare “Set up your application” form:
+
+| Field | Value |
+| --- | --- |
+| GitHub | `siroc-dev/siroc` |
+| Project name | `siroc` |
+| Build command | `bash scripts/stamp-site.sh` |
+| Deploy command | `npx wrangler deploy` |
+
+Then:
+
+1. Create an R2 bucket named `siroc-releases` and allow public reads (R2.dev or `releases.siroc.dev`).
+2. Optional GitHub Actions secrets if you also use the workflows:
+   - `CLOUDFLARE_API_TOKEN` — **Workers Scripts Edit** and **R2 Admin Read & Write**
+   - `CLOUDFLARE_ACCOUNT_ID`
+   - Variable `SIROC_RELEASE_PUBLIC_BASE` — public bucket URL
+   - Variable `SIROC_SITE_PUBLIC_BASE` — Worker URL, e.g. `https://siroc.<account>.workers.dev`
 
 ### What CI does
 
 | Workflow | Trigger | Result |
 | --- | --- | --- |
-| `.github/workflows/site.yml` | push to `main` (or manual) | stamps URLs into `site/`, deploys Cloudflare Pages |
+| Cloudflare Git deploy | push to `main` | `npx wrangler deploy` publishes `site/` |
 | `.github/workflows/release.yml` | tag `v*` (or manual) | builds `siroc-linux-amd64.tar.gz`, uploads it and `latest.json` to R2 |
 
 Tag a release after the secrets exist:

@@ -26,10 +26,10 @@ jobs:
           SIROC_SITE_PUBLIC_BASE: ${{ vars.SIROC_SITE_PUBLIC_BASE }}
         run: bash scripts/stamp-site.sh
 
-      - name: Deploy to Cloudflare Pages
+      - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy site --project-name=siroc --branch=${{ github.ref_name }}
+          command: deploy
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
