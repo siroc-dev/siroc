@@ -43,7 +43,7 @@ jobs:
             VER="$(tr -d '[:space:]' < VERSION)"
           fi
           VER="${VER#v}"
-          BASE="${RELEASE_BASE:-https://releases.siroc.dev}"
+          BASE="${RELEASE_BASE:-https://get.siroc.dev}"
           BASE="${BASE%/}"
           PKG="dist/siroc-linux-amd64.tar.gz"
           SHA="$(sha256sum "$PKG" | awk '{print $1}')"
@@ -61,6 +61,6 @@ jobs:
           set -euo pipefail
           npm install --global wrangler@4
           VER="${{ steps.meta.outputs.version }}"
-          wrangler r2 object put siroc-releases/siroc-linux-amd64.tar.gz --file=dist/siroc-linux-amd64.tar.gz --remote --content-type=application/gzip
-          wrangler r2 object put "siroc-releases/${VER}/siroc-linux-amd64.tar.gz" --file=dist/siroc-linux-amd64.tar.gz --remote --content-type=application/gzip
-          wrangler r2 object put siroc-releases/latest.json --file=dist/latest.json --remote --content-type=application/json
+          wrangler r2 object put siroc-cp/siroc-linux-amd64.tar.gz --file=dist/siroc-linux-amd64.tar.gz --remote --content-type=application/gzip
+          wrangler r2 object put "siroc-cp/${VER}/siroc-linux-amd64.tar.gz" --file=dist/siroc-linux-amd64.tar.gz --remote --content-type=application/gzip
+          wrangler r2 object put siroc-cp/latest.json --file=dist/latest.json --remote --content-type=application/json

@@ -3,8 +3,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SITE="$ROOT/site"
 VER="$(tr -d '[:space:]' <"$ROOT/VERSION" 2>/dev/null || echo 0.0.0)"
-RELEASE_BASE="${SIROC_RELEASE_PUBLIC_BASE:-https://releases.siroc.dev}"
-SITE_BASE="${SIROC_SITE_PUBLIC_BASE:-https://siroc.pages.dev}"
+RELEASE_BASE="${SIROC_RELEASE_PUBLIC_BASE:-https://get.siroc.dev}"
+SITE_BASE="${SIROC_SITE_PUBLIC_BASE:-https://siroc.dev}"
 RELEASE_BASE="${RELEASE_BASE%/}"
 SITE_BASE="${SITE_BASE%/}"
 

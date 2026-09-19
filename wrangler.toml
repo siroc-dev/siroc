@@ -3,3 +3,11 @@ compatibility_date = "2026-09-19"
 
 [assets]
 directory = "./site"
+
+[[routes]]
+pattern = "siroc.dev/*"
+zone_name = "siroc.dev"
+
+[[routes]]
+pattern = "www.siroc.dev/*"
+zone_name = "siroc.dev"

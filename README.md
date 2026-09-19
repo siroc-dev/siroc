@@ -6,10 +6,10 @@ Public repo: [github.com/siroc-dev/siroc](https://github.com/siroc-dev/siroc)
 
 ## Install on Ubuntu / Debian
 
-From the website (after Cloudflare Pages + R2 are connected):
+From the website:
 
 ```bash
-curl -fsSL https://siroc.pages.dev/install.sh | sudo bash
+curl -fsSL https://siroc.dev/install.sh | sudo bash
 ```
 
 Or build a package from this repo:
@@ -48,14 +48,14 @@ Example `latest.json` (published to Cloudflare R2 by CI):
 ```json
 {
   "version": "0.2.1",
-  "url": "https://releases.siroc.dev/siroc-linux-amd64.tar.gz",
+  "url": "https://get.siroc.dev/siroc-linux-amd64.tar.gz",
   "sha256": "optional"
 }
 ```
 
 ## Website and auto-deploy
 
-The public site lives in `site/` and deploys with **Cloudflare Workers static assets** (`npx wrangler deploy`). Release tarballs go to **Cloudflare R2**.
+The public site lives in `site/` and deploys with **Cloudflare Workers static assets** (`npx wrangler deploy`) to **siroc.dev**. Release tarballs go to R2 bucket **siroc-cp** at **https://get.siroc.dev**.
 
 ### One-time Cloudflare setup
 
@@ -70,28 +70,27 @@ In the Cloudflare “Set up your application” form:
 
 Then:
 
-1. Create an R2 bucket named `siroc-releases` and allow public reads (R2.dev or `releases.siroc.dev`).
-2. Optional GitHub Actions secrets if you also use the workflows:
-   - `CLOUDFLARE_API_TOKEN` — **Workers Scripts Edit** and **R2 Admin Read & Write**
+1. Attach custom domain **siroc.dev** to the Worker (wrangler already routes `siroc.dev` and `www.siroc.dev`).
+2. On R2 bucket **siroc-cp**, add custom domain **get.siroc.dev** and allow public reads.
+3. Optional GitHub Actions secrets for the release workflow:
+   - `CLOUDFLARE_API_TOKEN` — Workers + R2 (bucket `siroc-cp`)
    - `CLOUDFLARE_ACCOUNT_ID`
-   - Variable `SIROC_RELEASE_PUBLIC_BASE` — public bucket URL
-   - Variable `SIROC_SITE_PUBLIC_BASE` — Worker URL, e.g. `https://siroc.<account>.workers.dev`
 
 ### What CI does
 
 | Workflow | Trigger | Result |
 | --- | --- | --- |
-| Cloudflare Git deploy | push to `main` | `npx wrangler deploy` publishes `site/` |
-| `.github/workflows/release.yml` | tag `v*` (or manual) | builds `siroc-linux-amd64.tar.gz`, uploads it and `latest.json` to R2 |
+| Cloudflare Git deploy | push to `main` | publishes `site/` to siroc.dev |
+| `.github/workflows/release.yml` | tag `v*` (or manual) | uploads `siroc-linux-amd64.tar.gz` and `latest.json` to `siroc-cp` |
 
-Tag a release after the secrets exist:
+Tag a release after the token can write R2:
 
 ```bash
 git tag v0.2.0
 git push origin v0.2.0
 ```
 
-In the panel, set the update channel to the same public R2 URL.
+In the panel, set the update channel to `https://get.siroc.dev`.
 
 ## Test with Docker
 
@@ -118,7 +117,7 @@ Rebuild the image after code changes (`docker compose up --build`). Source is co
 - `cmd/panel` — HTTP UI/API (non-root)
 - `cmd/agent` — privileged Unix-socket RPC (root)
 - `web` — React + Vite control panel
-- `site` — public website (Cloudflare Pages)
+- `site` — public website (siroc.dev)
 - `docker` — Ubuntu 24.04 + systemd test VPS
 - `scripts/install.sh` — production installer
 - `scripts/package.sh` — build the Linux tarball

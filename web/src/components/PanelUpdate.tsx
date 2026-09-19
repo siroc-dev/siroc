@@ -74,16 +74,16 @@ export function PanelUpdate() {
         <pre style={{ margin: 0, padding: 12, background: "#f8fafc", borderRadius: 8, fontSize: 12 }}>
 {`{
   "version": "0.2.1",
-  "url": "https://releases.siroc.dev/siroc-linux-amd64.tar.gz",
+  "url": "https://get.siroc.dev/siroc-linux-amd64.tar.gz",
   "sha256": "optional"
 }`}
         </pre>
         <Form form={form} layout="vertical">
           <Form.Item name="channel" label="Update channel" extra="Folder URL that contains latest.json, or a direct latest.json URL.">
-            <Input placeholder="https://releases.siroc.dev" />
+            <Input placeholder="https://get.siroc.dev" />
           </Form.Item>
           <Form.Item name="url" label="Package URL" extra="Direct .tar.gz if you are not using a channel.">
-            <Input placeholder="https://releases.siroc.dev/siroc-linux-amd64.tar.gz" />
+            <Input placeholder="https://get.siroc.dev/siroc-linux-amd64.tar.gz" />
           </Form.Item>
           <Form.Item
             name="path"

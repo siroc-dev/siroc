@@ -1,4 +1,4 @@
-const RELEASE_BASE = "__SIROC_RELEASE_BASE__";
+const RELEASE_BASE = "https://get.siroc.dev";
 const GITHUB = "https://github.com/siroc-dev/siroc";
 
 const versionEl = document.getElementById("version");

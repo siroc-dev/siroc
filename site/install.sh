@@ -8,10 +8,10 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-CHANNEL="${SIROC_UPDATE_URL:-__SIROC_RELEASE_BASE__}"
+CHANNEL="${SIROC_UPDATE_URL:-https://get.siroc.dev}"
 CHANNEL="${CHANNEL%/}"
-if [ -z "$CHANNEL" ] || [ "$CHANNEL" = "__SIROC_RELEASE_BASE__" ]; then
-  echo "Set SIROC_UPDATE_URL to your public R2 / update channel URL (the folder that has latest.json)." >&2
+if [ -z "$CHANNEL" ]; then
+  echo "Set SIROC_UPDATE_URL to the public update channel (https://get.siroc.dev)." >&2
   exit 1
 fi
 
