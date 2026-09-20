@@ -68,8 +68,8 @@ export function PanelUpdate() {
         </Space>
         {st?.message ? <Alert type={st.available ? "info" : "success"} showIcon message={st.message} /> : null}
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          Build a package with <code>./scripts/package.sh</code>, then apply the tarball here or publish{" "}
-          <code>latest.json</code> on an HTTPS channel:
+          From the server: <code>sudo siroc update</code> to check, <code>sudo siroc upgrade</code> to apply.
+          Or build a package with <code>./scripts/package.sh</code> and publish <code>latest.json</code>:
         </Typography.Paragraph>
         <pre style={{ margin: 0, padding: 12, background: "#f8fafc", borderRadius: 8, fontSize: 12 }}>
 {`{

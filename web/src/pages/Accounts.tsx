@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import { MoreOutlined } from "@ant-design/icons";
 import { App, Alert, Button, Card, Dropdown, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
@@ -15,6 +15,7 @@ type Account = {
   pythonCli?: string;
   nodeCli?: string;
   diskQuotaMB?: number;
+  wafEnabled?: boolean;
 };
 
 type Pkg = { name: string; installedVersions?: string[] };
@@ -35,6 +36,7 @@ type UserRedis = {
 
 export function Accounts() {
   const nav = useNavigate();
+  const { admin } = useOutletContext<{ admin?: boolean }>();
   const { message, modal } = App.useApp();
   const [list, setList] = useState<Account[]>([]);
   const [phpVers, setPhpVers] = useState<string[]>([]);
@@ -50,7 +52,11 @@ export function Accounts() {
   const [form] = Form.useForm();
   const [cliForm] = Form.useForm();
   const [quotaForm] = Form.useForm();
+  const [passTarget, setPassTarget] = useState<Account | null>(null);
+  const [passForm] = Form.useForm();
+  const [newPass, setNewPass] = useState("");
   const [usage, setUsage] = useState<Record<string, UserUsage>>({});
+  const [wafBusy, setWafBusy] = useState("");
 
   async function load() {
     const [accounts, pkgs, redisRows] = await Promise.all([
@@ -67,6 +73,20 @@ export function Accounts() {
     for (const r of redisRows || []) next[r.username] = !!r.enabled;
     setRedisMap(next);
   }
+
+  async function setAccountWAF(a: Account, enabled: boolean) {
+    setWafBusy(a.username);
+    try {
+      await api.put(`/api/accounts/${encodeURIComponent(a.username)}/waf`, { enabled });
+      message.success(enabled ? `ModSecurity on for ${a.username}` : `ModSecurity off for ${a.username}`);
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setWafBusy("");
+    }
+  }
+
   useEffect(() => {
     load().catch((e) => message.error(e.message));
   }, []);
@@ -176,6 +196,53 @@ export function Accounts() {
     }
   }
 
+  function openReset(a: Account) {
+    setPassTarget(a);
+    setNewPass("");
+    passForm.resetFields();
+  }
+
+  async function randomResetPassword() {
+    try {
+      const data = await api.get<{ password: string }>("/api/password/suggest");
+      passForm.setFieldValue("password", data.password);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Cannot generate password");
+    }
+  }
+
+  async function resetPassword(values: { password: string }) {
+    if (!passTarget) return;
+    setBusy(true);
+    try {
+      const out = await api.put<{ password: string }>(`/api/accounts/${passTarget.username}/password`, {
+        password: values.password,
+      });
+      setNewPass(out.password || values.password);
+      message.success(`Password reset for ${passTarget.username}`);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function showPassword(a: Account) {
+    try {
+      const out = await api.get<{ password: string }>(`/api/accounts/${a.username}/password`);
+      modal.info({
+        title: `Password · ${a.username}`,
+        content: (
+          <Typography.Paragraph copyable style={{ marginBottom: 0 }}>
+            {out.password}
+          </Typography.Paragraph>
+        ),
+      });
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Password is not stored");
+    }
+  }
+
   function cliLabel(v?: string) {
     return v || "system";
   }
@@ -231,6 +298,18 @@ export function Accounts() {
                 redisMap[a.username] ? <Tag color="success">On</Tag> : <Tag>Off</Tag>,
             },
             {
+              title: "WAF",
+              width: 88,
+              render: (_, a) => (
+                <Switch
+                  size="small"
+                  checked={a.wafEnabled !== false}
+                  loading={wafBusy === a.username}
+                  onChange={(v) => void setAccountWAF(a, v)}
+                />
+              ),
+            },
+            {
               title: "Default CLI",
               render: (_, a) => (
                 <Space size={4} wrap>
@@ -249,6 +328,8 @@ export function Accounts() {
                   trigger={["click"]}
                   menu={{
                     items: [
+                      { key: "reset", label: "Reset password" },
+                      ...(admin ? [{ key: "showpass", label: "Show password" }] : []),
                       { key: "cli", label: "Edit CLI" },
                       { key: "php", label: "PHP-FPM" },
                       { key: "quota", label: "Quota" },
@@ -258,6 +339,8 @@ export function Accounts() {
                       { key: "delete", label: "Delete", danger: true },
                     ],
                     onClick: ({ key }) => {
+                      if (key === "reset") openReset(a);
+                      if (key === "showpass") void showPassword(a);
                       if (key === "cli") openCLI(a);
                       if (key === "php") nav(`/php?user=${a.username}`);
                       if (key === "quota") {
@@ -302,6 +385,43 @@ export function Accounts() {
             <Input.Password autoComplete="new-password" />
           </Form.Item>
           <Button onClick={randomPassword}>Random password</Button>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={passTarget ? `Reset password · ${passTarget.username}` : "Reset password"}
+        open={!!passTarget}
+        onCancel={() => {
+          setPassTarget(null);
+          setNewPass("");
+        }}
+        onOk={() => (newPass ? setPassTarget(null) : passForm.submit())}
+        confirmLoading={busy}
+        destroyOnHidden
+        okText={newPass ? "Done" : "Reset password"}
+      >
+        <Form form={passForm} layout="vertical" onFinish={resetPassword} requiredMark={false} style={{ marginTop: 8 }}>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="This changes the panel login, SSH, and FTP password for the Linux user."
+          />
+          {newPass ? (
+            <>
+              <Typography.Text type="secondary">New password</Typography.Text>
+              <Typography.Paragraph copyable style={{ marginBottom: 0 }}>
+                {newPass}
+              </Typography.Paragraph>
+            </>
+          ) : (
+            <>
+              <Form.Item name="password" label="New password" rules={[{ required: true, min: 8 }]}>
+                <Input.Password autoComplete="new-password" />
+              </Form.Item>
+              <Button onClick={() => void randomResetPassword()}>Random password</Button>
+            </>
+          )}
         </Form>
       </Modal>
 

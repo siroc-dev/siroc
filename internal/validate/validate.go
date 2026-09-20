@@ -23,7 +23,7 @@ var reservedUsers = map[string]struct{}{
 	"www-data": {}, "backup": {}, "list": {}, "nobody": {}, "systemd-network": {},
 	"systemd-resolve": {}, "messagebus": {}, "sshd": {}, "mysql": {}, "mariadb": {},
 	"redis": {}, "nginx": {}, "apache": {}, "siroc": {}, "cpserver": {}, "admin": {},
-	"ftp": {}, "vsftpd": {},
+	"ftp": {}, "vsftpd": {}, "ubuntu": {},
 }
 
 var ftpNameRe = regexp.MustCompile(`^[a-z][a-z0-9]{1,15}$`)
@@ -101,6 +101,48 @@ func DomainAliases(primary string, aliases []string) ([]string, error) {
 		out = []string{}
 	}
 	return out, nil
+}
+
+var laravelQueueNameRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
+
+func LaravelQueueNames(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "default", nil
+	}
+	seen := map[string]bool{}
+	var names []string
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if !laravelQueueNameRe.MatchString(part) {
+			return "", fmt.Errorf("invalid queue name %q", part)
+		}
+		if seen[part] {
+			continue
+		}
+		seen[part] = true
+		names = append(names, part)
+	}
+	if len(names) == 0 {
+		return "default", nil
+	}
+	if len(names) > 8 {
+		return "", fmt.Errorf("at most 8 queue names")
+	}
+	return strings.Join(names, ","), nil
+}
+
+func LaravelQueueWorkers(n int) (int, error) {
+	if n < 1 {
+		return 1, nil
+	}
+	if n > 8 {
+		return 0, fmt.Errorf("at most 8 workers per queue")
+	}
+	return n, nil
 }
 
 func Email(v string) error {

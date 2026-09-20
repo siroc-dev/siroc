@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Alert, App, Button, Card, Checkbox, Col, Input, InputNumber, Row, Select, Space, Switch, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
+import { asList } from "@/lib/lists";
 import { jobLabel, type InstallJob, type InstallQueue } from "@/lib/jobs";
 import { formatBytes, type UserUsage } from "@/lib/usage";
 
@@ -97,16 +98,18 @@ export function PHP() {
       api.get<Account[]>("/api/accounts"),
       api.get<string[]>("/api/software/php-versions").catch(() => [] as string[]),
     ]);
-    setAccounts(a);
-    if (p.length) {
-      setPhps(p);
-      setPhpVer((cur) => (p.includes(cur) ? cur : p[p.length - 1]));
+    const accounts = asList(a);
+    const phps = asList(p);
+    setAccounts(accounts);
+    if (phps.length) {
+      setPhps(phps);
+      setPhpVer((cur) => (phps.includes(cur) ? cur : phps[phps.length - 1]));
     } else {
       setPhps([]);
     }
     setUsername((cur) => {
-      if (cur && a.some((x) => x.username === cur)) return cur;
-      return a[0]?.username || "";
+      if (cur && accounts.some((x) => x.username === cur)) return cur;
+      return accounts[0]?.username || "";
     });
   }
 

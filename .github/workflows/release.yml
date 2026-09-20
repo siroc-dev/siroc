@@ -28,6 +28,12 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      - name: Install web deps
+        run: npm --prefix web ci
+
+      - name: Predeploy checks
+        run: bash scripts/predeploy.sh
+
       - name: Build package
         run: bash scripts/package.sh
 

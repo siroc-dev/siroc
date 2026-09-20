@@ -49,6 +49,13 @@ chmod 750 "$DATA_DIR"
 
 install -m 755 "$SRC/bin/siroc-agent" /usr/local/bin/siroc-agent
 install -m 755 "$SRC/bin/siroc-panel" /usr/local/bin/siroc-panel
+if [ -f "$SRC/bin/siroc" ]; then
+  install -m 755 "$SRC/bin/siroc" /usr/local/bin/siroc
+elif [ -f "$SCRIPT_DIR/siroc" ]; then
+  install -m 755 "$SCRIPT_DIR/siroc" /usr/local/bin/siroc
+elif [ -f "$SRC/scripts/siroc" ]; then
+  install -m 755 "$SRC/scripts/siroc" /usr/local/bin/siroc
+fi
 cp -a "$SRC/bin/." "$ROOT/bin/"
 rm -rf "$ROOT/web/dist"
 cp -a "$SRC/web/dist" "$ROOT/web/dist"

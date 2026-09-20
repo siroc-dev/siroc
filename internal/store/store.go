@@ -41,6 +41,7 @@ type Account struct {
 	PasswordEnc string    `json:"-"`
 	PHPFpmJSON  string    `json:"-"`
 	DiskQuotaMB int64     `json:"diskQuotaMB"`
+	WAFEnabled  bool      `json:"wafEnabled"`
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
@@ -72,6 +73,7 @@ type Site struct {
 	ProxyPass  string    `json:"proxyPass,omitempty"`
 	AppPort    int       `json:"appPort,omitempty"`
 	AppCmd     string    `json:"appCmd,omitempty"`
+	WAFEnabled bool      `json:"wafEnabled"`
 	CreatedAt  time.Time `json:"createdAt"`
 }
 
@@ -82,11 +84,11 @@ type NginxRewrite struct {
 }
 
 type Database struct {
-	ID        int64     `json:"id"`
-	AccountID int64     `json:"accountId"`
-	Username  string    `json:"username"`
-	DBName    string    `json:"dbName"`
-	DBUser    string    `json:"dbUser"`
+	ID          int64     `json:"id"`
+	AccountID   int64     `json:"accountId"`
+	Username    string    `json:"username"`
+	DBName      string    `json:"dbName"`
+	DBUser      string    `json:"dbUser"`
 	Engine      string    `json:"engine"`
 	HasPassword bool      `json:"hasPassword"`
 	PasswordEnc string    `json:"-"`
@@ -211,6 +213,8 @@ CREATE TABLE IF NOT EXISTS settings (
 		`ALTER TABLE sites ADD COLUMN app_cmd TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE accounts ADD COLUMN disk_quota_mb INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE databases ADD COLUMN password_enc TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE accounts ADD COLUMN waf_enabled INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE sites ADD COLUMN waf_enabled INTEGER NOT NULL DEFAULT 1`,
 	} {
 		_, _ = s.DB.Exec(col)
 	}
@@ -324,6 +328,28 @@ func (s *Store) UpdatePassword(id int64, hash string) error {
 	return err
 }
 
+func (s *Store) ListPanelUsersByRole(role string) ([]PanelUser, error) {
+	rows, err := s.DB.Query(`SELECT id, username, password_hash, role FROM panel_users WHERE role = ? ORDER BY id`, role)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PanelUser
+	for rows.Next() {
+		var u PanelUser
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteUserSessions(userID int64) error {
+	_, err := s.DB.Exec(`DELETE FROM sessions WHERE user_id = ? OR impersonator_id = ?`, userID, userID)
+	return err
+}
+
 func (s *Store) CreateSession(userID, impersonatorID int64, ttl time.Duration) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -383,18 +409,19 @@ func (s *Store) CreateAccount(username string, uid, gid int, passwordEnc string,
 	return s.GetAccount(id)
 }
 
-const accountCols = `id, username, linux_uid, linux_gid, suspended, php_cli, python_cli, node_cli, password_enc, ssh_enabled, ftp_enabled, php_fpm_json, disk_quota_mb, created_at`
+const accountCols = `id, username, linux_uid, linux_gid, suspended, php_cli, python_cli, node_cli, password_enc, ssh_enabled, ftp_enabled, php_fpm_json, disk_quota_mb, waf_enabled, created_at`
 
 func scanAccount(scan func(dest ...any) error) (*Account, error) {
 	a := &Account{}
-	var sus, ssh, ftp int
+	var sus, ssh, ftp, waf int
 	var created string
-	if err := scan(&a.ID, &a.Username, &a.LinuxUID, &a.LinuxGID, &sus, &a.PHPCLI, &a.PythonCLI, &a.NodeCLI, &a.PasswordEnc, &ssh, &ftp, &a.PHPFpmJSON, &a.DiskQuotaMB, &created); err != nil {
+	if err := scan(&a.ID, &a.Username, &a.LinuxUID, &a.LinuxGID, &sus, &a.PHPCLI, &a.PythonCLI, &a.NodeCLI, &a.PasswordEnc, &ssh, &ftp, &a.PHPFpmJSON, &a.DiskQuotaMB, &waf, &created); err != nil {
 		return nil, err
 	}
 	a.Suspended = sus == 1
 	a.SSHEnabled = ssh == 1
 	a.FTPEnabled = ftp == 1
+	a.WAFEnabled = waf == 1
 	a.HasPassword = a.PasswordEnc != ""
 	a.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
 	return a, nil
@@ -605,23 +632,28 @@ func (s *Store) CreateSite(accountID int64, domain, docroot, php string, aliases
 	return s.GetSite(id)
 }
 
-func (s *Store) GetSite(id int64) (*Site, error) {
+const siteCols = `s.id, s.account_id, a.username, s.domain, s.docroot, s.php_version, s.enabled, s.aliases_json, s.ssl_enabled, s.ssl_expiry, s.ssl_kind, s.nginx_rewrites_json, s.kind, s.proxy_pass, s.app_port, s.app_cmd, s.waf_enabled, s.created_at`
+
+func scanSite(scan func(dest ...any) error) (*Site, error) {
 	st := &Site{}
-	var en, ssl int
+	var en, ssl, waf int
 	var created, aliases, rewrites string
-	err := s.DB.QueryRow(`
-SELECT s.id, s.account_id, a.username, s.domain, s.docroot, s.php_version, s.enabled, s.aliases_json, s.ssl_enabled, s.ssl_expiry, s.ssl_kind, s.nginx_rewrites_json, s.kind, s.proxy_pass, s.app_port, s.app_cmd, s.created_at
-FROM sites s JOIN accounts a ON a.id = s.account_id WHERE s.id = ?`, id).
-		Scan(&st.ID, &st.AccountID, &st.Username, &st.Domain, &st.DocRoot, &st.PHPVersion, &en, &aliases, &ssl, &st.SSLExpiry, &st.SSLKind, &rewrites, &st.Kind, &st.ProxyPass, &st.AppPort, &st.AppCmd, &created)
-	if err != nil {
+	if err := scan(&st.ID, &st.AccountID, &st.Username, &st.Domain, &st.DocRoot, &st.PHPVersion, &en, &aliases, &ssl, &st.SSLExpiry, &st.SSLKind, &rewrites, &st.Kind, &st.ProxyPass, &st.AppPort, &st.AppCmd, &waf, &created); err != nil {
 		return nil, err
 	}
 	st.Enabled = en == 1
 	st.SSL = ssl == 1
+	st.WAFEnabled = waf == 1
 	st.Aliases = parseAliases(aliases)
 	st.Rewrite = parseRewriteText(rewrites)
 	st.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
 	return st, nil
+}
+
+func (s *Store) GetSite(id int64) (*Site, error) {
+	return scanSite(func(dest ...any) error {
+		return s.DB.QueryRow(`SELECT `+siteCols+` FROM sites s JOIN accounts a ON a.id = s.account_id WHERE s.id = ?`, id).Scan(dest...)
+	})
 }
 
 func (s *Store) GetSiteByDomain(domain string) (*Site, error) {
@@ -634,27 +666,18 @@ func (s *Store) GetSiteByDomain(domain string) (*Site, error) {
 }
 
 func (s *Store) ListSites() ([]Site, error) {
-	rows, err := s.DB.Query(`
-SELECT s.id, s.account_id, a.username, s.domain, s.docroot, s.php_version, s.enabled, s.aliases_json, s.ssl_enabled, s.ssl_expiry, s.ssl_kind, s.nginx_rewrites_json, s.kind, s.proxy_pass, s.app_port, s.app_cmd, s.created_at
-FROM sites s JOIN accounts a ON a.id = s.account_id ORDER BY s.domain`)
+	rows, err := s.DB.Query(`SELECT ` + siteCols + ` FROM sites s JOIN accounts a ON a.id = s.account_id ORDER BY s.domain`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []Site
 	for rows.Next() {
-		var st Site
-		var en, ssl int
-		var created, aliases, rewrites string
-		if err := rows.Scan(&st.ID, &st.AccountID, &st.Username, &st.Domain, &st.DocRoot, &st.PHPVersion, &en, &aliases, &ssl, &st.SSLExpiry, &st.SSLKind, &rewrites, &st.Kind, &st.ProxyPass, &st.AppPort, &st.AppCmd, &created); err != nil {
+		st, err := scanSite(rows.Scan)
+		if err != nil {
 			return nil, err
 		}
-		st.Enabled = en == 1
-		st.SSL = ssl == 1
-		st.Aliases = parseAliases(aliases)
-		st.Rewrite = parseRewriteText(rewrites)
-		st.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
-		out = append(out, st)
+		out = append(out, *st)
 	}
 	if out == nil {
 		out = []Site{}
@@ -695,6 +718,28 @@ func (s *Store) RenameSite(id int64, domain, php, docroot string, enabled bool, 
 
 func (s *Store) UpdateSiteProxy(id int64, kind, proxyPass string) error {
 	return s.UpdateSiteApp(id, kind, proxyPass, 0, "")
+}
+
+func (s *Store) UpdateAccountWAF(username string, enabled bool) error {
+	v := 0
+	if enabled {
+		v = 1
+	}
+	_, err := s.DB.Exec(`UPDATE accounts SET waf_enabled = ? WHERE username = ?`, v, username)
+	return err
+}
+
+func (s *Store) UpdateSiteWAF(id int64, enabled bool) error {
+	v := 0
+	if enabled {
+		v = 1
+	}
+	_, err := s.DB.Exec(`UPDATE sites SET waf_enabled = ? WHERE id = ?`, v, id)
+	return err
+}
+
+func EffectiveWAF(account, site bool) bool {
+	return account && site
 }
 
 func (s *Store) UpdateSiteApp(id int64, kind, proxyPass string, appPort int, appCmd string) error {
@@ -980,6 +1025,15 @@ func (s *Store) ActiveInstalls() ([]InstallJob, error) {
 		out = []InstallJob{}
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) LastInstallStatus(name, version string) (string, error) {
+	var status string
+	err := s.DB.QueryRow(`SELECT status FROM install_jobs WHERE name = ? AND version = ? ORDER BY id DESC LIMIT 1`, name, version).Scan(&status)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return status, err
 }
 
 func (s *Store) HasActiveInstall(name, version string) (bool, error) {

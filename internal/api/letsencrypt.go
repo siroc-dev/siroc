@@ -20,14 +20,39 @@ func (s *Server) setLESettings(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	cfg, err := normalizeLEConfig(body)
+	if err := s.saveLESettings(body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.loadLEConfig())
+}
+
+func (s *Server) createLEAccount(w http.ResponseWriter, r *http.Request) {
+	var body rpc.LEConfig
+	if !decode(w, r, &body) {
+		return
+	}
+	if strings.TrimSpace(body.Email) != "" || strings.TrimSpace(body.Server) != "" {
+		if err := s.saveLESettings(body); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+	}
+	out, err := s.registerLEAccount()
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) saveLESettings(body rpc.LEConfig) error {
+	cfg, err := normalizeLEConfig(body)
+	if err != nil {
+		return err
+	}
 	if err := validate.Email(cfg.Email); err != nil {
-		writeErr(w, http.StatusBadRequest, err)
-		return
+		return err
 	}
 	curHmac, _ := s.Store.Setting("le_eab_hmac")
 	hmac := strings.TrimSpace(body.EABHMAC)
@@ -49,10 +74,37 @@ func (s *Server) setLESettings(w http.ResponseWriter, r *http.Request) {
 	} else {
 		_ = s.Store.SetSetting("le_no_verify", "0")
 	}
-	writeJSON(w, http.StatusOK, s.loadLEConfig())
+	return nil
 }
 
-func (s *Server) loadLEConfig() rpc.LEConfig {
+func (s *Server) registerLEAccount() (*rpc.LEAccountResp, error) {
+	email, _ := s.Store.Setting("le_email")
+	if strings.TrimSpace(email) == "" {
+		return nil, fmt.Errorf("Let's Encrypt account email is required")
+	}
+	if err := validate.Email(email); err != nil {
+		return nil, err
+	}
+	if s.Agent == nil {
+		return nil, fmt.Errorf("agent is not connected")
+	}
+	return s.Agent.RegisterLEAccount(s.leAccountReq())
+}
+
+func (s *Server) leAccountReq() rpc.LEAccountReq {
+	cfg := s.loadStoredLEConfig()
+	hmac, _ := s.Store.Setting("le_eab_hmac")
+	return rpc.LEAccountReq{
+		Email:     cfg.Email,
+		Server:    cfg.Server,
+		Directory: cfg.Directory,
+		EABKID:    cfg.EABKID,
+		EABHMAC:   hmac,
+		NoVerify:  cfg.NoVerify,
+	}
+}
+
+func (s *Server) loadStoredLEConfig() rpc.LEConfig {
 	email, _ := s.Store.Setting("le_email")
 	server, _ := s.Store.Setting("le_server")
 	dir, _ := s.Store.Setting("le_directory")
@@ -75,13 +127,25 @@ func (s *Server) loadLEConfig() rpc.LEConfig {
 	out, _ := normalizeLEConfig(cfg)
 	out.EABHMAC = hmac
 	out.HasEABHMAC = strings.TrimSpace(hmac) != ""
+	return out
+}
+
+func (s *Server) loadLEConfig() rpc.LEConfig {
+	out := s.loadStoredLEConfig()
 	public := out
 	public.EABHMAC = ""
+	if s.Agent != nil {
+		if st, err := s.Agent.LEAccountStatus(s.leAccountReq()); err == nil && st != nil {
+			public.Registered = st.Registered
+			public.AccountURI = st.URI
+			public.CertbotInstalled = st.CertbotInstalled
+		}
+	}
 	return public
 }
 
 func (s *Server) siteSSLReq(username, domain string, aliases []string, email string) rpc.SiteSSLReq {
-	cfg := s.loadLEConfig()
+	cfg := s.loadStoredLEConfig()
 	hmac, _ := s.Store.Setting("le_eab_hmac")
 	if strings.TrimSpace(email) == "" {
 		email = cfg.Email

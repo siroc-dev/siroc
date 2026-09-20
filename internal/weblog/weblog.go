@@ -16,14 +16,14 @@ import (
 )
 
 const (
-	retentionPath   = "/var/lib/siroc/log-retention"
-	logrotatePath   = "/etc/logrotate.d/siroc"
-	nginxLogDir     = "/var/log/nginx/sites"
-	apacheLogDir    = "/var/log/apache2/sites"
-	goaccessDir     = "/var/lib/siroc/goaccess"
-	defaultRetain   = 90
-	minRetain       = 1
-	maxRetain       = 3650
+	retentionPath = "/var/lib/siroc/log-retention"
+	logrotatePath = "/etc/logrotate.d/siroc"
+	nginxLogDir   = "/var/log/nginx/sites"
+	apacheLogDir  = "/var/log/apache2/sites"
+	goaccessDir   = "/var/lib/siroc/goaccess"
+	defaultRetain = 90
+	minRetain     = 1
+	maxRetain     = 3650
 )
 
 func Ensure() {
@@ -70,16 +70,16 @@ func Status() rpc.LogStatus {
 	_, lr := exec.LookPath("logrotate")
 	_, ngx := os.Stat("/usr/sbin/nginx")
 	return rpc.LogStatus{
-		RetentionDays:        Retention(),
-		CloudflarePrefixes:   prefixes,
-		CloudflareUpdated:    updated,
-		CloudflareSource:     source,
-		CloudflareOK:         prefixes > 0 && ngx == nil,
-		RealIPPath:           realIPPath,
-		GoAccess:             ga == nil,
-		Logrotate:            lr == nil,
-		NginxLogs:            nginxLogDir,
-		RealIPModule:         nginxHasRealIP(),
+		RetentionDays:      Retention(),
+		CloudflarePrefixes: prefixes,
+		CloudflareUpdated:  updated,
+		CloudflareSource:   source,
+		CloudflareOK:       prefixes > 0 && ngx == nil,
+		RealIPPath:         realIPPath,
+		GoAccess:           ga == nil,
+		Logrotate:          lr == nil,
+		NginxLogs:          nginxLogDir,
+		RealIPModule:       nginxHasRealIP(),
 	}
 }
 
@@ -144,6 +144,7 @@ func TouchSiteLogs(domain string) error {
 		{filepath.Join(nginxLogDir, domain+"-error.log"), "www-data:adm"},
 		{filepath.Join(apacheLogDir, domain+"-access.log"), "root:adm"},
 		{filepath.Join(apacheLogDir, domain+"-error.log"), "root:adm"},
+		{filepath.Join(apacheLogDir, domain+"-modsec.log"), "root:adm"},
 	}
 	for _, f := range files {
 		fh, err := os.OpenFile(f.path, os.O_CREATE|os.O_APPEND, 0640)
@@ -162,6 +163,22 @@ func NginxAccessLog(domain string) string {
 
 func NginxErrorLog(domain string) string {
 	return filepath.Join(nginxLogDir, domain+"-error.log")
+}
+
+func ApacheAccessLog(domain string) string {
+	return filepath.Join(apacheLogDir, domain+"-access.log")
+}
+
+func ApacheErrorLog(domain string) string {
+	return filepath.Join(apacheLogDir, domain+"-error.log")
+}
+
+func ApacheWAFLog(domain string) string {
+	return filepath.Join(apacheLogDir, domain+"-modsec.log")
+}
+
+func GlobalWAFLog() string {
+	return "/var/log/apache2/modsec_audit.log"
 }
 
 func WriteLogrotate(days int) error {
@@ -267,7 +284,8 @@ func EnsureSiteLogs() error {
 			continue
 		}
 		next, ok := injectApacheLogs(string(b), domain)
-		if !ok {
+		next, ok2 := injectApacheWAF(next, domain)
+		if !ok && !ok2 {
 			continue
 		}
 		if err := os.WriteFile(path, []byte(next), 0644); err != nil {
@@ -323,6 +341,18 @@ func injectApacheLogs(content, domain string) (string, bool) {
 		next = strings.Replace(content, "</VirtualHost>", insert+"</VirtualHost>", 1)
 	}
 	return next, next != content
+}
+
+func injectApacheWAF(content, domain string) (string, bool) {
+	marker := "sites/" + domain + "-modsec.log"
+	if strings.Contains(content, marker) {
+		return content, false
+	}
+	if !strings.Contains(content, "</VirtualHost>") {
+		return content, false
+	}
+	block := fmt.Sprintf("    <IfModule security2_module>\n        SecAuditLogType Serial\n        SecAuditLog ${APACHE_LOG_DIR}/sites/%s-modsec.log\n    </IfModule>\n", domain)
+	return strings.Replace(content, "</VirtualHost>", block+"</VirtualHost>", 1), true
 }
 
 func SiteDomains() []string {

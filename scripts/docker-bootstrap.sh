@@ -27,11 +27,13 @@ echo "Building Go binaries (v$VER)..."
 LDFLAGS="-s -w -X github.com/siroc-dev/siroc/internal/version.Version=${VER}"
 go build -ldflags="$LDFLAGS" -o /usr/local/bin/siroc-agent ./cmd/agent
 go build -ldflags="$LDFLAGS" -o /usr/local/bin/siroc-panel ./cmd/panel
+install -m 755 "$ROOT/scripts/siroc" /usr/local/bin/siroc
 echo "$VER" >/opt/siroc/VERSION
 echo "$VER" >/var/lib/siroc/version
 
 echo "Building web UI..."
 cd "$ROOT/web"
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=4096}"
 if [ ! -d node_modules ]; then
   npm install
 fi

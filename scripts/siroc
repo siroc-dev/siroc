@@ -1,0 +1,48 @@
+#!/bin/bash
+# Siroc command-line helper. Installed as /usr/local/bin/siroc
+set -euo pipefail
+cmd="${1:-}"
+shift || true
+case "$cmd" in
+  passwd-admin|reset-admin|passwd)
+    exec /usr/local/bin/siroc-panel passwd-admin "$@"
+    ;;
+  update|check|check-update)
+    exec /usr/local/bin/siroc-agent update "$@"
+    ;;
+  upgrade|apply)
+    exec /usr/local/bin/siroc-agent upgrade "$@"
+    ;;
+  version|-v|--version)
+    exec /usr/local/bin/siroc-agent version
+    ;;
+  ""|-h|--help|help)
+    cat <<'EOF'
+Siroc command line
+
+  siroc passwd-admin [user] [password]
+      Reset a panel administrator password. Omit the password to generate one.
+
+  siroc update [channel]
+      Check https://get.siroc.dev (or SIROC_UPDATE_URL) for a newer package.
+
+  siroc upgrade [channel]
+      Download and install the latest package, then restart the services.
+
+  siroc version
+      Print the installed version.
+
+Examples
+  sudo siroc passwd-admin
+  sudo siroc update
+  sudo siroc upgrade
+  sudo siroc upgrade --url https://get.siroc.dev/siroc-linux-amd64.tar.gz
+  sudo siroc upgrade --path /var/lib/siroc/updates/siroc-linux-amd64.tar.gz
+EOF
+    ;;
+  *)
+    echo "unknown command: $cmd" >&2
+    echo "run: siroc --help" >&2
+    exit 1
+    ;;
+esac

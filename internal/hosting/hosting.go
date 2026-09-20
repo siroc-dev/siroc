@@ -56,6 +56,7 @@ type siteData struct {
 	SSLKey            string
 	Rewrite           string
 	ProxyPass         string
+	WAF               bool
 }
 
 const nginxTmpl = `server {
@@ -190,6 +191,13 @@ const apacheTmpl = `<VirtualHost 127.0.0.1:8080>
 {{- end}}
     ErrorLog ${APACHE_LOG_DIR}/sites/{{.Domain}}-error.log
     CustomLog ${APACHE_LOG_DIR}/sites/{{.Domain}}-access.log combined
+    <IfModule security2_module>
+        SecAuditLogType Serial
+        SecAuditLog ${APACHE_LOG_DIR}/sites/{{.Domain}}-modsec.log
+{{- if not .WAF}}
+        SecRuleEngine Off
+{{- end}}
+    </IfModule>
 </VirtualHost>
 `
 
@@ -308,6 +316,7 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 		SSLKey:      key,
 		Rewrite:     snippet,
 		ProxyPass:   "",
+		WAF:         req.WAF,
 	}
 	if err := fillSiteFPM(&data, m.HomeRoot, req); err != nil {
 		return err

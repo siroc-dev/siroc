@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/validate"
@@ -59,6 +60,117 @@ func (m *Manager) Create(username, password string) (*rpc.UserResp, error) {
 		return nil, err
 	}
 	return m.Info(username)
+}
+
+// Ensure recreates a missing Linux account without wiping an existing home.
+// Used after a container rebuild where /home is persisted but /etc/passwd is not.
+func (m *Manager) Ensure(username string, uid, gid int, password string) (*rpc.UserResp, error) {
+	if err := validate.LinuxUser(username); err != nil {
+		return nil, err
+	}
+	if _, err := user.Lookup(username); err == nil {
+		if password != "" {
+			if err := m.SetPassword(username, password); err != nil {
+				return nil, err
+			}
+		}
+		return m.Info(username)
+	}
+	home := filepath.Join(m.HomeRoot, username)
+	homeExists := false
+	if st, err := os.Stat(home); err == nil && st.IsDir() {
+		homeExists = true
+		if u, g, ok := idsFromStat(st); ok {
+			if uid <= 0 {
+				uid = u
+			}
+			if gid <= 0 {
+				gid = g
+			}
+		}
+	}
+	if uid > 0 {
+		if u, err := user.LookupId(strconv.Itoa(uid)); err == nil && u.Username != username {
+			return nil, fmt.Errorf("uid %d is already used by %s", uid, u.Username)
+		}
+	}
+	if err := ensureGroup(username, gid); err != nil {
+		return nil, err
+	}
+	args := EnsureUseraddArgs(username, home, uid, gid, homeExists)
+	if out, err := exec.Command("useradd", args...).CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("useradd: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	if password != "" {
+		if err := m.SetPassword(username, password); err != nil {
+			return nil, err
+		}
+	} else {
+		_ = exec.Command("passwd", "-l", username).Run()
+	}
+	if !homeExists {
+		if err := os.MkdirAll(filepath.Join(home, "domains"), 0755); err != nil {
+			return nil, err
+		}
+		for _, d := range []string{filepath.Join(home, "mail"), filepath.Join(home, "tmp")} {
+			if err := os.MkdirAll(d, 0750); err != nil {
+				return nil, err
+			}
+		}
+		if err := exec.Command("chown", "-R", username+":"+username, home).Run(); err != nil {
+			return nil, fmt.Errorf("chown home: %w", err)
+		}
+		_ = os.Chmod(home, 0711)
+	}
+	return m.Info(username)
+}
+
+func (m *Manager) RepairHomes() int {
+	ents, err := os.ReadDir(m.HomeRoot)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range ents {
+		if !e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if validate.LinuxUser(name) != nil {
+			continue
+		}
+		if _, err := user.Lookup(name); err == nil {
+			continue
+		}
+		if _, err := m.Ensure(name, 0, 0, ""); err != nil {
+			continue
+		}
+		n++
+	}
+	return n
+}
+
+func ensureGroup(name string, gid int) error {
+	if gid > 0 {
+		if _, err := user.LookupGroupId(strconv.Itoa(gid)); err == nil {
+			return nil
+		}
+	}
+	if _, err := user.LookupGroup(name); err == nil {
+		return nil
+	}
+	if out, err := exec.Command("groupadd", EnsureGroupaddArgs(name, gid)...).CombinedOutput(); err != nil {
+		return fmt.Errorf("groupadd: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+func idsFromStat(st os.FileInfo) (uid, gid int, ok bool) {
+	sys, ok := st.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, 0, false
+	}
+	return int(sys.Uid), int(sys.Gid), true
 }
 
 func (m *Manager) SetPassword(username, password string) error {

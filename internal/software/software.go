@@ -67,7 +67,7 @@ func catalog() []spec {
 			},
 			InstallPkg: func(v string) string {
 				if v == "" {
-					v = "8.3"
+					v = BasePHPVersion
 				}
 				return fmt.Sprintf("php%s-fpm php%s-cli php%s-mysql php%s-xml php%s-curl php%s-mbstring php%s-zip php%s-gd", v, v, v, v, v, v, v, v)
 			},
@@ -80,7 +80,7 @@ func catalog() []spec {
 			},
 			PostInstall: func(version string) error {
 				if version == "" {
-					version = "8.3"
+					version = BasePHPVersion
 				}
 				_ = exec.Command("systemctl", "enable", "--now", "php"+version+"-fpm").Run()
 				_ = setPHPCLI(version)
@@ -178,17 +178,17 @@ func catalog() []spec {
 			},
 		},
 		{
-			Name:    "golang",
-			Title:   "Go",
-			AptPkg:  "golang-go",
+			Name:   "golang",
+			Title:  "Go",
+			AptPkg: "golang-go",
 			Installed: func() (bool, string) {
 				return binVersion("go")
 			},
 		},
 		{
-			Name:    "rust",
-			Title:   "Rust",
-			AptPkg:  "rustc cargo",
+			Name:   "rust",
+			Title:  "Rust",
+			AptPkg: "rustc cargo",
 			Installed: func() (bool, string) {
 				ok, ver := binVersion("rustc")
 				if !ok {
@@ -436,6 +436,7 @@ func (m *Manager) List() []rpc.PackageInfo {
 		info := rpc.PackageInfo{
 			Name:        s.Name,
 			Title:       s.Title,
+			Description: Description(s.Name),
 			Installed:   inst,
 			Version:     ver,
 			Service:     s.Service,
@@ -494,6 +495,9 @@ func (m *Manager) PHPInstalled() []string {
 			found = append(found, v)
 		}
 	}
+	if found == nil {
+		found = []string{}
+	}
 	return found
 }
 
@@ -546,7 +550,7 @@ func (m *Manager) install(name, version string) error {
 			fallback = allowed[len(allowed)-1]
 		}
 		if s.Name == "php" {
-			fallback = "8.3"
+			fallback = BasePHPVersion
 		}
 		if s.Name == "ffmpeg" {
 			fallback = ffmpegDefaultVersion()
@@ -823,6 +827,9 @@ func configureApacheBackend(string) error {
 }
 
 func enableApachePHP() error {
+	if _, err := exec.LookPath("a2enmod"); err != nil {
+		return nil
+	}
 	return exec.Command("a2enmod", "proxy", "proxy_fcgi", "setenvif").Run()
 }
 

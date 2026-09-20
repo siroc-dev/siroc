@@ -128,7 +128,7 @@ func (s *Server) setAccountPassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "username": acc.Username, "password": body.Password})
 }
 
 func (s *Server) setAccountAccess(w http.ResponseWriter, r *http.Request) {

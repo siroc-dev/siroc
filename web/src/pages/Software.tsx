@@ -7,6 +7,7 @@ import { elapsed, jobLabel, type InstallJob, type InstallQueue } from "@/lib/job
 type Pkg = {
   name: string;
   title: string;
+  description?: string;
   installed: boolean;
   version: string;
   service: string;
@@ -315,6 +316,11 @@ export function Software() {
                 title={p.title}
                 extra={<Tag color={tone}>{status}</Tag>}
               >
+                {p.description ? (
+                  <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+                    {p.description}
+                  </Typography.Paragraph>
+                ) : null}
                 <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
                   {p.version || "Not installed"}
                   {p.cliVersion ? ` · CLI ${p.cliVersion}` : ""}

@@ -71,6 +71,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/accounts/{username}/password", s.showAccountPassword)
 		r.Put("/api/accounts/{username}/password", s.setAccountPassword)
 		r.Put("/api/accounts/{username}/access", s.setAccountAccess)
+		r.Put("/api/accounts/{username}/waf", s.setAccountWAF)
 		r.Post("/api/accounts/{username}/login-as", s.loginAs)
 		r.Post("/api/accounts/{username}/suspend", s.suspendAccount)
 		r.Post("/api/accounts/{username}/unsuspend", s.unsuspendAccount)
@@ -116,6 +117,7 @@ func (s *Server) Router() http.Handler {
 			r.Put("/api/software/redis", s.setRedisSettings)
 			r.Get("/api/ssl/letsencrypt", s.leSettings)
 			r.Put("/api/ssl/letsencrypt", s.setLESettings)
+			r.Post("/api/ssl/letsencrypt/account", s.createLEAccount)
 			r.Post("/api/php/extensions", s.installPHPExt)
 			r.Get("/api/security/firewall", s.firewallStatus)
 			r.Post("/api/security/firewall/enable", s.firewallEnable)
@@ -161,6 +163,8 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/sites/{id}/stats", s.siteStatsInfo)
 		r.Post("/api/sites/{id}/stats", s.siteStatsInfo)
 		r.Get("/api/sites/{id}/stats.html", s.siteStatsHTML)
+		r.Get("/api/sites/{id}/logs", s.siteLogs)
+		r.Put("/api/sites/{id}/waf", s.setSiteWAF)
 		r.Delete("/api/sites/{id}", s.deleteSite)
 
 		r.Get("/api/databases", s.listDatabases)
@@ -202,6 +206,7 @@ func (s *Server) ListenAndServe() error {
 	s.StartInstallQueue()
 	go s.applyStoredSites()
 	s.prepareFirstRun()
+	go s.enqueueBaseStack()
 	h := s.Router()
 	if s.Cfg.DisableTLS {
 		log.Printf("siroc-panel listening http://%s", s.Cfg.ListenAddr)
@@ -1295,6 +1300,7 @@ func (s *Server) createSite(w http.ResponseWriter, r *http.Request) {
 		ProxyPass:  body.ProxyPass,
 		AppPort:    appPort,
 		AppCmd:     appCmd,
+		WAF:        s.siteWAF(store.Site{Username: acc.Username, WAFEnabled: true}),
 	}
 	if err := s.Agent.SiteWrite(req); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
@@ -1589,6 +1595,7 @@ func (s *Server) siteWriteReq(st store.Site, php string, enabled bool, aliases [
 		ProxyPass:  st.ProxyPass,
 		AppPort:    st.AppPort,
 		AppCmd:     st.AppCmd,
+		WAF:        s.siteWAF(st),
 	}
 }
 
@@ -1662,6 +1669,34 @@ func (s *Server) siteRuntime(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+func (s *Server) repairLinuxAccounts() {
+	accs, err := s.Store.ListAccounts()
+	if err != nil {
+		log.Printf("repair linux users: %v", err)
+		return
+	}
+	for _, a := range accs {
+		pw := ""
+		if a.PasswordEnc != "" {
+			if p, err := s.decryptPassword(a.PasswordEnc); err == nil {
+				pw = p
+			}
+		}
+		if _, err := s.Agent.UserEnsure(rpc.UserEnsureReq{
+			Username: a.Username,
+			UID:      a.LinuxUID,
+			GID:      a.LinuxGID,
+			Password: pw,
+		}); err != nil {
+			log.Printf("repair linux user %s: %v", a.Username, err)
+			continue
+		}
+		if err := s.Agent.UserAccess(a.Username, a.SSHEnabled, a.FTPEnabled); err != nil {
+			log.Printf("repair access %s: %v", a.Username, err)
+		}
+	}
+}
+
 func (s *Server) applyStoredSites() {
 	for i := 0; i < 30; i++ {
 		if _, err := s.Agent.Health(); err == nil {
@@ -1669,6 +1704,7 @@ func (s *Server) applyStoredSites() {
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+	s.repairLinuxAccounts()
 	migrated, _ := s.Store.Setting("sites_local_ssl")
 	sites, err := s.Store.ListSites()
 	if err != nil {
@@ -1980,12 +2016,6 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 		return false
 	}
 	return true
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
 }
 
 func writeErr(w http.ResponseWriter, status int, err error) {

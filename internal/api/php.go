@@ -113,18 +113,9 @@ func (s *Server) setAccountPHP(w http.ResponseWriter, r *http.Request) {
 		if st.Username != acc.Username {
 			continue
 		}
-		reqSites = append(reqSites, rpc.SiteWriteReq{
-			Username:   st.Username,
-			Domain:     st.Domain,
-			DocRoot:    st.DocRoot,
-			PHPVersion: st.PHPVersion,
-			Enabled:    st.Enabled,
-			Aliases:    st.Aliases,
-			SSL:        st.SSL,
-			SSLKind:    st.SSLKind,
-			Rewrite:    st.Rewrite,
-			FPM:        &settings,
-		})
+		req := s.siteWriteReq(st, st.PHPVersion, st.Enabled, st.Aliases, st.SSL, st.SSLKind, st.Rewrite)
+		req.FPM = &settings
+		reqSites = append(reqSites, req)
 	}
 	if err := s.Agent.PHPUserApply(rpc.PHPUserApplyReq{Username: acc.Username, Settings: settings, Sites: reqSites}); err != nil {
 		writeErr(w, http.StatusBadRequest, err)

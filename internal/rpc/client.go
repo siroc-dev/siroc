@@ -85,6 +85,12 @@ func (c *Client) UserPassword(username, password string) error {
 	return c.do(http.MethodPost, "/users/password", UserPasswordReq{Username: username, Password: password}, nil)
 }
 
+func (c *Client) UserEnsure(in UserEnsureReq) (*UserResp, error) {
+	var out UserResp
+	err := c.do(http.MethodPost, "/users/ensure", in, &out)
+	return &out, err
+}
+
 func (c *Client) UserAccess(username string, ssh, ftp bool) error {
 	return c.do(http.MethodPost, "/users/access", UserAccessReq{Username: username, SSH: ssh, FTP: ftp}, nil)
 }
@@ -292,6 +298,18 @@ func (c *Client) SiteWrite(in SiteWriteReq) error {
 func (c *Client) SiteSSL(in SiteSSLReq) (*SiteSSLResp, error) {
 	var out SiteSSLResp
 	err := c.do(http.MethodPost, "/sites/ssl", in, &out)
+	return &out, err
+}
+
+func (c *Client) RegisterLEAccount(in LEAccountReq) (*LEAccountResp, error) {
+	var out LEAccountResp
+	err := c.do(http.MethodPost, "/ssl/letsencrypt/account", in, &out)
+	return &out, err
+}
+
+func (c *Client) LEAccountStatus(in LEAccountReq) (*LEAccountResp, error) {
+	var out LEAccountResp
+	err := c.do(http.MethodPost, "/ssl/letsencrypt/account/status", in, &out)
 	return &out, err
 }
 
@@ -588,6 +606,12 @@ func (c *Client) CloudflareRefresh() (*LogStatus, error) {
 func (c *Client) GoAccessInfo(domain string, refresh bool) (*GoAccessInfo, error) {
 	var out GoAccessInfo
 	err := c.do(http.MethodPost, "/logs/goaccess", GoAccessReq{Domain: domain, Refresh: refresh}, &out)
+	return &out, err
+}
+
+func (c *Client) SiteLogs(in SiteLogReq) (*SiteLogsResp, error) {
+	var out SiteLogsResp
+	err := c.do(http.MethodPost, "/logs/site", in, &out)
 	return &out, err
 }
 

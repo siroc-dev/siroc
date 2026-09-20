@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Alert, Badge, Button, Flex, Layout as AntLayout, Menu, Typography } from "antd";
+import { Alert, App, Badge, Button, Flex, Form, Input, Layout as AntLayout, Menu, Modal, Typography } from "antd";
 import {
   AppstoreOutlined,
   CloudDownloadOutlined,
@@ -11,6 +11,7 @@ import {
   FileSearchOutlined,
   FolderOutlined,
   GlobalOutlined,
+  KeyOutlined,
   LaptopOutlined,
   LogoutOutlined,
   MonitorOutlined,
@@ -20,6 +21,7 @@ import {
 } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { elapsed, jobLabel, type InstallQueue } from "@/lib/jobs";
+import { canUsePath } from "@/lib/nav";
 
 const { Sider, Content, Header } = AntLayout;
 
@@ -43,9 +45,13 @@ const items = [
 export function Layout({ user, admin, version }: { user: string; admin?: boolean; version?: string }) {
   const nav = useNavigate();
   const loc = useLocation();
+  const { message } = App.useApp();
   const [queue, setQueue] = useState<InstallQueue | null>(null);
   const [tick, setTick] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
+  const [passOpen, setPassOpen] = useState(false);
+  const [passBusy, setPassBusy] = useState(false);
+  const [passForm] = Form.useForm();
 
   useEffect(() => {
     if (!admin) return;
@@ -77,6 +83,20 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
     nav("/login");
   }
 
+  async function changePassword(values: { current: string; next: string }) {
+    setPassBusy(true);
+    try {
+      await api.post("/api/me/password", values);
+      message.success("Password updated");
+      setPassOpen(false);
+      passForm.resetFields();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setPassBusy(false);
+    }
+  }
+
   const current = queue?.current;
   const waiting = queue?.queue?.length || 0;
   const installing = !!current || waiting > 0;
@@ -87,7 +107,7 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
   }, [loc.pathname]);
 
   const menuItems = items
-    .filter((i) => admin || (i.key !== "/monitoring" && i.key !== "/scan-logs" && i.key !== "/apache" && i.key !== "/tools"))
+    .filter((i) => canUsePath(admin, i.key))
     .map((i) => ({
     ...i,
     label:
@@ -162,6 +182,9 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
             </Typography.Text>
             <Flex align="center" gap={8}>
               <Typography.Text>{user}</Typography.Text>
+              <Button type="text" icon={<KeyOutlined />} onClick={() => setPassOpen(true)}>
+                Password
+              </Button>
               <Button type="text" icon={<LogoutOutlined />} onClick={logout}>
                 Logout
               </Button>
@@ -188,6 +211,27 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
           <Outlet context={{ user, admin }} />
         </Content>
       </AntLayout>
+      <Modal
+        title="Change password"
+        open={passOpen}
+        onCancel={() => {
+          setPassOpen(false);
+          passForm.resetFields();
+        }}
+        onOk={() => passForm.submit()}
+        confirmLoading={passBusy}
+        destroyOnHidden
+        okText="Update password"
+      >
+        <Form form={passForm} layout="vertical" onFinish={changePassword} requiredMark={false} style={{ marginTop: 8 }}>
+          <Form.Item name="current" label="Current password" rules={[{ required: true }]}>
+            <Input.Password autoComplete="current-password" />
+          </Form.Item>
+          <Form.Item name="next" label="New password" rules={[{ required: true, min: 8 }]}>
+            <Input.Password autoComplete="new-password" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </AntLayout>
   );
 }

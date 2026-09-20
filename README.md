@@ -31,13 +31,31 @@ The installer prints a **one-time, token-protected** URL:
 
 `https://<server-ip>:8443/setup?token=<secret>`
 
-Open that link to create the first panel admin. Visiting the panel without the token does not show the setup form. The link is also saved at `/var/lib/siroc/setup.url` until setup completes.
+Open that link to create the first panel admin and a Let's Encrypt account email. Visiting the panel without the token does not show the setup form. The link is also saved at `/var/lib/siroc/setup.url` until setup completes. If Certbot is already installed, the ACME account is registered during setup; otherwise it is created when you install Certbot or click **Create Let's Encrypt account**.
 
 If binaries are already built in this tree (`bin/siroc-agent`, `bin/siroc-panel`, `web/dist`), you can run `sudo ./scripts/install.sh` directly.
 
+### Reset the admin password
+
+On the server, as root:
+
+```bash
+sudo siroc passwd-admin
+# or: sudo siroc-panel passwd-admin [username] [password]
+```
+
+A random password is printed if you omit one. Existing admin sessions are signed out.
+
 ### Update the panel
 
-After install, open **System tools → Updates**. The current version is shown in the sidebar.
+On the server:
+
+```bash
+sudo siroc update              # check https://get.siroc.dev
+sudo siroc upgrade             # download, install, restart
+```
+
+Or open **System tools → Updates**. The current version is shown in the sidebar.
 
 - **Check for updates** reads `latest.json` from an HTTPS channel (`SIROC_UPDATE_URL` or the channel field).
 - **Apply update** installs a `siroc-linux-amd64.tar.gz` from that URL, or from a local path such as `/var/lib/siroc/updates/…`.

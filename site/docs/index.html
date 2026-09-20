@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Siroc docs — install, admin reset, updates</title>
+    <meta name="description" content="Install Siroc, reset the panel admin from the command line, and check or apply updates." />
+    <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="nav">
+        <a class="brand" href="../">
+          <img src="../favicon.svg" alt="" />
+          Siroc
+        </a>
+        <nav class="nav-links">
+          <a href="../#install">Install</a>
+          <a href="./" aria-current="page">Docs</a>
+          <a href="https://github.com/siroc-dev/siroc">GitHub</a>
+        </nav>
+      </header>
+
+      <article class="doc">
+        <h1>Documentation</h1>
+        <p class="lead">
+          Siroc is a Linux hosting panel. Hosting accounts are real system users.
+          This page covers install, first admin, command-line password reset, and upgrades.
+          Current version <strong id="version">0.2.1</strong>.
+        </p>
+        <nav class="doc-toc">
+          <a href="#install">Install</a>
+          <a href="#first-admin">First admin</a>
+          <a href="#reset-admin">Reset admin</a>
+          <a href="#update">Check and upgrade</a>
+          <a href="#ssl">Let's Encrypt</a>
+          <a href="#hosting">Hosting</a>
+        </nav>
+
+        <h2 id="install">Install</h2>
+        <p>On a fresh Ubuntu or Debian server, as root:</p>
+        <div class="cmd">
+          <div class="cmd-top"><span>One-line install</span><button class="copy" type="button" data-copy>Copy</button></div>
+          <pre>curl -fsSL https://siroc.dev/install.sh | sudo bash</pre>
+        </div>
+        <p>The panel listens on port 8443. Packages come from <code>https://get.siroc.dev</code>.</p>
+        <p>To install from a downloaded tarball:</p>
+        <div class="cmd">
+          <div class="cmd-top"><span>From a package</span><button class="copy" type="button" data-copy>Copy</button></div>
+          <pre>tar -xzf siroc-linux-amd64.tar.gz
+cd siroc
+sudo ./install.sh</pre>
+        </div>
+
+        <h2 id="first-admin">First admin</h2>
+        <p>
+          The installer prints a one-time setup URL. It is also saved at
+          <code>/var/lib/siroc/setup.url</code> until setup completes.
+        </p>
+        <p>
+          Open that link, create the panel administrator, and enter a Let's Encrypt email.
+          This admin lives in the panel database. It is not a Linux user and cannot be named
+          as a hosting account.
+        </p>
+
+        <h2 id="reset-admin">Reset the admin password</h2>
+        <p>If you lose the panel admin password, reset it on the server as root. Sessions for that admin are signed out.</p>
+        <div class="cmd">
+          <div class="cmd-top"><span>Generate a new password</span><button class="copy" type="button" data-copy>Copy</button></div>
+          <pre>sudo siroc passwd-admin</pre>
+        </div>
+        <div class="cmd">
+          <div class="cmd-top"><span>Set a specific password</span><button class="copy" type="button" data-copy>Copy</button></div>
+          <pre>sudo siroc passwd-admin admin 'YourNewPassword'</pre>
+        </div>
+        <p>The same command is available as <code>sudo siroc-panel passwd-admin [user] [password]</code>.</p>
+        <p>
+          Hosting account passwords are reset in the panel under <strong>Accounts → Reset password</strong>.
+          That change updates the panel login, SSH, and FTP for that Linux user.
+        </p>
+
+        <h2 id="update">Check and upgrade</h2>
+        <p>Check the public channel, then apply the package. Sites and <code>/var/lib/siroc</code> are kept.</p>
+        <div class="cmd">
+          <div class="cmd-top"><span>Check for updates</span><button class="copy" type="button" data-copy>Copy</button></div>
+          <pre>sudo siroc update</pre>
+        </div>
+        <div class="cmd">
+          <div class="cmd-top"><span>Install the latest package</span><button class="copy" type="button" data-copy>Copy</button></div>
+          <pre>sudo siroc upgrade</pre>
+        </div>
+        <p>Optional arguments:</p>
+        <div class="cmd">
+          <div class="cmd-top"><span>Custom channel or local tarball</span><button class="copy" type="button" data-copy>Copy</button></div>
+          <pre>sudo siroc update https://get.siroc.dev
+sudo siroc upgrade --url https://get.siroc.dev/siroc-linux-amd64.tar.gz
+sudo siroc upgrade --path /var/lib/siroc/updates/siroc-linux-amd64.tar.gz</pre>
+        </div>
+        <p>
+          <code>siroc update</code> runs <code>siroc-agent update</code>.
+          <code>siroc upgrade</code> runs <code>siroc-agent upgrade</code>, replaces
+          <code>siroc-panel</code> and <code>siroc-agent</code>, then restarts the services.
+        </p>
+        <p>You can also check and apply updates in the panel under <strong>System tools → Updates</strong>.</p>
+        <p>Print the installed version:</p>
+        <div class="cmd">
+          <div class="cmd-top"><span>Version</span><button class="copy" type="button" data-copy>Copy</button></div>
+          <pre>sudo siroc version</pre>
+        </div>
+
+        <h2 id="ssl">Let's Encrypt</h2>
+        <p>
+          During first-run setup, enter an account email. If Certbot is already installed,
+          Siroc registers the ACME account immediately. Otherwise install
+          <strong>Let's Encrypt (Certbot)</strong> from Software, then open
+          <strong>Websites → Let's Encrypt</strong> and click <strong>Create Let's Encrypt account</strong>.
+        </p>
+        <p>
+          New sites get a local HTTPS certificate. Issue Let's Encrypt later for public domains.
+          Port 80 must be reachable from the internet for HTTP-01.
+        </p>
+
+        <h2 id="hosting">Hosting</h2>
+        <ul>
+          <li>Each hosting account is a Linux user with its own home directory.</li>
+          <li>Nginx sits in front. Sites can be PHP, Node.js, Python, Go, Rust, or Docker.</li>
+          <li>Install Nginx, Apache, PHP, and MySQL or MariaDB from Software before adding sites.</li>
+          <li>The update channel default is <code id="channel">https://get.siroc.dev</code>.</li>
+        </ul>
+      </article>
+
+      <footer class="foot">
+        <span><a href="../">Siroc</a> · Docs</span>
+        <span><a href="https://github.com/siroc-dev/siroc">github.com/siroc-dev/siroc</a></span>
+      </footer>
+    </div>
+    <script src="../app.js"></script>
+    <script src="./docs.js"></script>
+  </body>
+</html>

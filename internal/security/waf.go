@@ -251,10 +251,18 @@ SecAction "id:900111,phase:1,nolog,pass,t:none,setvar:tx.outbound_anomaly_score_
 	if dir == "" {
 		b.WriteString("# OWASP CRS rules directory not found\n")
 	} else {
-		for _, prefix := range []string{"REQUEST-900", "REQUEST-901", "REQUEST-905"} {
-			for _, f := range matchRules(dir, []string{prefix}) {
+		seen := map[string]bool{}
+		include := func(files []string) {
+			for _, f := range files {
+				if seen[f] {
+					continue
+				}
+				seen[f] = true
 				fmt.Fprintf(&b, "Include %s\n", f)
 			}
+		}
+		for _, prefix := range []string{"REQUEST-900", "REQUEST-901", "REQUEST-905"} {
+			include(matchRules(dir, []string{prefix}))
 		}
 		enabled := map[string]bool{}
 		for _, id := range st.Packs {
@@ -264,14 +272,10 @@ SecAction "id:900111,phase:1,nolog,pass,t:none,setvar:tx.outbound_anomaly_score_
 			if !enabled[p.ID] {
 				continue
 			}
-			for _, f := range matchRules(dir, p.Prefixes) {
-				fmt.Fprintf(&b, "Include %s\n", f)
-			}
+			include(matchRules(dir, p.Prefixes))
 		}
 		for _, prefix := range []string{"REQUEST-949", "RESPONSE-959", "RESPONSE-980"} {
-			for _, f := range matchRules(dir, []string{prefix}) {
-				fmt.Fprintf(&b, "Include %s\n", f)
-			}
+			include(matchRules(dir, []string{prefix}))
 		}
 		if len(st.DisabledIDs) > 0 {
 			b.WriteString("\n# Disabled rule IDs\n")

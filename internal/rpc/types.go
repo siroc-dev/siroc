@@ -16,6 +16,13 @@ type UserPasswordReq struct {
 	Password string `json:"password"`
 }
 
+type UserEnsureReq struct {
+	Username string `json:"username"`
+	UID      int    `json:"uid"`
+	GID      int    `json:"gid"`
+	Password string `json:"password,omitempty"`
+}
+
 type UserAccessReq struct {
 	Username string `json:"username"`
 	SSH      bool   `json:"ssh"`
@@ -105,6 +112,7 @@ type PkgInstallReq struct {
 type PackageInfo struct {
 	Name              string   `json:"name"`
 	Title             string   `json:"title"`
+	Description       string   `json:"description,omitempty"`
 	Installed         bool     `json:"installed"`
 	Version           string   `json:"version"`
 	Service           string   `json:"service"`
@@ -140,6 +148,7 @@ type SiteWriteReq struct {
 	ProxyPass  string          `json:"proxyPass,omitempty"`
 	AppPort    int             `json:"appPort,omitempty"`
 	AppCmd     string          `json:"appCmd,omitempty"`
+	WAF        bool            `json:"waf"`
 }
 
 type SiteRuntimeReq struct {
@@ -179,15 +188,36 @@ type SiteSSLReq struct {
 }
 
 type LEConfig struct {
-	Email      string `json:"email"`
-	Server     string `json:"server"`
-	Directory  string `json:"directory,omitempty"`
-	KeyType    string `json:"keyType"`
-	RSAKeySize int    `json:"rsaKeySize,omitempty"`
-	EABKID     string `json:"eabKid,omitempty"`
-	EABHMAC    string `json:"eabHmac,omitempty"`
-	HasEABHMAC bool   `json:"hasEabHmac"`
-	NoVerify   bool   `json:"noVerify,omitempty"`
+	Email            string `json:"email"`
+	Server           string `json:"server"`
+	Directory        string `json:"directory,omitempty"`
+	KeyType          string `json:"keyType"`
+	RSAKeySize       int    `json:"rsaKeySize,omitempty"`
+	EABKID           string `json:"eabKid,omitempty"`
+	EABHMAC          string `json:"eabHmac,omitempty"`
+	HasEABHMAC       bool   `json:"hasEabHmac"`
+	NoVerify         bool   `json:"noVerify,omitempty"`
+	Registered       bool   `json:"registered"`
+	AccountURI       string `json:"accountUri,omitempty"`
+	CertbotInstalled bool   `json:"certbotInstalled"`
+}
+
+type LEAccountReq struct {
+	Email     string `json:"email,omitempty"`
+	Server    string `json:"server,omitempty"`
+	Directory string `json:"directory,omitempty"`
+	EABKID    string `json:"eabKid,omitempty"`
+	EABHMAC   string `json:"eabHmac,omitempty"`
+	NoVerify  bool   `json:"noVerify,omitempty"`
+}
+
+type LEAccountResp struct {
+	OK               bool   `json:"ok"`
+	Registered       bool   `json:"registered"`
+	CertbotInstalled bool   `json:"certbotInstalled"`
+	Email            string `json:"email,omitempty"`
+	URI              string `json:"uri,omitempty"`
+	Message          string `json:"message,omitempty"`
 }
 
 type SiteSSLResp struct {
@@ -198,34 +228,36 @@ type SiteSSLResp struct {
 }
 
 type SiteAppReq struct {
-	Username   string `json:"username"`
-	Domain     string `json:"domain"`
-	DocRoot    string `json:"docRoot"`
-	PHPVersion string `json:"phpVersion"`
-	Action     string `json:"action"`
-	Queue      *bool  `json:"queue,omitempty"`
-	Workers    int    `json:"workers,omitempty"`
-	Scheduler  *bool  `json:"scheduler,omitempty"`
-	Env        string `json:"env,omitempty"`
-	Composer   string `json:"composer,omitempty"`
-	NPM        string `json:"npm,omitempty"`
-	Artisan    string `json:"artisan,omitempty"`
-	URL        string `json:"url,omitempty"`
-	Name       string `json:"name,omitempty"`
-	Plugin     string `json:"plugin,omitempty"`
-	UserID     int64  `json:"userId,omitempty"`
-	AdminUser  string `json:"adminUser,omitempty"`
-	AdminPass  string `json:"adminPass,omitempty"`
-	AdminEmail string `json:"adminEmail,omitempty"`
-	DBName     string `json:"dbName,omitempty"`
-	DBUser     string `json:"dbUser,omitempty"`
-	DBPass     string `json:"dbPass,omitempty"`
-	Prefix     string `json:"prefix,omitempty"`
-	WPCLI      string `json:"wpcli,omitempty"`
-	Login      string `json:"login,omitempty"`
-	XMLRPC     *bool  `json:"xmlrpc,omitempty"`
-	Pingbacks  *bool  `json:"pingbacks,omitempty"`
-	UploadsPHP *bool  `json:"uploadsPhp,omitempty"`
+	Username   string            `json:"username"`
+	Domain     string            `json:"domain"`
+	DocRoot    string            `json:"docRoot"`
+	PHPVersion string            `json:"phpVersion"`
+	Action     string            `json:"action"`
+	Queue      *bool             `json:"queue,omitempty"`
+	QueueName  string            `json:"queueName,omitempty"`
+	Workers    int               `json:"workers,omitempty"`
+	Queues     []LaravelQueueRow `json:"queues,omitempty"`
+	Scheduler  *bool             `json:"scheduler,omitempty"`
+	Env        string            `json:"env,omitempty"`
+	Composer   string            `json:"composer,omitempty"`
+	NPM        string            `json:"npm,omitempty"`
+	Artisan    string            `json:"artisan,omitempty"`
+	URL        string            `json:"url,omitempty"`
+	Name       string            `json:"name,omitempty"`
+	Plugin     string            `json:"plugin,omitempty"`
+	UserID     int64             `json:"userId,omitempty"`
+	AdminUser  string            `json:"adminUser,omitempty"`
+	AdminPass  string            `json:"adminPass,omitempty"`
+	AdminEmail string            `json:"adminEmail,omitempty"`
+	DBName     string            `json:"dbName,omitempty"`
+	DBUser     string            `json:"dbUser,omitempty"`
+	DBPass     string            `json:"dbPass,omitempty"`
+	Prefix     string            `json:"prefix,omitempty"`
+	WPCLI      string            `json:"wpcli,omitempty"`
+	Login      string            `json:"login,omitempty"`
+	XMLRPC     *bool             `json:"xmlrpc,omitempty"`
+	Pingbacks  *bool             `json:"pingbacks,omitempty"`
+	UploadsPHP *bool             `json:"uploadsPhp,omitempty"`
 }
 
 type SiteAppResp struct {
@@ -242,18 +274,51 @@ type SiteAppResp struct {
 }
 
 type LaravelStatus struct {
-	Queue        bool         `json:"queue"`
-	Workers      int          `json:"workers"`
-	Scheduler    bool         `json:"scheduler"`
-	EnvExists    bool         `json:"envExists"`
-	Env          string       `json:"env,omitempty"`
-	HasComposer  bool         `json:"hasComposer"`
-	HasPackage   bool         `json:"hasPackage"`
-	HasArtisan   bool         `json:"hasArtisan"`
-	ComposerPkgs []PkgRow     `json:"composerPkgs,omitempty"`
-	NPMPkgs      []PkgRow     `json:"npmPkgs,omitempty"`
-	NPMScripts   []string     `json:"npmScripts,omitempty"`
-	ArtisanCmds  []ArtisanCmd `json:"artisanCmds,omitempty"`
+	Queue        bool               `json:"queue"`
+	QueueName    string             `json:"queueName,omitempty"`
+	Workers      int                `json:"workers"`
+	Queues       []LaravelQueueRow  `json:"queues,omitempty"`
+	Processes    []LaravelQueueProc `json:"processes,omitempty"`
+	Scheduler    bool               `json:"scheduler"`
+	Schedule     []LaravelSchedule  `json:"schedule,omitempty"`
+	ScheduleLast string             `json:"scheduleLast,omitempty"`
+	EnvExists    bool               `json:"envExists"`
+	Env          string             `json:"env,omitempty"`
+	HasComposer  bool               `json:"hasComposer"`
+	HasPackage   bool               `json:"hasPackage"`
+	HasArtisan   bool               `json:"hasArtisan"`
+	ComposerPkgs []PkgRow           `json:"composerPkgs,omitempty"`
+	NPMPkgs      []PkgRow           `json:"npmPkgs,omitempty"`
+	NPMScripts   []string           `json:"npmScripts,omitempty"`
+	ArtisanCmds  []ArtisanCmd       `json:"artisanCmds,omitempty"`
+}
+
+type LaravelQueueRow struct {
+	Name      string             `json:"name"`
+	Workers   int                `json:"workers"`
+	Running   int                `json:"running"`
+	Status    string             `json:"status,omitempty"`
+	LastRun   string             `json:"lastRun,omitempty"`
+	NextRun   string             `json:"nextRun,omitempty"`
+	Log       string             `json:"log,omitempty"`
+	Processes []LaravelQueueProc `json:"processes,omitempty"`
+}
+
+type LaravelQueueProc struct {
+	Name    string `json:"name"`
+	Queue   string `json:"queue,omitempty"`
+	Status  string `json:"status"`
+	PID     int    `json:"pid,omitempty"`
+	Uptime  string `json:"uptime,omitempty"`
+	LastRun string `json:"lastRun,omitempty"`
+	NextRun string `json:"nextRun,omitempty"`
+}
+
+type LaravelSchedule struct {
+	Expression string `json:"expression"`
+	Command    string `json:"command"`
+	LastRun    string `json:"lastRun,omitempty"`
+	NextRun    string `json:"nextRun,omitempty"`
 }
 
 type ArtisanCmd struct {
@@ -734,6 +799,45 @@ type GoAccessInfo struct {
 	GeneratedAt string `json:"generatedAt,omitempty"`
 	Bytes       int64  `json:"bytes,omitempty"`
 	Message     string `json:"message,omitempty"`
+}
+
+type SiteLogReq struct {
+	Username string `json:"username"`
+	Domain   string `json:"domain"`
+	DocRoot  string `json:"docRoot,omitempty"`
+	ID       string `json:"id,omitempty"`
+	Bytes    int    `json:"bytes,omitempty"`
+}
+
+type SiteLogFile struct {
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	Group   string `json:"group"`
+	Kind    string `json:"kind"`
+	Path    string `json:"path,omitempty"`
+	Exists  bool   `json:"exists"`
+	Size    int64  `json:"size,omitempty"`
+	ModTime string `json:"modTime,omitempty"`
+}
+
+type SiteLogEntry struct {
+	Time    string `json:"time,omitempty"`
+	Env     string `json:"env,omitempty"`
+	Level   string `json:"level"`
+	Message string `json:"message"`
+	Context string `json:"context,omitempty"`
+	Status  int    `json:"status,omitempty"`
+}
+
+type SiteLogsResp struct {
+	OK        bool           `json:"ok"`
+	Domain    string         `json:"domain"`
+	Files     []SiteLogFile  `json:"files"`
+	Current   *SiteLogFile   `json:"current,omitempty"`
+	Entries   []SiteLogEntry `json:"entries"`
+	Counts    map[string]int `json:"counts,omitempty"`
+	Content   string         `json:"content,omitempty"`
+	Truncated bool           `json:"truncated"`
 }
 
 type SystemStats struct {

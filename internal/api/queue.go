@@ -61,6 +61,11 @@ func (s *Server) runInstallQueue() {
 		}
 		_ = s.Store.FinishInstall(job.ID, "done", "installed")
 		log.Printf("install queue: job %d done", job.ID)
+		if job.Name == "certbot" {
+			if _, err := s.registerLEAccount(); err != nil {
+				log.Printf("letsencrypt account after certbot: %v", err)
+			}
+		}
 	}
 }
 

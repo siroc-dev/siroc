@@ -39,8 +39,27 @@ import (
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
+		case "version", "-v", "--version":
+			fmt.Println(version.Current())
+			return
 		case "file-helper":
 			files.HelperMain()
+			return
+		case "update", "check", "check-update":
+			if os.Geteuid() != 0 {
+				log.Fatal("siroc-agent must run as root")
+			}
+			if err := runUpdateCheck(os.Args[2:]); err != nil {
+				log.Fatal(err)
+			}
+			return
+		case "upgrade", "apply":
+			if os.Geteuid() != 0 {
+				log.Fatal("siroc-agent must run as root")
+			}
+			if err := runUpdateApply(os.Args[2:]); err != nil {
+				log.Fatal(err)
+			}
 			return
 		case "cloudflare-ips":
 			if os.Geteuid() != 0 {
@@ -79,6 +98,12 @@ func main() {
 	software.PrepareRuntime()
 
 	usersMgr := &users.Manager{HomeRoot: cfg.HomeRoot}
+	if n := usersMgr.RepairHomes(); n > 0 {
+		log.Printf("recreated %d missing linux account(s) from /home", n)
+	}
+	if err := hosting.ReloadSupervisor(); err != nil {
+		log.Printf("supervisor reload: %v", err)
+	}
 	filesMgr := &files.Manager{HomeRoot: cfg.HomeRoot}
 	softMgr := &software.Manager{}
 	hostMgr := &hosting.Manager{HomeRoot: cfg.HomeRoot, NginxSites: cfg.NginxSites, ApacheSites: cfg.ApacheSites}
@@ -133,6 +158,18 @@ func main() {
 
 	r.Get("/users", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, []rpc.UserResp{})
+	})
+	r.Post("/users/ensure", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.UserEnsureReq
+		if !decode(w, r, &req) {
+			return
+		}
+		u, err := usersMgr.Ensure(req.Username, req.UID, req.GID, req.Password)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, u)
 	})
 	r.Post("/users", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.UserCreateReq
@@ -443,6 +480,30 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Post("/ssl/letsencrypt/account", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.LEAccountReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := hostMgr.RegisterLEAccount(req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/ssl/letsencrypt/account/status", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.LEAccountReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := hostMgr.LEAccountStatus(req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Post("/sites/app", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.SiteAppReq
 		if !decode(w, r, &req) {
@@ -705,6 +766,18 @@ func main() {
 			return
 		}
 		writeJSON(w, http.StatusOK, weblog.Status())
+	})
+	r.Post("/logs/site", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.SiteLogReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := weblog.SiteLogs(req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
 	})
 	r.Post("/logs/goaccess", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.GoAccessReq
@@ -975,4 +1048,78 @@ func lookupGID(name string) int {
 	}
 	n, _ := strconv.Atoi(g.Gid)
 	return n
+}
+
+func defaultUpdateChannel() string {
+	if ch := strings.TrimSpace(os.Getenv("SIROC_UPDATE_URL")); ch != "" {
+		return ch
+	}
+	return "https://get.siroc.dev"
+}
+
+func parseUpdateArgs(args []string) (channel, srcURL, srcPath string) {
+	channel = defaultUpdateChannel()
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--channel" && i+1 < len(args):
+			i++
+			channel = strings.TrimSpace(args[i])
+		case a == "--url" && i+1 < len(args):
+			i++
+			srcURL = strings.TrimSpace(args[i])
+		case a == "--path" && i+1 < len(args):
+			i++
+			srcPath = strings.TrimSpace(args[i])
+		case strings.HasPrefix(a, "-"):
+			continue
+		default:
+			channel = strings.TrimSpace(a)
+		}
+	}
+	return channel, srcURL, srcPath
+}
+
+func printUpdateStatus(st *rpc.PanelUpdateStatus) {
+	if st == nil {
+		return
+	}
+	fmt.Printf("Installed: %s\n", st.Version)
+	if st.Latest != "" {
+		fmt.Printf("Latest:    %s\n", st.Latest)
+	}
+	if st.Channel != "" {
+		fmt.Printf("Channel:   %s\n", st.Channel)
+	}
+	if st.PackageURL != "" {
+		fmt.Printf("Package:   %s\n", st.PackageURL)
+	}
+	if st.Message != "" {
+		fmt.Println(st.Message)
+	}
+}
+
+func runUpdateCheck(args []string) error {
+	channel, _, _ := parseUpdateArgs(args)
+	st, err := update.Check(channel)
+	if err != nil {
+		return err
+	}
+	printUpdateStatus(st)
+	return nil
+}
+
+func runUpdateApply(args []string) error {
+	channel, srcURL, srcPath := parseUpdateArgs(args)
+	if srcURL == "" && srcPath == "" {
+		if _, err := update.Check(channel); err != nil {
+			return err
+		}
+	}
+	st, err := update.Apply(channel, srcURL, srcPath)
+	if err != nil {
+		return err
+	}
+	printUpdateStatus(st)
+	return nil
 }

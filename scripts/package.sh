@@ -21,6 +21,7 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="$LDFLAGS" -o 
 PKG="$STAGE/siroc"
 mkdir -p "$PKG/bin" "$PKG/web"
 cp -a "$ROOT/bin/siroc-agent" "$ROOT/bin/siroc-panel" "$PKG/bin/"
+install -m 755 "$ROOT/scripts/siroc" "$PKG/bin/siroc"
 cp -a "$ROOT/web/dist" "$PKG/web/dist"
 echo "$VER" >"$PKG/VERSION"
 install -m 755 "$ROOT/scripts/install.sh" "$PKG/install.sh"

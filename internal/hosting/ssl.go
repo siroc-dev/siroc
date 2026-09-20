@@ -214,6 +214,108 @@ func (m *Manager) IssueSSL(req rpc.SiteSSLReq) (*rpc.SiteSSLResp, error) {
 	return &rpc.SiteSSLResp{OK: true, Kind: "letsencrypt", Expiry: certExpiryPath(liveCert(req.Domain)), Cert: liveCert(req.Domain)}, nil
 }
 
+func (m *Manager) RegisterLEAccount(req rpc.LEAccountReq) (*rpc.LEAccountResp, error) {
+	if _, err := exec.LookPath("certbot"); err != nil {
+		return &rpc.LEAccountResp{CertbotInstalled: false, Message: "certbot is not installed; install it from Software"}, fmt.Errorf("certbot is not installed; install it from Software")
+	}
+	if err := validate.Email(req.Email); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(req.Email) == "" {
+		return nil, fmt.Errorf("Let's Encrypt account email is required")
+	}
+	flags, err := certbotACMEFlags(req.Server, req.Directory, req.NoVerify, req.EABKID, req.EABHMAC)
+	if err != nil {
+		return nil, err
+	}
+	st := showLEAccount(flags)
+	if !st.Registered {
+		args := append([]string{"register", "--non-interactive", "--agree-tos", "-m", strings.TrimSpace(req.Email)}, flags...)
+		out, err := exec.Command("certbot", args...).CombinedOutput()
+		msg := strings.TrimSpace(string(out))
+		if err != nil && !certbotAccountExists(msg) {
+			if msg == "" {
+				msg = err.Error()
+			}
+			return nil, fmt.Errorf("Let's Encrypt account: %s", tailOut(msg))
+		}
+		st = showLEAccount(flags)
+		if !st.Registered {
+			if certbotAccountExists(msg) {
+				st.Registered = true
+				st.Message = "Account already exists on this server"
+			} else {
+				return nil, fmt.Errorf("Let's Encrypt account was not created")
+			}
+		} else if st.Message == "" {
+			st.Message = "Let's Encrypt account created"
+		}
+	} else if email := strings.TrimSpace(req.Email); email != "" && !strings.EqualFold(email, st.Email) {
+		args := append([]string{"update_account", "--non-interactive", "-m", email}, flags...)
+		if out, err := exec.Command("certbot", args...).CombinedOutput(); err != nil {
+			return nil, fmt.Errorf("Let's Encrypt account: %s", tailOut(strings.TrimSpace(string(out))))
+		}
+		st = showLEAccount(flags)
+		if st.Message == "" {
+			st.Message = "Let's Encrypt account email updated"
+		}
+	} else if st.Message == "" {
+		st.Message = "Let's Encrypt account is already registered"
+	}
+	st.OK = st.Registered
+	if st.Email == "" {
+		st.Email = strings.TrimSpace(req.Email)
+	}
+	return st, nil
+}
+
+func (m *Manager) LEAccountStatus(req rpc.LEAccountReq) (*rpc.LEAccountResp, error) {
+	if _, err := exec.LookPath("certbot"); err != nil {
+		return &rpc.LEAccountResp{OK: true, CertbotInstalled: false, Message: "certbot is not installed"}, nil
+	}
+	flags, err := certbotACMEFlags(req.Server, req.Directory, req.NoVerify, req.EABKID, req.EABHMAC)
+	if err != nil {
+		return nil, err
+	}
+	st := showLEAccount(flags)
+	st.OK = true
+	return st, nil
+}
+
+func showLEAccount(flags []string) *rpc.LEAccountResp {
+	args := append([]string{"show_account", "--non-interactive"}, flags...)
+	out, err := exec.Command("certbot", args...).CombinedOutput()
+	msg := strings.TrimSpace(string(out))
+	uri, email, ok := parseCertbotAccount(msg)
+	st := &rpc.LEAccountResp{CertbotInstalled: true, Registered: ok, URI: uri, Email: email}
+	if err != nil && !ok {
+		st.Message = tailOut(msg)
+	}
+	return st
+}
+
+func certbotACMEFlags(server, directory string, noVerify bool, eabKid, eabHmac string) ([]string, error) {
+	dirURL, custom, err := acmeDirectory(rpc.SiteSSLReq{Server: server, Directory: directory})
+	if err != nil {
+		return nil, err
+	}
+	var args []string
+	if dirURL != "" {
+		args = append(args, "--server", dirURL)
+	}
+	if noVerify && custom {
+		args = append(args, "--no-verify-ssl")
+	}
+	if kid := strings.TrimSpace(eabKid); kid != "" {
+		hmac := strings.TrimSpace(eabHmac)
+		if hmac == "" {
+			return nil, fmt.Errorf("EAB HMAC key is required when EAB Key ID is set")
+		}
+		args = append(args, "--eab-kid", kid, "--eab-hmac-key", hmac)
+	}
+	return args, nil
+}
+
 func acmeDirectory(req rpc.SiteSSLReq) (dir string, custom bool, err error) {
 	switch strings.ToLower(strings.TrimSpace(req.Server)) {
 	case "", "production", "prod", "letsencrypt":

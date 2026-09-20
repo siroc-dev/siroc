@@ -22,6 +22,9 @@ replace() {
 replace "$SITE/install.sh"
 replace "$SITE/app.js"
 replace "$SITE/index.html"
+if [ -f "$SITE/docs/index.html" ]; then
+  replace "$SITE/docs/index.html"
+fi
 
 # Keep a committed-looking install command if the placeholder is still there.
 if grep -q "__SIROC_SITE_BASE__" "$SITE/index.html"; then

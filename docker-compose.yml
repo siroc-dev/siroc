@@ -18,8 +18,8 @@ services:
       SIROC_LISTEN: ":8443"
       SIROC_ROOT: /opt/siroc
     volumes:
-      - siroc-data:/var/lib/siroc
-      - siroc-home:/home
+      - cp-data:/var/lib/siroc
+      - cp-home:/home
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     tmpfs:
       - /tmp
@@ -27,5 +27,5 @@ services:
       - /run/lock
 
 volumes:
-  siroc-data:
-  siroc-home:
+  cp-data:
+  cp-home:

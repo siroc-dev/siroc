@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { MoreOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Card, Dropdown, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Dropdown, Flex, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
+import { asList } from "@/lib/lists";
 import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/lib/nginxRewrites";
 import { AppPackages, type PkgHit, type PkgRow } from "@/components/AppPackages";
 import { WebOptimize } from "@/components/WebOptimize";
 import { ArtisanRun, type ArtisanCmd } from "@/components/ArtisanRun";
+import { LaravelQueues, type LaravelQueueRow, type LaravelSchedule } from "@/components/LaravelQueues";
+import { SiteLogs } from "@/components/SiteLogs";
 import type { FormInstance } from "antd/es/form";
 
-type Account = { username: string };
+type Account = { username: string; wafEnabled?: boolean };
 function homePrefix(user: string) {
   return user ? `/home/${user}/` : "/home/";
 }
@@ -43,6 +46,7 @@ type Site = {
   proxyPass?: string;
   appPort?: number;
   appCmd?: string;
+  wafEnabled?: boolean;
 };
 
 const SITE_KINDS = [
@@ -99,6 +103,9 @@ type LEConfig = {
   eabKid?: string;
   hasEabHmac?: boolean;
   noVerify?: boolean;
+  registered?: boolean;
+  accountUri?: string;
+  certbotInstalled?: boolean;
 };
 
 const reservedTLD = new Set(["test", "localhost", "invalid", "example", "local", "onion", "internal", "lan", "home", "corp", "private", "localdomain"]);
@@ -120,8 +127,13 @@ function leKeyValue(cfg?: LEConfig | null) {
 
 type LaravelStatus = {
   queue: boolean;
+  queueName?: string;
   workers: number;
+  queues?: LaravelQueueRow[];
+  processes?: LaravelQueueRow["processes"];
   scheduler: boolean;
+  schedule?: LaravelSchedule[];
+  scheduleLast?: string;
   envExists: boolean;
   env?: string;
   hasComposer: boolean;
@@ -269,6 +281,7 @@ export function Sites() {
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [edit, setEdit] = useState<Site | null>(null);
+  const [logSite, setLogSite] = useState<Site | null>(null);
   const [stats, setStats] = useState<Site | null>(null);
   const [statsSrc, setStatsSrc] = useState("");
   const [statsErr, setStatsErr] = useState("");
@@ -289,9 +302,11 @@ export function Sites() {
   const [loginUrls, setLoginUrls] = useState<string[]>([]);
   const [leForm] = Form.useForm();
   const [leBusy, setLeBusy] = useState(false);
+  const [leAccount, setLeAccount] = useState<LEConfig | null>(null);
   const [runtimeSite, setRuntimeSite] = useState<Site | null>(null);
   const [runtime, setRuntime] = useState<AppRuntime | null>(null);
   const [runtimeBusy, setRuntimeBusy] = useState(false);
+  const [wafBusy, setWafBusy] = useState("");
 
   async function load() {
     const [a, s, p] = await Promise.all([
@@ -299,11 +314,14 @@ export function Sites() {
       api.get<Site[]>("/api/sites"),
       api.get<string[]>("/api/software/php-versions").catch(() => [] as string[]),
     ]);
-    setAccounts(a);
-    setSites(s);
-    setPhps(p);
-    if (a[0] && !form.getFieldValue("username")) {
-      form.setFieldsValue({ username: a[0].username, phpVersion: p.length ? p[p.length - 1] : "8.3" });
+    const accounts = asList(a);
+    const sites = asList(s);
+    const phps = asList(p);
+    setAccounts(accounts);
+    setSites(sites);
+    setPhps(phps);
+    if (accounts[0] && !form.getFieldValue("username")) {
+      form.setFieldsValue({ username: accounts[0].username, phpVersion: phps.length ? phps[phps.length - 1] : "8.3" });
     }
   }
 
@@ -319,6 +337,39 @@ export function Sites() {
       eabHmac: data.hasEabHmac ? "********" : "",
       noVerify: data.noVerify,
     });
+    setLeAccount(data);
+  }
+
+  function accountWAFOn(username: string) {
+    return accounts.find((a) => a.username === username)?.wafEnabled !== false;
+  }
+
+  async function setAccountWAF(username: string, enabled: boolean) {
+    const key = `acc:${username}`;
+    setWafBusy(key);
+    try {
+      await api.put(`/api/accounts/${encodeURIComponent(username)}/waf`, { enabled });
+      message.success(enabled ? "ModSecurity enabled for this account" : "ModSecurity disabled for this account");
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setWafBusy("");
+    }
+  }
+
+  async function setSiteWAF(s: Site, enabled: boolean) {
+    const key = `site:${s.id}`;
+    setWafBusy(key);
+    try {
+      await api.put(`/api/sites/${s.id}/waf`, { enabled });
+      message.success(enabled ? `ModSecurity on for ${s.domain}` : `ModSecurity off for ${s.domain}`);
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setWafBusy("");
+    }
   }
 
   useEffect(() => {
@@ -326,22 +377,40 @@ export function Sites() {
     loadLE().catch((e) => message.error(e.message));
   }, []);
 
+  function leBody(v: { email?: string; server: string; directory?: string; key: string; eabKid?: string; eabHmac?: string; noVerify?: boolean }) {
+    const key = v.key;
+    const body: Record<string, unknown> = {
+      email: v.email || "",
+      server: v.server,
+      directory: v.directory || "",
+      keyType: key === "rsa2048" || key === "rsa4096" ? "rsa" : key,
+      rsaKeySize: key === "rsa4096" ? 4096 : key === "rsa2048" ? 2048 : 0,
+      eabKid: v.eabKid || "",
+      noVerify: !!v.noVerify,
+    };
+    if (v.eabHmac && v.eabHmac !== "********") body.eabHmac = v.eabHmac;
+    return body;
+  }
+
   async function saveLE(v: { email?: string; server: string; directory?: string; key: string; eabKid?: string; eabHmac?: string; noVerify?: boolean }) {
     setLeBusy(true);
     try {
-      const key = v.key;
-      const body: Record<string, unknown> = {
-        email: v.email || "",
-        server: v.server,
-        directory: v.directory || "",
-        keyType: key === "rsa2048" || key === "rsa4096" ? "rsa" : key,
-        rsaKeySize: key === "rsa4096" ? 4096 : key === "rsa2048" ? 2048 : 0,
-        eabKid: v.eabKid || "",
-        noVerify: !!v.noVerify,
-      };
-      if (v.eabHmac && v.eabHmac !== "********") body.eabHmac = v.eabHmac;
-      await api.put("/api/ssl/letsencrypt", body);
+      await api.put("/api/ssl/letsencrypt", leBody(v));
       message.success("Let's Encrypt settings saved");
+      await loadLE();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setLeBusy(false);
+    }
+  }
+
+  async function createLEAccount() {
+    setLeBusy(true);
+    try {
+      const v = await leForm.validateFields();
+      const out = await api.post<{ registered?: boolean; message?: string }>("/api/ssl/letsencrypt/account", leBody(v));
+      message.success(out.message || (out.registered ? "Let's Encrypt account is ready" : "Account request finished"));
       await loadLE();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -651,6 +720,22 @@ export function Sites() {
             render: (_, s) => sslTag(s),
           },
           {
+            title: "WAF",
+            width: 88,
+            render: (_, s) => {
+              const accountOn = accountWAFOn(s.username);
+              return (
+                <Switch
+                  size="small"
+                  checked={accountOn && s.wafEnabled !== false}
+                  disabled={!accountOn || wafBusy === `site:${s.id}`}
+                  loading={wafBusy === `site:${s.id}`}
+                  onChange={(v) => void setSiteWAF(s, v)}
+                />
+              );
+            },
+          },
+          {
             title: "Status",
             width: 100,
             render: (_, s) => <Tag color={s.enabled ? "success" : "default"}>{s.enabled ? "Enabled" : "Disabled"}</Tag>,
@@ -664,6 +749,7 @@ export function Sites() {
                 trigger={["click"]}
                 menu={{
                   items: [
+                    { key: "logs", label: "Logs" },
                     { key: "stats", label: "Stats" },
                     { key: "edit", label: "Edit" },
                     { key: "rename", label: "Rename" },
@@ -679,6 +765,7 @@ export function Sites() {
                     { key: "delete", label: "Delete", danger: true },
                   ],
                   onClick: ({ key }) => {
+                    if (key === "logs") setLogSite(s);
                     if (key === "stats") openStats(s);
                     if (key === "edit") openEdit(s);
                     if (key === "rename") openRename(s);
@@ -706,17 +793,29 @@ export function Sites() {
     </Card>
   );
 
+  const leStatus = leAccount?.registered
+    ? { type: "success" as const, message: "Let's Encrypt account is registered", description: leAccount.accountUri ? `Account: ${leAccount.accountUri}` : "Certbot can issue certificates with this account." }
+    : leAccount && !leAccount.certbotInstalled
+      ? { type: "warning" as const, message: "Certbot is not installed yet", description: "Install Let's Encrypt (Certbot) from Software. The account will be created automatically, or click Create account after that." }
+      : { type: "info" as const, message: "Let's Encrypt account is not registered yet", description: "Save the email, then create the account. Production HTTP-01 needs port 80 reachable from the internet." };
+
   const leTab = (
     <Card>
+      <Alert type={leStatus.type} showIcon style={{ marginBottom: 16 }} message={leStatus.message} description={leStatus.description} />
       <Alert
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
         message="Let's Encrypt only issues certificates for public domains"
-        description="Names like a02.test are not a public TLD. Use local HTTPS for lab sites, or set a custom ACME directory (Pebble, step-ca, ZeroSSL). Production HTTP-01 needs port 80 reachable from the internet."
+        description="Names like a02.test are not a public TLD. Use local HTTPS for lab sites, or set a custom ACME directory (Pebble, step-ca, ZeroSSL)."
       />
       <Form form={leForm} layout="vertical" onFinish={saveLE} requiredMark={false}>
-        <Form.Item name="email" label="Account email" extra="Used when issuing certificates. Optional, but recommended for expiry notices.">
+        <Form.Item
+          name="email"
+          label="Account email"
+          extra="Registers the Let's Encrypt ACME account and receives expiry notices."
+          rules={[{ required: true, type: "email", message: "Enter a valid email" }]}
+        >
           <Input placeholder="admin@example.com" />
         </Form.Item>
         <Form.Item name="server" label="ACME server">
@@ -762,9 +861,14 @@ export function Sites() {
         <Form.Item name="eabHmac" label="EAB HMAC key">
           <Input.Password placeholder="optional" />
         </Form.Item>
-        <Button type="primary" htmlType="submit" loading={leBusy}>
-          Save settings
-        </Button>
+        <Space>
+          <Button type="primary" htmlType="submit" loading={leBusy}>
+            Save settings
+          </Button>
+          <Button onClick={() => void createLEAccount()} loading={leBusy}>
+            {leAccount?.registered ? "Update Let's Encrypt account" : "Create Let's Encrypt account"}
+          </Button>
+        </Space>
       </Form>
     </Card>
   );
@@ -784,6 +888,32 @@ export function Sites() {
           New site
         </Button>
       </div>
+      {accounts.length > 0 ? (
+        <Card style={{ marginBottom: 16 }} title="ModSecurity WAF">
+          <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+            Blocks common attacks on Apache (SQL injection, XSS). The global engine stays under Security. Turn WAF off for your whole account, or disable it on a single website in the table.
+          </Typography.Paragraph>
+          <Space direction="vertical" style={{ width: "100%" }} size="middle">
+            {accounts.map((a) => (
+              <Flex key={a.username} align="center" justify="space-between" gap={16}>
+                <div>
+                  <Typography.Text strong>{admin ? a.username : "Protect my websites"}</Typography.Text>
+                  <div>
+                    <Typography.Text type="secondary">
+                      {a.wafEnabled !== false ? "On for this account" : "Off for this account — site switches are disabled"}
+                    </Typography.Text>
+                  </div>
+                </div>
+                <Switch
+                  checked={a.wafEnabled !== false}
+                  loading={wafBusy === `acc:${a.username}`}
+                  onChange={(v) => void setAccountWAF(a.username, v)}
+                />
+              </Flex>
+            ))}
+          </Space>
+        </Card>
+      ) : null}
       {admin ? (
         <Tabs
           items={[
@@ -1073,6 +1203,18 @@ export function Sites() {
       </Modal>
 
       <Modal
+        title={logSite ? `Logs · ${logSite.domain}` : "Logs"}
+        open={!!logSite}
+        onCancel={() => setLogSite(null)}
+        footer={<Button onClick={() => setLogSite(null)}>Close</Button>}
+        width={1240}
+        destroyOnHidden
+        styles={{ body: { paddingTop: 12 } }}
+      >
+        {logSite ? <SiteLogs siteId={logSite.id} domain={logSite.domain} /> : null}
+      </Modal>
+
+      <Modal
         title={stats ? `GoAccess · ${stats.domain}` : "GoAccess"}
         open={!!stats}
         onCancel={() => setStats(null)}
@@ -1185,30 +1327,15 @@ export function Sites() {
                 children: (
                   <Space direction="vertical" size={16} style={{ width: "100%" }}>
                     <Typography.Text type="secondary">App root {app.appRoot}</Typography.Text>
-                    <Space wrap align="center">
-                      <Typography.Text>Queue (supervisord)</Typography.Text>
-                      <Switch
-                        checked={!!app.laravel?.queue}
-                        loading={appBusy}
-                        onChange={(on) => void runApp(appSite, { action: "queue", queue: on, workers: app.laravel?.workers || 1 })}
+                    {app.laravel ? (
+                      <LaravelQueues
+                        laravel={app.laravel}
+                        busy={appBusy}
+                        onToggle={(on, rows) => void runApp(appSite, { action: "queue", queue: on, queues: rows })}
+                        onApply={(rows) => void runApp(appSite, { action: "queue", queue: true, queues: rows })}
+                        onScheduler={(on) => void runApp(appSite, { action: "scheduler", scheduler: on })}
                       />
-                      <InputNumber
-                        min={1}
-                        max={8}
-                        value={app.laravel?.workers || 1}
-                        disabled={appBusy}
-                        onChange={(n) => n && app.laravel?.queue && void runApp(appSite, { action: "queue", queue: true, workers: n })}
-                      />
-                      <Typography.Text type="secondary">workers</Typography.Text>
-                    </Space>
-                    <Space wrap align="center">
-                      <Typography.Text>Scheduler (cron * * * * *)</Typography.Text>
-                      <Switch
-                        checked={!!app.laravel?.scheduler}
-                        loading={appBusy}
-                        onChange={(on) => void runApp(appSite, { action: "scheduler", scheduler: on })}
-                      />
-                    </Space>
+                    ) : null}
                     {app.output ? (
                       <pre style={{ maxHeight: 240, overflow: "auto", background: "#fafafa", padding: 12, borderRadius: 8 }}>{app.output}</pre>
                     ) : null}

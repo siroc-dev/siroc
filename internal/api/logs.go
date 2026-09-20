@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/store"
 )
 
@@ -89,6 +90,35 @@ func (s *Server) siteStatsHTML(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(b)
+}
+
+func (s *Server) siteLogs(w http.ResponseWriter, r *http.Request) {
+	st, ok := s.siteForStats(w, r)
+	if !ok {
+		return
+	}
+	out, err := s.Agent.SiteLogs(rpc.SiteLogReq{
+		Username: st.Username,
+		Domain:   st.Domain,
+		DocRoot:  st.DocRoot,
+		ID:       r.URL.Query().Get("id"),
+	})
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if out != nil {
+		for i := range out.Files {
+			out.Files[i].Path = ""
+		}
+		if out.Current != nil {
+			out.Current.Path = ""
+		}
+		if out.Entries == nil {
+			out.Entries = []rpc.SiteLogEntry{}
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) siteForStats(w http.ResponseWriter, r *http.Request) (*store.Site, bool) {
