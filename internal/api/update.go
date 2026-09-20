@@ -6,13 +6,15 @@ import (
 	"strings"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
+	"github.com/siroc-dev/siroc/internal/update"
 	"github.com/siroc-dev/siroc/internal/version"
 )
 
 func (s *Server) panelUpdateStatus(w http.ResponseWriter, _ *http.Request) {
 	channel, _ := s.Store.Setting("update_channel")
 	if channel == "" {
-		channel = strings.TrimSpace(os.Getenv("SIROC_UPDATE_URL"))
+		channel = update.ResolveChannel(os.Getenv("SIROC_UPDATE_URL"))
+		_ = s.Store.SetSetting("update_channel", channel)
 	}
 	st, err := s.Agent.PanelUpdateStatus()
 	if err != nil {
@@ -43,7 +45,7 @@ func (s *Server) panelUpdate(w http.ResponseWriter, r *http.Request) {
 	} else if saved, _ := s.Store.Setting("update_channel"); saved != "" {
 		body.Channel = saved
 	} else {
-		body.Channel = strings.TrimSpace(os.Getenv("SIROC_UPDATE_URL"))
+		body.Channel = update.ResolveChannel(os.Getenv("SIROC_UPDATE_URL"))
 	}
 	action := strings.ToLower(strings.TrimSpace(body.Action))
 	if action == "" || action == "status" {

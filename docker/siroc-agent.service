@@ -5,6 +5,7 @@ After=network.target
 [Service]
 Type=simple
 Environment=HOME=/root
+Environment=SIROC_UPDATE_URL=https://get.siroc.dev
 RuntimeDirectory=siroc
 RuntimeDirectoryMode=0750
 RuntimeDirectoryGroup=siroc

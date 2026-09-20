@@ -10,6 +10,8 @@ type Props = {
   cwd?: string;
 };
 
+const TERM_FONT = 'Consolas, "Liberation Mono", Menlo, Monaco, "Courier New", monospace';
+
 export function SSHTerminal({ user, cwd }: Props) {
   const { message } = App.useApp();
   const host = useRef<HTMLDivElement>(null);
@@ -61,7 +63,9 @@ export function SSHTerminal({ user, cwd }: Props) {
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+      fontFamily: TERM_FONT,
+      letterSpacing: 0,
+      lineHeight: 1,
       theme: {
         background: "#0f172a",
         foreground: "#e2e8f0",
@@ -93,11 +97,6 @@ export function SSHTerminal({ user, cwd }: Props) {
     term.loadAddon(fit);
     term.open(host.current);
     termRef.current = term;
-    try {
-      fit.fit();
-    } catch {
-      /* host may not be laid out yet */
-    }
 
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const q = new URLSearchParams({
@@ -116,9 +115,24 @@ export function SSHTerminal({ user, cwd }: Props) {
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
     };
 
+    const applyFit = () => {
+      try {
+        fit.fit();
+      } catch {
+        return;
+      }
+      sendJSON({ type: "resize", cols: term.cols, rows: term.rows });
+    };
+
+    let fitTimer = 0;
+    const scheduleFit = () => {
+      window.clearTimeout(fitTimer);
+      fitTimer = window.setTimeout(applyFit, 80);
+    };
+
     ws.onopen = () => {
       setStatus("online");
-      sendJSON({ type: "resize", cols: term.cols, rows: term.rows });
+      applyFit();
     };
     ws.onclose = () => {
       setStatus("offline");
@@ -157,24 +171,22 @@ export function SSHTerminal({ user, cwd }: Props) {
       return true;
     });
 
-    const onResize = () => {
-      try {
-        fit.fit();
-      } catch {
-        return;
-      }
-      sendJSON({ type: "resize", cols: term.cols, rows: term.rows });
-    };
-    const ro = new ResizeObserver(() => onResize());
+    const ro = new ResizeObserver(() => scheduleFit());
     ro.observe(host.current);
-    window.addEventListener("resize", onResize);
+    window.addEventListener("resize", scheduleFit);
     const ping = window.setInterval(() => sendJSON({ type: "ping" }), 25000);
-    const ready = window.setTimeout(onResize, 50);
+    const fontsReady = document.fonts ? document.fonts.ready : Promise.resolve();
+    void fontsReady.then(() => {
+      requestAnimationFrame(() => {
+        applyFit();
+        requestAnimationFrame(applyFit);
+      });
+    });
 
     return () => {
-      window.clearTimeout(ready);
+      window.clearTimeout(fitTimer);
       window.clearInterval(ping);
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener("resize", scheduleFit);
       ro.disconnect();
       dataSub.dispose();
       ws.close();
@@ -185,7 +197,7 @@ export function SSHTerminal({ user, cwd }: Props) {
   }, [user, cwd]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: 8 }}>
+    <div className="cp-term">
       <Space wrap>
         <Tag color={status === "online" ? "success" : status === "connecting" ? "processing" : "default"}>
           {status === "online" ? "Connected" : status === "connecting" ? "Connecting" : "Disconnected"}
@@ -210,17 +222,9 @@ export function SSHTerminal({ user, cwd }: Props) {
           ],
         }}
       >
-        <div
-          ref={host}
-          style={{
-            flex: 1,
-            minHeight: 360,
-            background: "#0f172a",
-            borderRadius: 8,
-            padding: 10,
-            overflow: "hidden",
-          }}
-        />
+        <div className="cp-term-frame">
+          <div ref={host} className="cp-term-host" />
+        </div>
       </Dropdown>
     </div>
   );

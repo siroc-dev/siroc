@@ -79,6 +79,7 @@ After=network.target
 [Service]
 Type=simple
 Environment=HOME=/root
+Environment=SIROC_UPDATE_URL=https://get.siroc.dev
 RuntimeDirectory=siroc
 RuntimeDirectoryMode=0750
 RuntimeDirectoryGroup=siroc
@@ -105,6 +106,7 @@ Environment=SIROC_WEB_DIR=$ROOT/web/dist
 Environment=SIROC_DATA_DIR=$DATA_DIR
 Environment=SIROC_LISTEN=$LISTEN
 Environment=SIROC_TLS=$TLS
+Environment=SIROC_UPDATE_URL=https://get.siroc.dev
 ExecStart=/usr/local/bin/siroc-panel
 Restart=on-failure
 RestartSec=2

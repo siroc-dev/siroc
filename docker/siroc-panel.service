@@ -11,6 +11,7 @@ Environment=SIROC_TLS=0
 Environment=SIROC_LISTEN=:8443
 Environment=SIROC_ROOT=/opt/siroc
 Environment=SIROC_WEB_DIR=/opt/siroc/web/dist
+Environment=SIROC_UPDATE_URL=https://get.siroc.dev
 ExecStart=/usr/local/bin/siroc-panel
 Restart=on-failure
 RestartSec=2

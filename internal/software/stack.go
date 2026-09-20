@@ -80,6 +80,7 @@ func configurePendingDebs() {
 
 func aptUpdate() error {
 	ensureDiskTmp()
+	repairSirocRepos()
 	cmd := aptCmd(append(aptOpts(), "update")...)
 	out, err := combinedTimeout(cmd, 3*time.Minute)
 	if err == nil {
@@ -189,17 +190,11 @@ func installNginx(version string) error {
 	case "1.24":
 		removeRepo("nginx")
 	case "1.30":
-		if err := writeKeyring("https://nginx.org/keys/nginx_signing.key", "/etc/apt/keyrings/cp-nginx.gpg"); err != nil {
-			return err
-		}
-		if err := writeRepo("nginx", fmt.Sprintf("deb [signed-by=/etc/apt/keyrings/cp-nginx.gpg] https://nginx.org/packages/%s %s nginx", id, code)); err != nil {
+		if err := writeVendorRepo("nginx", "https://nginx.org/keys/nginx_signing.key", fmt.Sprintf("https://nginx.org/packages/%s", id), id, code, "nginx"); err != nil {
 			return err
 		}
 	case "1.31":
-		if err := writeKeyring("https://nginx.org/keys/nginx_signing.key", "/etc/apt/keyrings/cp-nginx.gpg"); err != nil {
-			return err
-		}
-		if err := writeRepo("nginx", fmt.Sprintf("deb [signed-by=/etc/apt/keyrings/cp-nginx.gpg] https://nginx.org/packages/mainline/%s %s nginx", id, code)); err != nil {
+		if err := writeVendorRepo("nginx", "https://nginx.org/keys/nginx_signing.key", fmt.Sprintf("https://nginx.org/packages/mainline/%s", id), id, code, "nginx"); err != nil {
 			return err
 		}
 	}
@@ -284,10 +279,15 @@ func installMySQL(version string) error {
 		"8.4": "mysql-8.4-lts",
 		"9.7": "mysql-9.7-lts",
 	}[version]
+	mirror := fmt.Sprintf("http://repo.mysql.com/apt/%s", id)
+	suite := firstWorkingSuite(mirror, id, code)
+	if suite == "" {
+		return fmt.Errorf("MySQL has no apt repo for %s %s", id, code)
+	}
 	if err := writeKeyring("https://repo.mysql.com/RPM-GPG-KEY-mysql-2023", "/etc/apt/keyrings/cp-mysql.gpg"); err != nil {
 		return err
 	}
-	line := fmt.Sprintf("deb [signed-by=/etc/apt/keyrings/cp-mysql.gpg] http://repo.mysql.com/apt/%s %s %s mysql-tools", id, code, comp)
+	line := fmt.Sprintf("deb [signed-by=/etc/apt/keyrings/cp-mysql.gpg] %s %s %s mysql-tools", mirror, suite, comp)
 	if err := writeRepo("mysql", line); err != nil {
 		return err
 	}
@@ -318,12 +318,18 @@ func installMariaDB(version string) error {
 	}
 	removeRepo("mysql")
 	id, code := osRelease()
-	if err := writeKeyring("https://mariadb.org/mariadb_release_signing_key.pgp", "/etc/apt/keyrings/cp-mariadb.gpg"); err != nil {
-		return err
-	}
-	line := fmt.Sprintf("deb [signed-by=/etc/apt/keyrings/cp-mariadb.gpg] https://deb.mariadb.org/%s/%s %s main", version, id, code)
-	if err := writeRepo("mariadb", line); err != nil {
-		return err
+	mirror := fmt.Sprintf("https://deb.mariadb.org/%s/%s", version, id)
+	suite := firstWorkingSuite(mirror, id, code)
+	if suite != "" {
+		if err := writeKeyring("https://mariadb.org/mariadb_release_signing_key.pgp", "/etc/apt/keyrings/cp-mariadb.gpg"); err != nil {
+			return err
+		}
+		line := fmt.Sprintf("deb [signed-by=/etc/apt/keyrings/cp-mariadb.gpg] %s %s main", mirror, suite)
+		if err := writeRepo("mariadb", line); err != nil {
+			return err
+		}
+	} else {
+		removeRepo("mariadb")
 	}
 	if err := aptUpdate(); err != nil {
 		return err

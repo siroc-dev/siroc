@@ -17,6 +17,7 @@ services:
       SIROC_TLS: "0"
       SIROC_LISTEN: ":8443"
       SIROC_ROOT: /opt/siroc
+      SIROC_UPDATE_URL: https://get.siroc.dev
     volumes:
       - cp-data:/var/lib/siroc
       - cp-home:/home

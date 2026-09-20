@@ -23,7 +23,7 @@ export function PanelUpdate() {
   async function load() {
     const data = await api.get<UpdateStatus>("/api/panel/update");
     setSt(data);
-    form.setFieldsValue({ channel: data.channel || "", url: data.packageUrl || "", path: "" });
+    form.setFieldsValue({ channel: data.channel || "https://get.siroc.dev", url: data.packageUrl || "", path: "" });
   }
 
   useEffect(() => {
@@ -73,7 +73,7 @@ export function PanelUpdate() {
         </Typography.Paragraph>
         <pre style={{ margin: 0, padding: 12, background: "#f8fafc", borderRadius: 8, fontSize: 12 }}>
 {`{
-  "version": "0.2.1",
+  "version": "0.2.2",
   "url": "https://get.siroc.dev/siroc-linux-amd64.tar.gz",
   "sha256": "optional"
 }`}

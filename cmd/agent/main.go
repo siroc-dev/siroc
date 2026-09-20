@@ -119,17 +119,16 @@ func main() {
 		writeJSON(w, http.StatusOK, rpc.HealthResp{OK: true, Root: true, Socket: cfg.SocketPath})
 	})
 	r.Get("/update/status", func(w http.ResponseWriter, _ *http.Request) {
-		ch := os.Getenv("SIROC_UPDATE_URL")
-		writeJSON(w, http.StatusOK, update.Status(ch))
+		writeJSON(w, http.StatusOK, update.Status(os.Getenv("SIROC_UPDATE_URL")))
 	})
 	r.Post("/update", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.PanelUpdateReq
 		if !decode(w, r, &req) {
 			return
 		}
-		channel := strings.TrimSpace(req.Channel)
-		if channel == "" {
-			channel = os.Getenv("SIROC_UPDATE_URL")
+		channel := update.ResolveChannel(req.Channel)
+		if strings.TrimSpace(req.Channel) == "" && strings.TrimSpace(os.Getenv("SIROC_UPDATE_URL")) != "" {
+			channel = update.ResolveChannel(os.Getenv("SIROC_UPDATE_URL"))
 		}
 		var (
 			out *rpc.PanelUpdateStatus
@@ -1051,10 +1050,7 @@ func lookupGID(name string) int {
 }
 
 func defaultUpdateChannel() string {
-	if ch := strings.TrimSpace(os.Getenv("SIROC_UPDATE_URL")); ch != "" {
-		return ch
-	}
-	return "https://get.siroc.dev"
+	return update.ResolveChannel(os.Getenv("SIROC_UPDATE_URL"))
 }
 
 func parseUpdateArgs(args []string) (channel, srcURL, srcPath string) {

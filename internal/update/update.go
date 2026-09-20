@@ -38,7 +38,7 @@ func Status(channel string) *rpc.PanelUpdateStatus {
 	st := &rpc.PanelUpdateStatus{
 		OK:      true,
 		Version: version.Current(),
-		Channel: strings.TrimRight(strings.TrimSpace(channel), "/"),
+		Channel: ResolveChannel(channel),
 	}
 	if b, err := os.ReadFile(cacheFile); err == nil {
 		var meta latestMeta
@@ -53,12 +53,7 @@ func Status(channel string) *rpc.PanelUpdateStatus {
 }
 
 func Check(channel string) (*rpc.PanelUpdateStatus, error) {
-	channel = strings.TrimRight(strings.TrimSpace(channel), "/")
-	if channel == "" {
-		st := Status("")
-		st.Message = "No update channel. Set a URL to latest.json, or apply a local package tarball."
-		return st, nil
-	}
+	channel = ResolveChannel(channel)
 	metaURL := channel
 	if !strings.HasSuffix(strings.ToLower(channel), ".json") && !strings.HasSuffix(strings.ToLower(channel), ".tar.gz") && !strings.HasSuffix(strings.ToLower(channel), ".tgz") {
 		metaURL = channel + "/latest.json"
