@@ -111,6 +111,9 @@ func main() {
 	secMgr := &security.Manager{HomeRoot: cfg.HomeRoot}
 	mon := &monitoring.Collector{}
 	weblog.Ensure()
+	if err := security.EnsureWAF(); err != nil {
+		log.Printf("waf config: %v", err)
+	}
 	hostMgr.FixAllWebPerms()
 	hostMgr.LockOpenBasedir()
 

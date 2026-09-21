@@ -23,8 +23,14 @@ func TestFallbackSuites(t *testing.T) {
 	if got[0] != "resolute" || got[1] != "noble" {
 		t.Fatalf("%v", got)
 	}
-	if !managedRepoList("cp-mariadb.list") || !managedRepoList("mariadb.list") || managedRepoList("ubuntu.sources") {
-		t.Fatal("managed repo filter")
+	if !officialArchive("http://nova.clouds.archive.ubuntu.com/ubuntu") || !officialArchive("https://security.ubuntu.com/ubuntu") {
+		t.Fatal("official archive")
+	}
+	if officialArchive("https://ppa.launchpadcontent.net/ondrej/php/ubuntu") {
+		t.Fatal("ondrej ppa is third-party")
+	}
+	if !launchpadPPA("https://ppa.launchpadcontent.net/ondrej/php/ubuntu") {
+		t.Fatal("launchpad ppa")
 	}
 }
 
@@ -59,5 +65,40 @@ func TestPickRepoSuite(t *testing.T) {
 	suite, disable = pickRepoSuite("https://deb.mariadb.org/11.4/ubuntu", "ubuntu", "resolute", allMissing)
 	if !disable || suite != "" {
 		t.Fatalf("disable when every suite 404 %q %v", suite, disable)
+	}
+	ondrej := "https://ppa.launchpadcontent.net/ondrej/php/ubuntu"
+	suite, disable = pickRepoSuite(ondrej, "ubuntu", "resolute", probe)
+	if !disable || suite != "" {
+		t.Fatalf("ondrej must not fall back to noble on resolute %q %v", suite, disable)
+	}
+	sury := "https://packages.sury.org/php"
+	suite, disable = pickRepoSuite(sury, "ubuntu", "resolute", probe)
+	if !disable || suite != "" {
+		t.Fatalf("sury must not fall back to noble on resolute %q %v", suite, disable)
+	}
+	suryOK := func(_ string, suite string) repoProbe {
+		if suite == "resolute" {
+			return repoProbeOK
+		}
+		return repoProbeMissing
+	}
+	suite, disable = pickRepoSuite(sury, "ubuntu", "resolute", suryOK)
+	if disable || suite != "resolute" {
+		t.Fatalf("sury resolute %q %v", suite, disable)
+	}
+}
+
+func TestDeb822SuiteRewrite(t *testing.T) {
+	block := "Types: deb\nURIs: https://ppa.launchpadcontent.net/ondrej/php/ubuntu\nSuites: resolute\nComponents: main\n"
+	if firstField(deb822Field(block, "URIs")) != "https://ppa.launchpadcontent.net/ondrej/php/ubuntu" {
+		t.Fatal("uri")
+	}
+	got := replaceDeb822Field(block, "Suites", "noble")
+	if deb822Field(got, "Suites") != "noble" {
+		t.Fatalf("%q", got)
+	}
+	off := replaceDeb822Field(block, "Enabled", "no")
+	if deb822Field(off, "Enabled") != "no" {
+		t.Fatal("disable")
 	}
 }

@@ -214,6 +214,25 @@ func WriteDefaultWAF() error {
 	return writeWAF(defaultWAFState())
 }
 
+func EnsureWAF() error {
+	if ok, _ := dpkgOK("libapache2-mod-security2"); !ok {
+		return nil
+	}
+	_ = os.MkdirAll("/var/cache/modsecurity", 0750)
+	sec2 := `<IfModule security2_module>
+    SecDataDir /var/cache/modsecurity
+    IncludeOptional /etc/modsecurity/modsecurity.conf
+    IncludeOptional /etc/modsecurity/cp-engine.conf
+    IncludeOptional /etc/modsecurity/cp-crs-setup.conf
+    IncludeOptional /etc/modsecurity/cp-rules.conf
+</IfModule>
+`
+	if err := os.WriteFile("/etc/apache2/mods-available/security2.conf", []byte(sec2), 0644); err != nil {
+		return err
+	}
+	return WriteDefaultWAF()
+}
+
 func writeWAF(st wafState) error {
 	if err := os.MkdirAll("/etc/modsecurity", 0755); err != nil {
 		return err
@@ -242,7 +261,8 @@ SecAction "id:900000,phase:1,nolog,pass,t:none,setvar:tx.blocking_paranoia_level
 SecAction "id:900001,phase:1,nolog,pass,t:none,setvar:tx.detection_paranoia_level=%d"
 SecAction "id:900110,phase:1,nolog,pass,t:none,setvar:tx.inbound_anomaly_score_threshold=%d"
 SecAction "id:900111,phase:1,nolog,pass,t:none,setvar:tx.outbound_anomaly_score_threshold=%d"
-`, st.Audit, st.Paranoia, st.Paranoia, st.InboundThreshold, st.OutboundThreshold)
+SecAction "id:900990,phase:1,nolog,pass,t:none,setvar:tx.crs_setup_version=%d"
+`, st.Audit, st.Paranoia, st.Paranoia, st.InboundThreshold, st.OutboundThreshold, defaultCRSSetupVersion())
 	if err := os.WriteFile(wafSetupFile, []byte(setup), 0644); err != nil {
 		return err
 	}

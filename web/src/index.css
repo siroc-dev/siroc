@@ -14,6 +14,55 @@ body {
   gap: 16px;
 }
 
+.cp-overview .ant-card-body {
+  padding-bottom: 16px;
+}
+
+.cp-gauges {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.cp-gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+}
+
+.cp-gauge .ant-progress-text {
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-gauge-title {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cp-gauge-detail {
+  color: #94a3b8;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-overview-up {
+  display: block;
+  margin-top: 8px;
+}
+
+@media (max-width: 900px) {
+  .cp-gauges {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .apache-hero {
   display: flex;
   justify-content: space-between;

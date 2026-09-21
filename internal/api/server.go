@@ -389,6 +389,8 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 				resp["diskTotal"] = root.Total
 			}
 			resp["load1"] = st.Load.One
+			resp["load5"] = st.Load.Five
+			resp["load15"] = st.Load.Fifteen
 			resp["uptimeSec"] = st.UptimeSec
 		}
 	}

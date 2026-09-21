@@ -78,6 +78,9 @@ func DBStatus(engine string) *rpc.DBStatus {
 }
 
 func dbInstalled(engine string) (bool, string) {
+	if ok, ver := sqlSourceInstalled(engine); ok {
+		return true, ver
+	}
 	if engine == "mysql" {
 		if ok, ver := dpkgVersion("mysql-community-server"); ok {
 			return true, ver

@@ -18,6 +18,8 @@ type Dash = {
   diskUsed?: number;
   diskTotal?: number;
   load1?: number;
+  load5?: number;
+  load15?: number;
   uptimeSec?: number;
 };
 
@@ -30,12 +32,46 @@ function uptime(sec: number) {
   return `${m}m`;
 }
 
+function gaugeStatus(percent: number) {
+  if (percent >= 90) return "exception" as const;
+  if (percent >= 75) return "normal" as const;
+  return "success" as const;
+}
+
+function Gauge({ title, percent, detail }: { title: string; percent: number; detail: string }) {
+  const p = Math.round(Math.min(100, Math.max(0, percent)));
+  return (
+    <div className="cp-gauge notranslate" translate="no">
+      <Progress type="dashboard" percent={p} status={gaugeStatus(p)} size={132} />
+      <div className="cp-gauge-title">{title}</div>
+      <div className="cp-gauge-detail">{detail}</div>
+    </div>
+  );
+}
+
 export function Dashboard() {
   const [data, setData] = useState<Dash | null>(null);
   const [usage, setUsage] = useState<UserUsage[]>([]);
   const [error, setError] = useState("");
   useEffect(() => {
-    api.get<Dash>("/api/dashboard").then(setData).catch((e) => setError(e.message));
+    let stop = false;
+    async function load() {
+      try {
+        const row = await api.get<Dash>("/api/dashboard");
+        if (!stop) {
+          setData(row);
+          setError("");
+        }
+      } catch (e) {
+        if (!stop) setError(e instanceof Error ? e.message : "Failed");
+      }
+    }
+    load();
+    const t = setInterval(load, 4000);
+    return () => {
+      stop = true;
+      clearInterval(t);
+    };
   }, []);
   useEffect(() => {
     let stop = false;
@@ -54,8 +90,10 @@ export function Dashboard() {
       clearInterval(t);
     };
   }, []);
-  if (error) return <Alert type="error" message={error} />;
+  if (error && !data) return <Alert type="error" message={error} />;
   if (!data) return <Typography.Text type="secondary">Loading…</Typography.Text>;
+  const cores = data.cpuCores || 0;
+  const loadPct = cores ? Math.min(100, ((data.load1 || 0) / cores) * 100) : 0;
   return (
     <div className="cp-page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -65,34 +103,31 @@ export function Dashboard() {
         <Tag color={data.agentOk ? "success" : "warning"}>{data.agentOk ? "Agent online" : "Agent unreachable"}</Tag>
       </div>
       {typeof data.cpuPercent === "number" ? (
-        <Row gutter={16}>
-          <Col xs={24} md={8}>
-            <Card size="small">
-              <Typography.Text type="secondary">CPU</Typography.Text>
-              <Progress percent={Math.round(data.cpuPercent)} status={data.cpuPercent >= 90 ? "exception" : "normal"} />
-              <Typography.Text type="secondary">{data.cpuCores || 0} cores{data.hostname ? ` · ${data.hostname}` : ""}</Typography.Text>
-            </Card>
-          </Col>
-          <Col xs={24} md={8}>
-            <Card size="small">
-              <Typography.Text type="secondary">Memory</Typography.Text>
-              <Progress percent={Math.round(data.memPercent || 0)} status={(data.memPercent || 0) >= 90 ? "exception" : "normal"} />
-              <Typography.Text type="secondary">
-                {formatBytes(data.memUsed || 0)} / {formatBytes(data.memTotal || 0)}
-              </Typography.Text>
-            </Card>
-          </Col>
-          <Col xs={24} md={8}>
-            <Card size="small">
-              <Typography.Text type="secondary">Disk /</Typography.Text>
-              <Progress percent={Math.round(data.diskPercent || 0)} status={(data.diskPercent || 0) >= 90 ? "exception" : "normal"} />
-              <Typography.Text type="secondary">
-                {formatBytes(data.diskUsed || 0)} / {formatBytes(data.diskTotal || 0)}
-                {data.uptimeSec ? ` · up ${uptime(data.uptimeSec)}` : ""}
-              </Typography.Text>
-            </Card>
-          </Col>
-        </Row>
+        <Card title="Overview" className="cp-overview notranslate" extra={data.hostname || null}>
+          <div className="cp-gauges">
+            <Gauge
+              title="Load"
+              percent={loadPct}
+              detail={`${(data.load1 || 0).toFixed(2)} / ${(data.load5 || 0).toFixed(2)} / ${(data.load15 || 0).toFixed(2)}`}
+            />
+            <Gauge title="CPU" percent={data.cpuPercent} detail={`${cores} cores`} />
+            <Gauge
+              title="RAM"
+              percent={data.memPercent || 0}
+              detail={`${formatBytes(data.memUsed || 0)} / ${formatBytes(data.memTotal || 0)}`}
+            />
+            <Gauge
+              title="Disk"
+              percent={data.diskPercent || 0}
+              detail={`${formatBytes(data.diskUsed || 0)} / ${formatBytes(data.diskTotal || 0)}`}
+            />
+          </div>
+          {data.uptimeSec ? (
+            <Typography.Text type="secondary" className="cp-overview-up">
+              Up {uptime(data.uptimeSec)}
+            </Typography.Text>
+          ) : null}
+        </Card>
       ) : null}
       <Row gutter={16}>
         <Col xs={24} md={8}>

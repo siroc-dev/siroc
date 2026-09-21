@@ -267,48 +267,23 @@ func ensureNginxSitesLayout() error {
 	return os.WriteFile("/etc/nginx/conf.d/cp-sites.conf", []byte("include /etc/nginx/sites-enabled/*;\n"), 0644)
 }
 
+func stopSQLServices() {
+	for _, name := range []string{"mysql", "mysqld", "mariadb"} {
+		_ = exec.Command("systemctl", "stop", name).Run()
+		_ = exec.Command("systemctl", "disable", name).Run()
+	}
+}
+
 func installMySQL(version string) error {
 	version, err := pickVersion(mysqlVersions(), version, "8.4")
 	if err != nil {
 		return err
 	}
+	stopSQLServices()
 	removeRepo("mariadb")
-	id, code := osRelease()
-	comp := map[string]string{
-		"8.0": "mysql-8.0",
-		"8.4": "mysql-8.4-lts",
-		"9.7": "mysql-9.7-lts",
-	}[version]
-	mirror := fmt.Sprintf("http://repo.mysql.com/apt/%s", id)
-	suite := firstWorkingSuite(mirror, id, code)
-	if suite == "" {
-		return fmt.Errorf("MySQL has no apt repo for %s %s", id, code)
-	}
-	if err := writeKeyring("https://repo.mysql.com/RPM-GPG-KEY-mysql-2023", "/etc/apt/keyrings/cp-mysql.gpg"); err != nil {
-		return err
-	}
-	line := fmt.Sprintf("deb [signed-by=/etc/apt/keyrings/cp-mysql.gpg] %s %s %s mysql-tools", mirror, suite, comp)
-	if err := writeRepo("mysql", line); err != nil {
-		return err
-	}
-	if err := aptUpdate(); err != nil {
-		return err
-	}
-	for _, sel := range []string{
-		"mysql-community-server mysql-community-server/root-pass password ",
-		"mysql-community-server mysql-community-server/re-root-pass password ",
-		"mysql-community-server mysql-server/default-auth-override select Use Strong Password Encryption (RECOMMENDED)",
-	} {
-		cmd := exec.Command("debconf-set-selections")
-		cmd.Stdin = strings.NewReader(sel + "\n")
-		_ = cmd.Run()
-	}
-	if err := aptInstall("mysql-community-server"); err != nil {
-		return err
-	}
-	_ = exec.Command("mysql", "--batch", "-e", "ALTER USER 'root'@'localhost' IDENTIFIED WITH auth_socket; FLUSH PRIVILEGES;").Run()
-	_ = exec.Command("systemctl", "enable", "--now", "mysql").Run()
-	return nil
+	removeRepo("mysql")
+	aptRemove("mariadb-server", "mariadb-client", "mysql-server", "mysql-community-server", "mysql-client", "mysql-community-client")
+	return buildSQLFromSource("mysql", version)
 }
 
 func installMariaDB(version string) error {
@@ -316,27 +291,9 @@ func installMariaDB(version string) error {
 	if err != nil {
 		return err
 	}
+	stopSQLServices()
 	removeRepo("mysql")
-	id, code := osRelease()
-	mirror := fmt.Sprintf("https://deb.mariadb.org/%s/%s", version, id)
-	suite := firstWorkingSuite(mirror, id, code)
-	if suite != "" {
-		if err := writeKeyring("https://mariadb.org/mariadb_release_signing_key.pgp", "/etc/apt/keyrings/cp-mariadb.gpg"); err != nil {
-			return err
-		}
-		line := fmt.Sprintf("deb [signed-by=/etc/apt/keyrings/cp-mariadb.gpg] %s %s main", mirror, suite)
-		if err := writeRepo("mariadb", line); err != nil {
-			return err
-		}
-	} else {
-		removeRepo("mariadb")
-	}
-	if err := aptUpdate(); err != nil {
-		return err
-	}
-	if err := aptInstall("mariadb-server"); err != nil {
-		return err
-	}
-	_ = exec.Command("systemctl", "enable", "--now", "mariadb").Run()
-	return nil
+	removeRepo("mariadb")
+	aptRemove("mysql-server", "mysql-community-server", "mysql-client", "mysql-community-client", "mariadb-server", "mariadb-client")
+	return buildSQLFromSource("mariadb", version)
 }

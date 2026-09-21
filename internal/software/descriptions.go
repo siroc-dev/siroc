@@ -3,9 +3,9 @@ package software
 var descriptions = map[string]string{
 	"nginx":      "Public HTTP frontend. Terminates TLS and proxies each site to Apache or an app port.",
 	"apache":     "PHP backend behind Nginx. Serves document roots and runs ModSecurity.",
-	"php":        "PHP-FPM pools per website. Install extra versions for older or newer apps.",
-	"mysql":      "MySQL server for site databases. Cannot be installed next to MariaDB.",
-	"mariadb":    "MariaDB server for site databases. Default first-run database engine.",
+	"php":        "PHP-FPM pools per website. Extra versions come from Ondrej Sury (packages.sury.org) when that release has a repo.",
+	"mysql":      "MySQL compiled from official source into /opt/siroc/db/mysql. Cannot sit next to MariaDB.",
+	"mariadb":    "MariaDB compiled from official source into /opt/siroc/db/mariadb. Default first-run database.",
 	"redis":      "In-memory cache and queue broker. Accounts can get an isolated Redis user.",
 	"python":     "Python runtimes for app sites. Sets the default python3 CLI.",
 	"nodejs":     "Node.js runtimes for app sites. Sets the default node CLI.",

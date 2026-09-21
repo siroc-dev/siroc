@@ -97,6 +97,9 @@ func catalog() []spec {
 				return mysqlVersions()
 			},
 			Installed: func() (bool, string) {
+				if ok, ver := sqlSourceInstalled("mysql"); ok {
+					return true, ver
+				}
 				if ok, ver := dpkgVersion("mysql-server"); ok {
 					return true, ver
 				}
@@ -113,6 +116,9 @@ func catalog() []spec {
 				return mariadbVersions()
 			},
 			Installed: func() (bool, string) {
+				if ok, ver := sqlSourceInstalled("mariadb"); ok {
+					return true, ver
+				}
 				return dpkgVersion("mariadb-server")
 			},
 		},
@@ -726,29 +732,72 @@ func ensureRepos(name string) error {
 	if err := aptUpdate(); err != nil {
 		return err
 	}
-	if name != "php" && name != "python" {
+	switch name {
+	case "php":
+		return ensurePHPRepo()
+	case "python":
+		return ensurePythonRepo()
+	default:
 		return nil
 	}
-	_ = exec.Command("add-apt-repository", "-y", "universe").Run()
+}
+
+func ensurePHPRepo() error {
+	id, code := osRelease()
+	if id == "ubuntu" {
+		_ = exec.Command("add-apt-repository", "-y", "-n", "universe").Run()
+	}
+	suite := firstWorkingSuite(suryPHPMirror, id, code)
+	if suite != "" {
+		signedBy, err := installSuryKeyring()
+		if err != nil {
+			return err
+		}
+		line := fmt.Sprintf("deb [signed-by=%s] %s/ %s main", signedBy, strings.TrimRight(suryPHPMirror, "/"), suite)
+		if err := writeRepo("sury-php", line); err != nil {
+			return err
+		}
+		return aptUpdate()
+	}
+	if id == "ubuntu" && firstWorkingSuite(launchpadPPAMirror("ondrej", "php", id), id, code) != "" {
+		return addLaunchpadPPA("ondrej", "php")
+	}
+	return nil
+}
+
+func ensurePythonRepo() error {
+	id, code := osRelease()
+	if id != "ubuntu" {
+		return nil
+	}
+	_ = exec.Command("add-apt-repository", "-y", "-n", "universe").Run()
+	if firstWorkingSuite(launchpadPPAMirror("deadsnakes", "ppa", id), id, code) == "" {
+		return nil
+	}
+	return addLaunchpadPPA("deadsnakes", "ppa")
+}
+
+func addLaunchpadPPA(owner, name string) error {
 	if _, err := os.Stat("/usr/bin/add-apt-repository"); err != nil {
 		if err := aptInstall("software-properties-common", "ca-certificates", "gnupg", "apt-transport-https"); err != nil {
 			return fmt.Errorf("install software-properties-common: %w", err)
 		}
 	}
-	ppa := "ppa:ondrej/php"
-	if name == "python" {
-		ppa = "ppa:deadsnakes/ppa"
-	}
-	add := exec.Command("add-apt-repository", "-y", ppa)
+	ppa := "ppa:" + owner + "/" + name
+	add := exec.Command("add-apt-repository", "-y", "-n", ppa)
 	add.Env = aptEnv()
 	if _, err := os.Stat("/usr/bin/python3.12"); err == nil {
-		add = exec.Command("/usr/bin/python3.12", "/usr/bin/add-apt-repository", "-y", ppa)
+		add = exec.Command("/usr/bin/python3.12", "/usr/bin/add-apt-repository", "-y", "-n", ppa)
 		add.Env = append(aptEnv(), "PYTHONDONTWRITEBYTECODE=1")
 	}
-	if out, err := combinedTimeout(add, 4*time.Minute); err != nil {
-		return fmt.Errorf("add %s: %s: %w", ppa, tail(out), err)
+	out, addErr := combinedTimeout(add, 4*time.Minute)
+	if err := aptUpdate(); err != nil {
+		if addErr != nil {
+			return fmt.Errorf("add %s: %s: %w", ppa, tail(out), addErr)
+		}
+		return err
 	}
-	return aptUpdate()
+	return nil
 }
 
 func configureCertbot(string) error {
@@ -948,19 +997,7 @@ func configureWAF(string) error {
 	if _, err := os.Stat("/etc/modsecurity/modsecurity.conf"); err != nil {
 		_ = copyFile("/etc/modsecurity/modsecurity.conf-recommended", "/etc/modsecurity/modsecurity.conf")
 	}
-	_ = os.MkdirAll("/var/cache/modsecurity", 0750)
-	sec2 := `<IfModule security2_module>
-    SecDataDir /var/cache/modsecurity
-    IncludeOptional /etc/modsecurity/modsecurity.conf
-    IncludeOptional /etc/modsecurity/cp-engine.conf
-    IncludeOptional /etc/modsecurity/cp-crs-setup.conf
-    IncludeOptional /etc/modsecurity/cp-rules.conf
-</IfModule>
-`
-	if err := os.WriteFile("/etc/apache2/mods-available/security2.conf", []byte(sec2), 0644); err != nil {
-		return err
-	}
-	return security.WriteDefaultWAF()
+	return security.EnsureWAF()
 }
 
 func configureClamAV(string) error {

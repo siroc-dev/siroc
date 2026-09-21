@@ -3,7 +3,9 @@ package software
 import "strings"
 
 var ubuntuVendorSuites = []string{"noble", "jammy", "focal"}
-var debianVendorSuites = []string{"bookworm", "bullseye"}
+var debianVendorSuites = []string{"trixie", "bookworm", "bullseye"}
+
+const suryPHPMirror = "https://packages.sury.org/php"
 
 func fallbackSuites(id, code string) []string {
 	code = strings.TrimSpace(code)
@@ -79,9 +81,94 @@ func releaseURLs(mirror, suite string) []string {
 	return []string{base + "/InRelease", base + "/Release"}
 }
 
-func managedRepoList(name string) bool {
-	n := strings.ToLower(name)
-	return strings.HasPrefix(n, "cp-") || strings.Contains(n, "mariadb") || strings.Contains(n, "mysql") || strings.Contains(n, "nginx")
+func launchpadPPA(url string) bool {
+	u := strings.ToLower(url)
+	return strings.Contains(u, "ppa.launchpadcontent.net") || strings.Contains(u, "ppa.launchpad.net")
+}
+
+func suryPHP(url string) bool {
+	return strings.Contains(strings.ToLower(url), "packages.sury.org")
+}
+
+func sameSuiteVendor(url string) bool {
+	return launchpadPPA(url) || suryPHP(url)
+}
+
+func launchpadPPAMirror(owner, name, distro string) string {
+	if distro == "" {
+		distro = "ubuntu"
+	}
+	return "https://ppa.launchpadcontent.net/" + owner + "/" + name + "/" + distro
+}
+
+func officialArchive(url string) bool {
+	u := strings.ToLower(url)
+	for _, h := range []string{
+		"archive.ubuntu.com",
+		"security.ubuntu.com",
+		"ports.ubuntu.com",
+		"clouds.archive.ubuntu.com",
+		"azure.archive.ubuntu.com",
+		"deb.debian.org",
+		"security.debian.org",
+		"debian.org/debian",
+	} {
+		if strings.Contains(u, h) {
+			return true
+		}
+	}
+	return false
+}
+
+func firstField(s string) string {
+	f := strings.Fields(s)
+	if len(f) == 0 {
+		return ""
+	}
+	return f[0]
+}
+
+func deb822Field(block, key string) string {
+	prefix := strings.ToLower(key) + ":"
+	for _, line := range strings.Split(block, "\n") {
+		trim := strings.TrimSpace(line)
+		if !strings.HasPrefix(strings.ToLower(trim), prefix) {
+			continue
+		}
+		_, val, ok := strings.Cut(trim, ":")
+		if ok {
+			return strings.TrimSpace(val)
+		}
+	}
+	return ""
+}
+
+func replaceDeb822Field(block, key, value string) string {
+	prefix := strings.ToLower(key) + ":"
+	var out []string
+	found := false
+	for _, line := range strings.Split(block, "\n") {
+		trim := strings.TrimSpace(line)
+		if !found && strings.HasPrefix(strings.ToLower(trim), prefix) {
+			lead := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+			out = append(out, lead+key+": "+value)
+			found = true
+			continue
+		}
+		out = append(out, line)
+	}
+	if !found {
+		out = append(out, key+": "+value)
+	}
+	return strings.Join(out, "\n")
+}
+
+func splitDeb822(text string) []string {
+	return strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n\n")
+}
+
+func joinDeb822(blocks []string) string {
+	return strings.Join(blocks, "\n\n")
 }
 
 type repoProbe int
@@ -93,8 +180,15 @@ const (
 )
 
 func pickRepoSuite(mirror, id, code string, probe func(string, string) repoProbe) (suite string, disable bool) {
+	suites := fallbackSuites(id, code)
+	if sameSuiteVendor(mirror) {
+		if strings.TrimSpace(code) == "" {
+			return "", true
+		}
+		suites = []string{code}
+	}
 	unknown := true
-	for _, s := range fallbackSuites(id, code) {
+	for _, s := range suites {
 		switch probe(mirror, s) {
 		case repoProbeOK:
 			return s, false
@@ -103,6 +197,9 @@ func pickRepoSuite(mirror, id, code string, probe func(string, string) repoProbe
 		}
 	}
 	if unknown {
+		if sameSuiteVendor(mirror) {
+			return code, false
+		}
 		if strings.TrimSpace(code) == "" {
 			return "noble", false
 		}
