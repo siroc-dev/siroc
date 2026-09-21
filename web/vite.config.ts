@@ -10,6 +10,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
+    fileParallelism: false,
+    pool: "forks",
   },
   server: {
     port: 5173,
