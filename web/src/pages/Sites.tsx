@@ -966,8 +966,8 @@ export function Sites() {
               );
             }}
           </Form.Item>
-          <Form.Item name="aliases" label="Aliases">
-            <Select mode="tags" tokenSeparators={[",", " "]} placeholder="www.site.test" />
+          <Form.Item name="aliases" label="Aliases" extra="www.site.test or *.site.test for every subdomain">
+            <Select mode="tags" tokenSeparators={[",", " "]} placeholder="www.site.test, *.site.test" />
           </Form.Item>
           <Form.Item name="kind" label="Type" initialValue="php">
             <Select
@@ -1070,8 +1070,8 @@ export function Sites() {
             >
               <Input addonBefore={homePrefix(edit.username)} />
             </Form.Item>
-            <Form.Item name="aliases" label="Domain aliases">
-              <Select mode="tags" tokenSeparators={[",", " "]} placeholder="www.example.com" />
+            <Form.Item name="aliases" label="Domain aliases" extra="www.example.com or *.example.com for every subdomain">
+              <Select mode="tags" tokenSeparators={[",", " "]} placeholder="www.example.com, *.example.com" />
             </Form.Item>
             <RewriteBlock form={editForm} />
             <Typography.Text type="secondary">SSL</Typography.Text>

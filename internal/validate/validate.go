@@ -73,6 +73,26 @@ func Domain(name string) error {
 	return nil
 }
 
+func WildcardAlias(name string) error {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if !strings.HasPrefix(n, "*.") {
+		return fmt.Errorf("invalid domain")
+	}
+	rest := strings.TrimPrefix(n, "*.")
+	if rest == "" || strings.Contains(rest, "*") {
+		return fmt.Errorf("invalid domain")
+	}
+	return Domain(rest)
+}
+
+func DomainOrWildcardAlias(name string) error {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if strings.HasPrefix(n, "*.") {
+		return WildcardAlias(n)
+	}
+	return Domain(n)
+}
+
 func DomainAliases(primary string, aliases []string) ([]string, error) {
 	primary = strings.ToLower(strings.TrimSpace(primary))
 	if err := Domain(primary); err != nil {
@@ -85,7 +105,7 @@ func DomainAliases(primary string, aliases []string) ([]string, error) {
 		if n == "" {
 			continue
 		}
-		if err := Domain(n); err != nil {
+		if err := DomainOrWildcardAlias(n); err != nil {
 			return nil, fmt.Errorf("alias %q: %w", n, err)
 		}
 		if _, ok := seen[n]; ok {
