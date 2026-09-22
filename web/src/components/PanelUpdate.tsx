@@ -73,7 +73,7 @@ export function PanelUpdate() {
         </Typography.Paragraph>
         <pre style={{ margin: 0, padding: 12, background: "#f8fafc", borderRadius: 8, fontSize: 12 }}>
 {`{
-  "version": "0.2.3",
+  "version": "0.2.4",
   "url": "https://get.siroc.dev/siroc-linux-amd64.tar.gz",
   "sha256": "optional"
 }`}
