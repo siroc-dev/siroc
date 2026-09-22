@@ -1,3 +1,4 @@
+/** @vitest-environment node */
 import { describe, expect, it } from "vitest";
 import { ADMIN_ONLY_PATHS, canUsePath } from "./nav";
 

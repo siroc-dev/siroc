@@ -42,12 +42,13 @@ describe("Sites page", () => {
   });
 
   it("renders when list APIs return null instead of arrays", async () => {
-    renderSites();
+    const { unmount } = renderSites();
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Websites" })).toBeTruthy();
     });
     expect(screen.getByRole("button", { name: "New site" })).toBeTruthy();
     expect(screen.getByText("No websites yet. Install nginx, Apache, and PHP first.")).toBeTruthy();
+    unmount();
   });
 
   it("lets a hosting user toggle account and per-site WAF", async () => {
@@ -61,7 +62,7 @@ describe("Sites page", () => {
       return [];
     });
     vi.mocked(api.put).mockResolvedValue({ ok: true });
-    renderSites(false, "a01");
+    const { unmount } = renderSites(false, "a01");
     await waitFor(() => {
       expect(screen.getByText("Protect my websites")).toBeTruthy();
     });
@@ -72,5 +73,6 @@ describe("Sites page", () => {
     await waitFor(() => {
       expect(api.put).toHaveBeenCalledWith("/api/accounts/a01/waf", { enabled: false });
     });
+    unmount();
   });
 });
