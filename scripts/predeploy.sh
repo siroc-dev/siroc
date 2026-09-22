@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 echo "→ go test"
-go test ./internal/api ./internal/validate ./internal/admincli ./internal/setup ./internal/hosting ./internal/users ./internal/software ./internal/store ./internal/weblog
+go test ./internal/api ./internal/validate ./internal/admincli ./internal/setup ./internal/hosting ./internal/users ./internal/software ./internal/store ./internal/weblog ./internal/files
 
 echo "→ web tests"
 (cd "$ROOT/web" && npm test)

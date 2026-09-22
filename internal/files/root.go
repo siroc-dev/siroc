@@ -99,6 +99,7 @@ func (m *Manager) rootWrite(rel, content, encoding string) error {
 		return err
 	}
 	_, err = runHelper(helperReq{Op: "write", Path: abs, Home: "/", Content: content, Encoding: encoding})
+	m.ownPath(abs)
 	return err
 }
 
@@ -108,6 +109,7 @@ func (m *Manager) rootMkdir(rel string) error {
 		return err
 	}
 	_, err = runHelper(helperReq{Op: "mkdir", Path: abs, Home: "/"})
+	m.ownPath(abs)
 	return err
 }
 
@@ -136,6 +138,7 @@ func (m *Manager) rootRename(rel, dest string) error {
 		return fmt.Errorf("cannot rename a system path")
 	}
 	_, err = runHelper(helperReq{Op: "rename", Path: src, Dest: dst, Home: "/"})
+	m.ownPath(dst)
 	return err
 }
 

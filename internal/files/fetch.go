@@ -38,6 +38,7 @@ func (m *Manager) Fetch(username, dir, rawURL, dest string, root bool) (*rpc.Fil
 		if err := curlFetch(abs, u.String()); err != nil {
 			return nil, err
 		}
+		m.ownPath(abs)
 		return &rpc.FileOpResp{OK: true, Dest: abs, Path: abs}, nil
 	}
 	abs, home, uid, gid, err := m.resolve(username, target)
@@ -48,6 +49,7 @@ func (m *Manager) Fetch(username, dir, rawURL, dest string, root bool) (*rpc.Fil
 	if err != nil {
 		return nil, err
 	}
+	m.ownPath(abs)
 	show := target
 	if resp != nil && resp.Dest != "" {
 		if rel, e := filepath.Rel(home, resp.Dest); e == nil {

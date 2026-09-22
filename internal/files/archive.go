@@ -95,6 +95,10 @@ func (m *Manager) Extract(username, rel string, root bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if resp != nil && resp.Dest != "" {
+		destAbs = resp.Dest
+	}
+	m.ownPath(destAbs)
 	show, _ := filepath.Rel(home, destAbs)
 	if resp != nil && resp.Dest != "" {
 		if relShow, e := filepath.Rel(home, resp.Dest); e == nil {
@@ -120,6 +124,7 @@ func (m *Manager) Copy(username, rel, dest string, root bool) error {
 		return fmt.Errorf("source and destination are the same")
 	}
 	_, err = m.call(uid, gid, helperReq{Op: "copy", Path: src, Dest: dst, Home: home})
+	m.ownPath(dst)
 	return err
 }
 
@@ -493,8 +498,9 @@ func (m *Manager) rootExtract(rel string) (string, error) {
 		return "", err
 	}
 	if resp.Dest != "" {
-		return filepath.ToSlash(resp.Dest), nil
+		destAbs = resp.Dest
 	}
+	m.ownPath(destAbs)
 	return filepath.ToSlash(destAbs), nil
 }
 
@@ -511,5 +517,6 @@ func (m *Manager) rootCopy(rel, dest string) error {
 		return fmt.Errorf("cannot copy onto a system path")
 	}
 	_, err = runHelper(helperReq{Op: "copy", Path: src, Dest: dst, Home: "/"})
+	m.ownPath(dst)
 	return err
 }

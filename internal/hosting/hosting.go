@@ -280,6 +280,8 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 		return err
 	}
 	own := req.Username + ":" + req.Username
+	domainDir := filepath.Join(m.HomeRoot, req.Username, "domains", req.Domain)
+	_ = exec.Command("chown", "-R", own, domainDir).Run()
 	_ = exec.Command("chown", "-R", own, doc).Run()
 	_ = exec.Command("chown", own, tmp).Run()
 	_ = m.FixWebPerms(req.Username, doc)
@@ -404,6 +406,7 @@ func (m *Manager) writeProxy(req rpc.SiteWriteReq) error {
 	if err := os.MkdirAll(doc, 0755); err != nil {
 		return err
 	}
+	_ = exec.Command("chown", "-R", req.Username+":"+req.Username, filepath.Join(m.HomeRoot, req.Username, "domains", req.Domain)).Run()
 	_ = exec.Command("chown", "-R", req.Username+":"+req.Username, doc).Run()
 	aliases, err := validate.DomainAliases(req.Domain, req.Aliases)
 	if err != nil {

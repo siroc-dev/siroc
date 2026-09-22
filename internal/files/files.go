@@ -177,6 +177,7 @@ func (m *Manager) Write(username, rel, content string, root bool) error {
 		return err
 	}
 	_, err = m.call(uid, gid, helperReq{Op: "write", Path: abs, Home: home, Content: content})
+	m.ownPath(abs)
 	return err
 }
 
@@ -189,6 +190,7 @@ func (m *Manager) Mkdir(username, rel string, root bool) error {
 		return err
 	}
 	_, err = m.call(uid, gid, helperReq{Op: "mkdir", Path: abs, Home: home})
+	m.ownPath(abs)
 	return err
 }
 
@@ -204,6 +206,10 @@ func (m *Manager) Delete(username, rel string, root bool) error {
 		return fmt.Errorf("cannot delete home directory")
 	}
 	_, err = m.call(uid, gid, helperReq{Op: "delete", Path: abs, Home: home})
+	if err != nil && permDenied(err) {
+		m.ownPath(abs)
+		_, err = m.call(uid, gid, helperReq{Op: "delete", Path: abs, Home: home})
+	}
 	return err
 }
 
@@ -220,6 +226,7 @@ func (m *Manager) Rename(username, rel, dest string, root bool) error {
 		return err
 	}
 	_, err = m.call(uid, gid, helperReq{Op: "rename", Path: src, Dest: dst, Home: home})
+	m.ownPath(dst)
 	return err
 }
 
@@ -292,6 +299,7 @@ func (m *Manager) Upload(username, rel string, r io.Reader, root bool) error {
 	if uid > 0 {
 		_ = os.Chown(abs, uid, gid)
 	}
+	m.ownPath(abs)
 	return nil
 }
 
