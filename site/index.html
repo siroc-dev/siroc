@@ -1,8 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" translate="no" class="notranslate">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="google" content="notranslate" />
     <title>Siroc — Linux hosting control panel</title>
     <meta name="description" content="Open-source Linux hosting panel. Real Linux users, Nginx in front, PHP, Node.js, Python, Go, Rust, and Docker sites." />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
@@ -20,6 +21,7 @@
         </div>
         <nav class="nav-links">
           <a href="#install">Install</a>
+          <a href="#panel">Panel</a>
           <a href="#features">Features</a>
           <a href="./docs/">Docs</a>
           <a href="https://github.com/siroc-dev/siroc">GitHub</a>
@@ -44,6 +46,108 @@
           <pre id="install-cmd">curl -fsSL https://siroc.dev/install.sh | sudo bash</pre>
         </div>
         <p class="meta">Current version <strong id="version">0.2.3</strong> · Channel <code id="channel">https://get.siroc.dev</code></p>
+      </section>
+
+      <section class="section screen-section" id="panel">
+        <h2>The panel</h2>
+        <p class="note">Dashboard on port 8443 after install. Live load, Linux accounts, and the stack you installed.</p>
+        <figure class="screen" aria-label="Siroc dashboard">
+          <div class="screen-bar">
+            <span class="screen-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="screen-url">https://your-server:8443</span>
+          </div>
+          <div class="panel">
+            <aside class="sider">
+              <div class="sider-brand">
+                <div class="sider-kicker">Control Panel</div>
+                <div class="sider-name">Siroc</div>
+                <div class="sider-ver">v0.2.3</div>
+              </div>
+              <ul>
+                <li class="on">Dashboard</li>
+                <li>Accounts</li>
+                <li>Websites</li>
+                <li>PHP</li>
+                <li>Files</li>
+                <li>Terminal</li>
+                <li>Software</li>
+                <li>Security</li>
+                <li>Databases</li>
+                <li>Backup</li>
+              </ul>
+            </aside>
+            <div class="panel-main">
+              <header class="panel-head">
+                <span>Dashboard</span>
+                <span class="panel-user"><em>Agent online</em> admin</span>
+              </header>
+              <div class="panel-body">
+                <div class="overview">
+                  <div class="overview-top">
+                    <strong>Overview</strong>
+                    <span>vps.siroc</span>
+                  </div>
+                  <div class="gauges">
+                    <div class="gauge">
+                      <svg viewBox="0 0 120 120" aria-hidden="true">
+                        <circle cx="60" cy="60" r="48" class="g-track"></circle>
+                        <circle cx="60" cy="60" r="48" class="g-val" stroke="#52c41a" stroke-dasharray="54 302"></circle>
+                      </svg>
+                      <b>18%</b>
+                      <span>Load</span>
+                      <small>0.36 / 0.28 / 0.21</small>
+                    </div>
+                    <div class="gauge">
+                      <svg viewBox="0 0 120 120" aria-hidden="true">
+                        <circle cx="60" cy="60" r="48" class="g-track"></circle>
+                        <circle cx="60" cy="60" r="48" class="g-val" stroke="#52c41a" stroke-dasharray="36 302"></circle>
+                      </svg>
+                      <b>12%</b>
+                      <span>CPU</span>
+                      <small>2 cores</small>
+                    </div>
+                    <div class="gauge">
+                      <svg viewBox="0 0 120 120" aria-hidden="true">
+                        <circle cx="60" cy="60" r="48" class="g-track"></circle>
+                        <circle cx="60" cy="60" r="48" class="g-val" stroke="#1677ff" stroke-dasharray="124 302"></circle>
+                      </svg>
+                      <b>41%</b>
+                      <span>RAM</span>
+                      <small>1.6 GB / 3.8 GB</small>
+                    </div>
+                    <div class="gauge">
+                      <svg viewBox="0 0 120 120" aria-hidden="true">
+                        <circle cx="60" cy="60" r="48" class="g-track"></circle>
+                        <circle cx="60" cy="60" r="48" class="g-val" stroke="#52c41a" stroke-dasharray="82 302"></circle>
+                      </svg>
+                      <b>27%</b>
+                      <span>Disk</span>
+                      <small>21 GB / 80 GB</small>
+                    </div>
+                  </div>
+                  <div class="uptime">Up 4d 6h 12m</div>
+                </div>
+                <div class="stats">
+                  <div><small>Hosting accounts</small><b>2</b></div>
+                  <div><small>Websites</small><b>3</b></div>
+                  <div><small>Databases</small><b>2</b></div>
+                </div>
+                <div class="usage">
+                  <div class="usage-top">User usage</div>
+                  <table>
+                    <thead>
+                      <tr><th>User</th><th>PHP</th><th>RAM</th><th>CPU</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>a01</td><td>2</td><td>214 MB</td><td>3.1%</td></tr>
+                      <tr><td>shop</td><td>1</td><td>96 MB</td><td>0.4%</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </figure>
       </section>
 
       <section id="features">
