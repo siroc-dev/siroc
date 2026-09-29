@@ -20,6 +20,7 @@ var descriptions = map[string]string{
 	"vsftpd":     "FTP server. Hosting accounts can be granted or denied FTP.",
 	"goaccess":   "Access-log analytics. Builds per-site HTML stats from Nginx logs.",
 	"supervisor": "Process manager for Laravel queue workers and scheduled jobs.",
+	"git":        "Git client for site deploy. First-run stack installs it so force-pull webhooks work.",
 	"composer":   "PHP dependency manager for Laravel and other Composer apps.",
 	"wp-cli":     "WordPress command-line tool for installs, plugins, and users.",
 	"nikto":      "Web vulnerability scanner. Admin-only scan reports.",

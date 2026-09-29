@@ -327,6 +327,18 @@ func (c *Client) SiteRename(in SiteRenameReq) error {
 	return c.do(http.MethodPost, "/sites/rename", in, nil)
 }
 
+func (c *Client) GitKey(username string) (*GitKeyResp, error) {
+	var out GitKeyResp
+	err := c.do(http.MethodPost, "/git/key", GitKeyReq{Username: username}, &out)
+	return &out, err
+}
+
+func (c *Client) GitDeploy(in GitDeployReq) (*GitDeployResp, error) {
+	var out GitDeployResp
+	err := c.do(http.MethodPost, "/git/deploy", in, &out)
+	return &out, err
+}
+
 func (c *Client) SiteRuntime(in SiteRuntimeReq) (*SiteRuntimeResp, error) {
 	var out SiteRuntimeResp
 	err := c.do(http.MethodPost, "/sites/runtime", in, &out)

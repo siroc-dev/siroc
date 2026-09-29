@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -42,6 +43,7 @@ type Server struct {
 	Agent       *rpc.Client
 	Static      fs.FS
 	installWake chan struct{}
+	gitBusy     sync.Map
 }
 
 func (s *Server) Router() http.Handler {
@@ -56,6 +58,8 @@ func (s *Server) Router() http.Handler {
 	r.Post("/api/setup", s.setup)
 	r.Post("/api/login", s.login)
 	r.Post("/api/logout", s.logout)
+	r.Post("/api/hooks/git/{token}", s.gitWebhook)
+	r.Put("/api/hooks/git/{token}", s.gitWebhook)
 
 	r.Group(func(r chi.Router) {
 		r.Use(s.requireAuth)
@@ -165,6 +169,10 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/sites/{id}/stats.html", s.siteStatsHTML)
 		r.Get("/api/sites/{id}/logs", s.siteLogs)
 		r.Put("/api/sites/{id}/waf", s.setSiteWAF)
+		r.Get("/api/sites/{id}/git", s.getSiteGit)
+		r.Put("/api/sites/{id}/git", s.putSiteGit)
+		r.Post("/api/sites/{id}/git/token", s.rotateSiteGitToken)
+		r.Post("/api/sites/{id}/git/deploy", s.deploySiteGit)
 		r.Delete("/api/sites/{id}", s.deleteSite)
 
 		r.Get("/api/databases", s.listDatabases)
@@ -1989,7 +1997,7 @@ func (s *Server) originCheck(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
+		if !strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/api/hooks/") {
 			next.ServeHTTP(w, r)
 			return
 		}

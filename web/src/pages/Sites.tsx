@@ -10,6 +10,7 @@ import { WebOptimize } from "@/components/WebOptimize";
 import { ArtisanRun, type ArtisanCmd } from "@/components/ArtisanRun";
 import { LaravelQueues, type LaravelQueueRow, type LaravelSchedule } from "@/components/LaravelQueues";
 import { SiteLogs } from "@/components/SiteLogs";
+import { SiteGit } from "@/components/SiteGit";
 import type { FormInstance } from "antd/es/form";
 
 type Account = { username: string; wafEnabled?: boolean };
@@ -282,6 +283,7 @@ export function Sites() {
   const [createOpen, setCreateOpen] = useState(false);
   const [edit, setEdit] = useState<Site | null>(null);
   const [logSite, setLogSite] = useState<Site | null>(null);
+  const [gitSite, setGitSite] = useState<Site | null>(null);
   const [stats, setStats] = useState<Site | null>(null);
   const [statsSrc, setStatsSrc] = useState("");
   const [statsErr, setStatsErr] = useState("");
@@ -750,6 +752,7 @@ export function Sites() {
                 menu={{
                   items: [
                     { key: "logs", label: "Logs" },
+                    { key: "git", label: "Git deploy" },
                     { key: "stats", label: "Stats" },
                     { key: "edit", label: "Edit" },
                     { key: "rename", label: "Rename" },
@@ -766,6 +769,7 @@ export function Sites() {
                   ],
                   onClick: ({ key }) => {
                     if (key === "logs") setLogSite(s);
+                    if (key === "git") setGitSite(s);
                     if (key === "stats") openStats(s);
                     if (key === "edit") openEdit(s);
                     if (key === "rename") openRename(s);
@@ -1200,6 +1204,17 @@ export function Sites() {
             </pre>
           </Space>
         ) : null}
+      </Modal>
+
+      <Modal
+        title={gitSite ? `Git deploy · ${gitSite.domain}` : "Git deploy"}
+        open={!!gitSite}
+        onCancel={() => setGitSite(null)}
+        footer={<Button onClick={() => setGitSite(null)}>Close</Button>}
+        width={760}
+        destroyOnHidden
+      >
+        {gitSite ? <SiteGit siteId={gitSite.id} domain={gitSite.domain} username={gitSite.username} docRoot={gitSite.docRoot} /> : null}
       </Modal>
 
       <Modal

@@ -541,6 +541,34 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
 	})
+	r.Post("/git/key", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.GitKeyReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := hostMgr.GitKey(req.Username)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/git/deploy", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.GitDeployReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := hostMgr.GitDeploy(req)
+		if out != nil {
+			writeJSON(w, http.StatusOK, out)
+			return
+		}
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.GitDeployResp{OK: true})
+	})
 	r.Post("/sites/rename", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.SiteRenameReq
 		if !decode(w, r, &req) {

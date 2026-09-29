@@ -1257,6 +1257,32 @@ type MemcachedStatus struct {
 	Message   string            `json:"message,omitempty"`
 }
 
+type GitKeyReq struct {
+	Username string `json:"username"`
+}
+
+type GitKeyResp struct {
+	OK          bool   `json:"ok"`
+	PublicKey   string `json:"publicKey,omitempty"`
+	KeyPath     string `json:"keyPath,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+	Message     string `json:"message,omitempty"`
+}
+
+type GitDeployReq struct {
+	Username string `json:"username"`
+	Path     string `json:"path"`
+	Repo     string `json:"repo"`
+	Branch   string `json:"branch"`
+	Command  string `json:"command,omitempty"`
+}
+
+type GitDeployResp struct {
+	OK      bool   `json:"ok"`
+	Log     string `json:"log,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
 type PMASignonReq struct {
 	DBUser   string `json:"dbUser"`
 	Password string `json:"password"`

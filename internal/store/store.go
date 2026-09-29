@@ -267,6 +267,7 @@ CREATE TABLE IF NOT EXISTS backup_jobs (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   finished_at TEXT NOT NULL DEFAULT ''
 );`)
+	s.ensureSiteGitTable()
 	return s.ensureSecret()
 }
 
@@ -852,6 +853,7 @@ func parseRewriteText(raw string) string {
 }
 
 func (s *Store) DeleteSite(id int64) error {
+	_, _ = s.DB.Exec(`DELETE FROM site_git WHERE site_id = ?`, id)
 	_, err := s.DB.Exec(`DELETE FROM sites WHERE id = ?`, id)
 	return err
 }

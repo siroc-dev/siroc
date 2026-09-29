@@ -309,6 +309,17 @@ func catalog() []spec {
 			},
 		},
 		{
+			Name:   "git",
+			Title:  "Git",
+			AptPkg: "git",
+			Installed: func() (bool, string) {
+				if ok, ver := dpkgVersion("git"); ok {
+					return true, ver
+				}
+				return binVersion("git")
+			},
+		},
+		{
 			Name:  "composer",
 			Title: "Composer",
 			Installed: func() (bool, string) {

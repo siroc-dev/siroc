@@ -18,5 +18,6 @@ func BaseStack() []StackPkg {
 		{Name: "apache", Title: "Apache", Version: ""},
 		{Name: "php", Title: "PHP-FPM", Version: BasePHPVersion},
 		{Name: "mariadb", Title: "MariaDB", Version: BaseMariaDBVersion},
+		{Name: "git", Title: "Git", Version: ""},
 	}
 }
