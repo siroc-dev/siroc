@@ -1,4 +1,4 @@
-name: Deploy site
+name: Check site
 
 on:
   push:
@@ -9,14 +9,20 @@ on:
       - "wrangler.toml"
       - "scripts/stamp-site.sh"
       - ".github/workflows/site.yml"
+  pull_request:
+    paths:
+      - "site/**"
+      - "VERSION"
+      - "wrangler.toml"
+      - "scripts/stamp-site.sh"
+      - ".github/workflows/site.yml"
   workflow_dispatch:
 
 jobs:
-  deploy:
+  stamp:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      deployments: write
     steps:
       - uses: actions/checkout@v5
 
@@ -26,11 +32,8 @@ jobs:
           SIROC_SITE_PUBLIC_BASE: ${{ vars.SIROC_SITE_PUBLIC_BASE }}
         run: bash scripts/stamp-site.sh
 
-      - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
-          wranglerVersion: "4"
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+      - name: Site still points at the public channel
+        run: |
+          set -euo pipefail
+          grep -q 'id="version">' site/index.html
+          grep -q 'get.siroc.dev' site/index.html site/docs/index.html

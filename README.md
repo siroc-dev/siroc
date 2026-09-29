@@ -73,7 +73,7 @@ Example `latest.json` (published to Cloudflare R2 by CI):
 
 ## Website and auto-deploy
 
-The public site lives in `site/` and deploys with **Cloudflare Workers static assets** (`npx wrangler deploy`) to **siroc.dev**. Release tarballs go to R2 bucket **siroc-cp** at **https://get.siroc.dev**.
+The public site lives in `site/` and publishes to **siroc.dev** through **Cloudflare Workers Git** (not GitHub Actions). Release tarballs go to R2 bucket **siroc-cp** at **https://get.siroc.dev**.
 
 ### One-time Cloudflare setup
 
@@ -90,16 +90,18 @@ Then:
 
 1. Attach custom domain **siroc.dev** to the Worker (wrangler already routes `siroc.dev` and `www.siroc.dev`).
 2. On R2 bucket **siroc-cp**, add custom domain **get.siroc.dev** and allow public reads.
-3. GitHub Actions secrets for the release workflow (R2 uses the S3 API, not Wrangler):
+3. GitHub Actions secrets for the **release** workflow (R2 S3 API only — do not put an R2 token in Wrangler):
    - `CLOUDFLARE_ACCOUNT_ID`
    - `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` from Cloudflare → R2 → **Manage R2 API Tokens** → Object Read & Write on `siroc-cp`
-   - `CLOUDFLARE_API_TOKEN` is only for Worker deploys, not for uploading packages
+
+Do not run `wrangler deploy` from GitHub Actions with that R2 token. It has no Workers access (`No access to the specified service`). Cloudflare Workers Git already deploys `site/` with the account login.
 
 ### What CI does
 
 | Workflow | Trigger | Result |
 | --- | --- | --- |
-| Cloudflare Git deploy | push to `main` | publishes `site/` to siroc.dev |
+| Cloudflare Workers Git | push to `main` | publishes `site/` to siroc.dev |
+| `.github/workflows/site.yml` | site/VERSION change | stamps URLs and checks the public site files |
 | `.github/workflows/release.yml` | tag `v*` (or manual) | uploads `siroc-linux-amd64.tar.gz` and `latest.json` to `siroc-cp` |
 
 Tag a release after the token can write R2:
