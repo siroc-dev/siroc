@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { MoreOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Card, Dropdown, Flex, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { asList } from "@/lib/lists";
+import { formatBytes, type UserUsage } from "@/lib/usage";
+import { SiteDash, type SiteDashAction } from "@/components/SiteDash";
 import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/lib/nginxRewrites";
 import { AppPackages, type PkgHit, type PkgRow } from "@/components/AppPackages";
 import { WebOptimize } from "@/components/WebOptimize";
@@ -275,9 +277,14 @@ function RewriteBlock({ form }: { form: FormInstance }) {
 
 export function Sites() {
   const { message, modal } = App.useApp();
+  const nav = useNavigate();
+  const { id: siteIdParam } = useParams();
   const { admin } = useOutletContext<{ user: string; admin?: boolean }>();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
+  const [usage, setUsage] = useState<UserUsage[]>([]);
+  const [query, setQuery] = useState("");
+  const [infoSite, setInfoSite] = useState<Site | null>(null);
   const [phps, setPhps] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -311,16 +318,18 @@ export function Sites() {
   const [wafBusy, setWafBusy] = useState("");
 
   async function load() {
-    const [a, s, p] = await Promise.all([
+    const [a, s, p, u] = await Promise.all([
       api.get<Account[]>("/api/accounts"),
       api.get<Site[]>("/api/sites"),
       api.get<string[]>("/api/software/php-versions").catch(() => [] as string[]),
+      api.get<UserUsage[]>("/api/usage").catch(() => [] as UserUsage[]),
     ]);
     const accounts = asList(a);
     const sites = asList(s);
     const phps = asList(p);
     setAccounts(accounts);
     setSites(sites);
+    setUsage(asList(u));
     setPhps(phps);
     if (accounts[0] && !form.getFieldValue("username")) {
       form.setFieldsValue({ username: accounts[0].username, phpVersion: phps.length ? phps[phps.length - 1] : "8.3" });
@@ -598,6 +607,7 @@ export function Sites() {
   async function remove(id: number) {
     try {
       await api.delete(`/api/sites/${id}`);
+      if (siteIdParam && String(id) === siteIdParam) nav("/sites");
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -670,33 +680,69 @@ export function Sites() {
     return out.pkgHits || [];
   }
 
+  const openSite = sites.find((s) => String(s.id) === siteIdParam) || null;
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return sites;
+    return sites.filter((s) => s.domain.toLowerCase().includes(q) || s.username.toLowerCase().includes(q) || (s.aliases || []).some((a) => a.toLowerCase().includes(q)));
+  }, [sites, query]);
+
+  function siteFilesPath(s: Site) {
+    return toRel(s.username, s.docRoot) || "domains/" + s.domain;
+  }
+
+  function runDash(s: Site, key: SiteDashAction) {
+    if (key === "files") nav(`/files?user=${encodeURIComponent(s.username)}&path=${encodeURIComponent(siteFilesPath(s))}`);
+    if (key === "databases") nav(`/databases?user=${encodeURIComponent(s.username)}&domain=${encodeURIComponent(s.domain)}`);
+    if (key === "backup") nav("/backup");
+    if (key === "info") setInfoSite(s);
+    if (key === "php" || key === "ssl" || key === "edit") openEdit(s);
+    if (key === "logs") setLogSite(s);
+    if (key === "ssh") nav(`/terminal?user=${encodeURIComponent(s.username)}`);
+    if (key === "git") setGitSite(s);
+    if (key === "stats") openStats(s);
+    if (key === "laravel") void openApp(s, "laravel");
+    if (key === "wordpress") void openApp(s, "wordpress");
+    if (key === "app") void openRuntime(s);
+    if (key === "rename") openRename(s);
+    if (key === "toggle") void toggle(s);
+  }
+
   const sitesTable = (
     <Card>
+      <div className="site-list-toolbar">
+        <Typography.Text type="secondary">{filtered.length} {filtered.length === 1 ? "domain" : "domains"}</Typography.Text>
+        <Input.Search
+          allowClear
+          placeholder="Find domain…"
+          style={{ maxWidth: 280 }}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
       <Table
         rowKey="id"
-        dataSource={sites}
+        dataSource={filtered}
         pagination={false}
         locale={{ emptyText: "No websites yet. Install nginx, Apache, and PHP first." }}
         columns={[
-          { title: "Domain", dataIndex: "domain", ellipsis: true },
-          { title: "User", dataIndex: "username", width: 90 },
           {
-            title: "Aliases",
+            title: "Domain name",
             ellipsis: true,
-            render: (_, s) =>
-              s.aliases?.length ? (
-                <Space size={4} wrap>
-                  {s.aliases.map((a) => (
-                    <Tag key={a}>{a}</Tag>
-                  ))}
-                </Space>
-              ) : (
-                <Typography.Text type="secondary">None</Typography.Text>
-              ),
+            render: (_, s) => (
+              <button type="button" className="site-list-domain" onClick={() => nav(`/sites/${s.id}`)}>
+                {s.domain}
+              </button>
+            ),
+          },
+          {
+            title: "Status",
+            width: 110,
+            render: (_, s) => <Tag color={s.enabled ? "success" : "default"}>{s.enabled ? "Active" : "Disabled"}</Tag>,
           },
           {
             title: "Type",
-            width: 120,
+            width: 130,
             render: (_, s) =>
               APP_KINDS.has(s.kind || "") ? (
                 <Tag color="blue">{kindLabel(s.kind)}{s.appPort ? ` :${s.appPort}` : ""}</Tag>
@@ -707,24 +753,15 @@ export function Sites() {
               ),
           },
           {
-            title: "Path",
-            ellipsis: true,
-            render: (_, s) => <Typography.Text type="secondary">{toRel(s.username, s.docRoot) || s.docRoot}</Typography.Text>,
-          },
-          {
-            title: "Rewrite",
-            width: 80,
-            render: (_, s) => (s.rewrite?.trim() ? "Yes" : "—"),
-          },
-          {
             title: "SSL",
-            width: 130,
+            width: 140,
             render: (_, s) => sslTag(s),
           },
+          ...(admin ? [{ title: "User", dataIndex: "username" as const, width: 90 }] : []),
           {
             title: "WAF",
-            width: 88,
-            render: (_, s) => {
+            width: 80,
+            render: (_: unknown, s: Site) => {
               const accountOn = accountWAFOn(s.username);
               return (
                 <Switch
@@ -738,11 +775,6 @@ export function Sites() {
             },
           },
           {
-            title: "Status",
-            width: 100,
-            render: (_, s) => <Tag color={s.enabled ? "success" : "default"}>{s.enabled ? "Enabled" : "Disabled"}</Tag>,
-          },
-          {
             title: "",
             width: 56,
             align: "right",
@@ -751,6 +783,7 @@ export function Sites() {
                 trigger={["click"]}
                 menu={{
                   items: [
+                    { key: "open", label: "Open dashboard" },
                     { key: "logs", label: "Logs" },
                     { key: "git", label: "Git deploy" },
                     { key: "stats", label: "Stats" },
@@ -768,6 +801,7 @@ export function Sites() {
                     { key: "delete", label: "Delete", danger: true },
                   ],
                   onClick: ({ key }) => {
+                    if (key === "open") nav(`/sites/${s.id}`);
                     if (key === "logs") setLogSite(s);
                     if (key === "git") setGitSite(s);
                     if (key === "stats") openStats(s);
@@ -882,17 +916,31 @@ export function Sites() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
         <div>
           <Typography.Title level={3} style={{ margin: 0 }}>
-            Websites
+            Websites & domains
           </Typography.Title>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            New sites get a local HTTPS certificate. Let's Encrypt can replace it later. HTTP on port 8080 stays available until Let's Encrypt is issued.
+            Open a domain for files, databases, Git, SSL, and logs. New sites get local HTTPS first.
           </Typography.Paragraph>
         </div>
         <Button type="primary" onClick={() => setCreateOpen(true)} disabled={phps.length === 0}>
-          New site
+          Add domain
         </Button>
       </div>
-      {accounts.length > 0 ? (
+      {openSite ? (
+        <Card>
+          <SiteDash
+            site={openSite}
+            admin={admin}
+            accountWaf={accountWAFOn(openSite.username)}
+            siteWafBusy={wafBusy === `site:${openSite.id}`}
+            diskLabel={formatBytes(usage.find((u) => u.user === openSite.username)?.diskUsed || 0)}
+            onBack={() => nav("/sites")}
+            onOpen={(key) => runDash(openSite, key)}
+            onWaf={(v) => void setSiteWAF(openSite, v)}
+          />
+        </Card>
+      ) : null}
+      {openSite ? null : accounts.length > 0 ? (
         <Card style={{ marginBottom: 16 }} title="ModSecurity WAF">
           <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
             Blocks common attacks on Apache (SQL injection, XSS). The global engine stays under Security. Turn WAF off for your whole account, or disable it on a single website in the table.
@@ -918,7 +966,7 @@ export function Sites() {
           </Space>
         </Card>
       ) : null}
-      {admin ? (
+      {openSite ? null : admin ? (
         <Tabs
           items={[
             { key: "sites", label: "Websites", children: sitesTable },
@@ -926,9 +974,43 @@ export function Sites() {
             { key: "optimize", label: "Optimize", children: <WebOptimize /> },
           ]}
         />
-      ) : (
+      ) : openSite ? null : (
         sitesTable
       )}
+
+      <Modal
+        title={infoSite ? `Connection · ${infoSite.domain}` : "Connection"}
+        open={!!infoSite}
+        onCancel={() => setInfoSite(null)}
+        footer={<Button onClick={() => setInfoSite(null)}>Close</Button>}
+      >
+        {infoSite ? (
+          <Space direction="vertical" size={8} style={{ width: "100%" }}>
+            <div>
+              <Typography.Text type="secondary">Website</Typography.Text>
+              <div>
+                <Typography.Text copyable>{infoSite.domain}</Typography.Text>
+              </div>
+            </div>
+            <div>
+              <Typography.Text type="secondary">Linux user</Typography.Text>
+              <div>
+                <Typography.Text copyable>{infoSite.username}</Typography.Text>
+              </div>
+            </div>
+            <div>
+              <Typography.Text type="secondary">Document root</Typography.Text>
+              <div>
+                <Typography.Text copyable>{infoSite.docRoot}</Typography.Text>
+              </div>
+            </div>
+            <div>
+              <Typography.Text type="secondary">Type</Typography.Text>
+              <div>{kindLabel(infoSite.kind)}{infoSite.phpVersion && !APP_KINDS.has(infoSite.kind || "") && infoSite.kind !== "proxy" ? ` ${infoSite.phpVersion}` : ""}</div>
+            </div>
+          </Space>
+        ) : null}
+      </Modal>
 
       <Modal
         title="New website"

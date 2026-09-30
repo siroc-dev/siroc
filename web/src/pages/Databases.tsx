@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import { Alert, App, AutoComplete, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
@@ -26,6 +26,9 @@ const ramOptions = Array.from({ length: 128 }, (_, i) => i + 1);
 export function Databases() {
   const { message } = App.useApp();
   const { admin } = useOutletContext<{ user: string; admin?: boolean }>();
+  const [search] = useSearchParams();
+  const wantUser = (search.get("user") || "").trim();
+  const wantDomain = (search.get("domain") || "").trim();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [list, setList] = useState<DB[]>([]);
   const [engine, setEngine] = useState("");
@@ -48,7 +51,8 @@ export function Databases() {
     setAccounts(a);
     setList(d);
     setEngine(e.engine);
-    if (a[0] && !form.getFieldValue("username")) form.setFieldValue("username", a[0].username);
+    const pick = wantUser && a.some((x) => x.username === wantUser) ? wantUser : a[0]?.username;
+    if (pick && !form.getFieldValue("username")) form.setFieldValue("username", pick);
   }
 
   async function loadConfig(gb?: number) {
@@ -137,13 +141,15 @@ export function Databases() {
     [cfg?.suggestedGB],
   );
 
+  const shown = wantUser ? list.filter((d) => d.username === wantUser) : list;
+
   const databasesTab = (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       {created ? <Alert type="success" message={created} showIcon /> : null}
       <Card>
         <Table
           rowKey="id"
-          dataSource={list}
+          dataSource={shown}
           pagination={false}
           locale={{ emptyText: "No databases yet." }}
           columns={[
@@ -281,7 +287,7 @@ export function Databases() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <Typography.Title level={3} style={{ margin: 0 }}>
-            Databases
+            {wantDomain ? `Databases for ${wantDomain}` : "Databases"}
           </Typography.Title>
           <Typography.Text type="secondary">{engine ? `Engine: ${engine}` : "Install MySQL or MariaDB first"}</Typography.Text>
         </div>

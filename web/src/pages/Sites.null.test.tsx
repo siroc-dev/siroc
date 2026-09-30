@@ -24,6 +24,7 @@ function renderSites(admin = true, user = "admin") {
         <Routes>
           <Route element={<Outlet context={{ user, admin }} />}>
             <Route path="/sites" element={<Sites />} />
+            <Route path="/sites/:id" element={<Sites />} />
           </Route>
         </Routes>
       </MemoryRouter>
@@ -44,9 +45,9 @@ describe("Sites page", () => {
   it("renders when list APIs return null instead of arrays", async () => {
     const { unmount } = renderSites();
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Websites" })).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "Websites & domains" })).toBeTruthy();
     });
-    expect(screen.getByRole("button", { name: "New site" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add domain" })).toBeTruthy();
     expect(screen.getByText("No websites yet. Install nginx, Apache, and PHP first.")).toBeTruthy();
     unmount();
   });
@@ -72,6 +73,28 @@ describe("Sites page", () => {
     switches[0].click();
     await waitFor(() => {
       expect(api.put).toHaveBeenCalledWith("/api/accounts/a01/waf", { enabled: false });
+    });
+    unmount();
+  });
+
+  it("opens a Plesk-style site dashboard from the domain name", async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/api/accounts") return [{ username: "a01", wafEnabled: true }];
+      if (url === "/api/sites") {
+        return [{ id: 1, username: "a01", domain: "a01.test", docRoot: "/home/a01/domains/a01.test/public_html", phpVersion: "8.4", enabled: true, aliases: [], ssl: true, wafEnabled: true }];
+      }
+      if (url === "/api/usage") return [{ user: "a01", diskUsed: 1024 }];
+      return [];
+    });
+    const { unmount } = renderSites(false, "a01");
+    await waitFor(() => {
+      expect(screen.getByText("a01.test")).toBeTruthy();
+    });
+    screen.getByRole("button", { name: "a01.test" }).click();
+    await waitFor(() => {
+      expect(screen.getByText("File manager")).toBeTruthy();
+      expect(screen.getByText("Git")).toBeTruthy();
+      expect(screen.getByText("Web application firewall")).toBeTruthy();
     });
     unmount();
   });

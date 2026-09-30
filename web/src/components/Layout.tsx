@@ -103,6 +103,7 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
   const selected = useMemo(() => {
     const status = ["/apache", "/nginx", "/php-fpm", "/mysql", "/mariadb"];
     if (status.includes(loc.pathname)) return ["/apache"];
+    if (loc.pathname.startsWith("/sites")) return ["/sites"];
     return [loc.pathname === "/" ? "/" : loc.pathname];
   }, [loc.pathname]);
 

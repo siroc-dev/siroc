@@ -137,6 +137,7 @@ export function App() {
         <Route path="/security" element={<AdminOnly admin={admin}><Security /></AdminOnly>} />
         <Route path="/scan-logs" element={<AdminOnly admin={admin}><ScanLogs /></AdminOnly>} />
         <Route path="/sites" element={<Sites />} />
+        <Route path="/sites/:id" element={<Sites />} />
         <Route path="/php" element={<PHP />} />
         <Route path="/databases" element={<Databases />} />
         <Route path="/backup" element={<Backup />} />

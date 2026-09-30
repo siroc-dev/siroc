@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import {
   App,
   Button,
@@ -76,6 +76,9 @@ function bits(v: number, flag: number) {
 export function Files() {
   const { message, modal } = App.useApp();
   const { admin } = useOutletContext<{ user: string; admin?: boolean }>();
+  const [search] = useSearchParams();
+  const wantUser = (search.get("user") || "").trim();
+  const wantPath = (search.get("path") || "").trim() || "/";
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [user, setUser] = useState("");
   const [listing, setListing] = useState<Listing>({ path: "/", entries: [] });
@@ -114,14 +117,18 @@ export function Files() {
   useEffect(() => {
     api.get<Account[]>("/api/accounts").then((a) => {
       setAccounts(a);
-      if (a[0]) setUser(a[0].username);
+      const allowed = wantUser === "root" ? !!admin : !wantUser || a.some((x) => x.username === wantUser);
+      if (wantUser && allowed) setUser(wantUser);
+      else if (a[0]) setUser(a[0].username);
       else if (admin) setUser("root");
     });
-  }, [admin]);
+  }, [admin, wantUser]);
 
   useEffect(() => {
-    if (user) load("/").catch((e) => message.error(e.message));
-  }, [user]);
+    if (!user) return;
+    const start = wantUser && user === wantUser ? wantPath : "/";
+    load(start).catch((e) => message.error(e.message));
+  }, [user, wantUser, wantPath]);
 
   function parent() {
     const parts = listing.path.split("/").filter(Boolean);

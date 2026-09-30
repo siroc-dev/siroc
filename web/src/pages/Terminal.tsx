@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 import { App, Button, Select, Space, Typography } from "antd";
 import { api } from "@/lib/api";
 import { SSHTerminal } from "@/components/SSHTerminal";
@@ -9,6 +9,8 @@ type Account = { username: string };
 export function TerminalPage() {
   const { message } = App.useApp();
   const { admin } = useOutletContext<{ user: string; admin?: boolean }>();
+  const [search] = useSearchParams();
+  const wantUser = (search.get("user") || "").trim();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [user, setUser] = useState("");
   const [session, setSession] = useState(0);
@@ -18,11 +20,12 @@ export function TerminalPage() {
       .get<Account[]>("/api/accounts")
       .then((a) => {
         setAccounts(a);
-        if (a[0]) setUser(a[0].username);
+        if (wantUser && (wantUser === "root" ? admin : a.some((x) => x.username === wantUser))) setUser(wantUser);
+        else if (a[0]) setUser(a[0].username);
         else if (admin) setUser("root");
       })
       .catch((e) => message.error(e.message));
-  }, [admin, message]);
+  }, [admin, message, wantUser]);
 
   const options = [
     ...(admin ? [{ value: "root", label: "System (root)" }] : []),
