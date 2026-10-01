@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -384,6 +386,9 @@ func (s *Server) pmaProxy() http.Handler {
 		}
 		req.Host = "pma.cp.local"
 		req.Header.Set("X-Forwarded-Prefix", "/pma")
+		if req.TLS != nil && req.Header.Get("X-Forwarded-Proto") == "" {
+			req.Header.Set("X-Forwarded-Proto", "https")
+		}
 	}
 	proxy.ModifyResponse = func(res *http.Response) error {
 		if loc := res.Header.Get("Location"); loc != "" {
@@ -398,6 +403,17 @@ func (s *Server) pmaProxy() http.Handler {
 			}
 		}
 		return nil
+	}
+	var healMu sync.Mutex
+	var healed time.Time
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		healMu.Lock()
+		if s.Agent != nil && time.Since(healed) > 15*time.Second {
+			_ = s.Agent.PMAEnsure()
+			healed = time.Now()
+		}
+		healMu.Unlock()
+		http.Error(w, "phpMyAdmin backend is down. Install PHP and phpMyAdmin from Software, then open it again from Databases. ("+err.Error()+")", http.StatusBadGateway)
 	}
 	return proxy
 }
@@ -566,7 +582,12 @@ func (s *Server) installWordPress(w http.ResponseWriter, r *http.Request) {
 	}
 	suf := strings.TrimSpace(body.DBSuffix)
 	if suf == "" {
-		suf = "wp"
+		generated, err := secret.RandomIdent(6)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		suf = generated
 	}
 	if err := validate.DBIdent(suf); err != nil {
 		writeErr(w, http.StatusBadRequest, err)

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,10 +18,11 @@ import (
 )
 
 const (
-	rootDir  = "/opt/siroc/phpmyadmin"
-	tokenDir = "/opt/siroc/pma-signon"
-	tmpDir   = "/opt/siroc/pma-tmp"
-	listen   = "127.0.0.1:9088"
+	rootDir   = "/opt/siroc/phpmyadmin"
+	tokenDir  = "/opt/siroc/pma-signon"
+	tmpDir    = "/opt/siroc/pma-tmp"
+	listen    = "127.0.0.1:9088"
+	fpmListen = "127.0.0.1:9008"
 )
 
 func Installed() (bool, string) {
@@ -46,6 +48,10 @@ func Refresh() error {
 	return configure()
 }
 
+func Ensure() error {
+	return Setup()
+}
+
 func configure() error {
 	if err := writeConfig(); err != nil {
 		return err
@@ -59,25 +65,38 @@ func configure() error {
 	_ = exec.Command("chown", "-R", "www-data:www-data", rootDir).Run()
 	_ = exec.Command("chown", "root:www-data", tokenDir).Run()
 	_ = exec.Command("chown", "www-data:www-data", tmpDir).Run()
-	if err := writePool(); err != nil {
+	v, err := phpVersion()
+	if err != nil {
+		return err
+	}
+	if err := writePool(v); err != nil {
 		return err
 	}
 	if err := writeNginx(); err != nil {
 		return err
 	}
-	_ = exec.Command("systemctl", "restart", phpFPMService()).Run()
+	if err := restartFPM(v); err != nil {
+		return err
+	}
 	if out, err := exec.Command("nginx", "-t").CombinedOutput(); err != nil {
 		return fmt.Errorf("nginx: %s", strings.TrimSpace(string(out)))
 	}
-	return exec.Command("systemctl", "reload", "nginx").Run()
+	if err := exec.Command("systemctl", "reload", "nginx").Run(); err != nil {
+		if out, startErr := exec.Command("systemctl", "restart", "nginx").CombinedOutput(); startErr != nil {
+			return fmt.Errorf("reload nginx: %s", strings.TrimSpace(string(out)))
+		}
+	}
+	if err := waitTCP(listen, 6*time.Second); err != nil {
+		return err
+	}
+	if err := waitTCP(fpmListen, 4*time.Second); err != nil {
+		return fmt.Errorf("phpMyAdmin PHP-FPM is not listening on %s: %w", fpmListen, err)
+	}
+	return nil
 }
 
 func Signon(req rpc.PMASignonReq) (*rpc.PMASignonResp, error) {
-	if ok, _ := Installed(); !ok {
-		if err := Setup(); err != nil {
-			return nil, err
-		}
-	} else if err := writeConfig(); err != nil {
+	if err := Ensure(); err != nil {
 		return nil, err
 	}
 	if err := os.MkdirAll(tokenDir, 0750); err != nil {
@@ -210,57 +229,69 @@ echo 'phpMyAdmin sign-on expired. Open phpMyAdmin again from the control panel.'
 	return nil
 }
 
-func phpVersion() string {
-	for _, v := range []string{"8.4", "8.3", "8.2", "8.1"} {
+func phpVersion() (string, error) {
+	var active, installed []string
+	for _, v := range phpVersions {
 		if _, err := os.Stat("/etc/php/" + v + "/fpm"); err == nil {
-			return v
+			installed = append(installed, v)
+		}
+		if exec.Command("systemctl", "is-active", "--quiet", "php"+v+"-fpm").Run() == nil {
+			active = append(active, v)
 		}
 	}
-	return "8.3"
+	v := pickPHPVersion(active, installed)
+	if v == "" {
+		return "", fmt.Errorf("PHP-FPM is not installed. Install PHP from Software first")
+	}
+	return v, nil
 }
 
-func phpFPMService() string {
-	return "php" + phpVersion() + "-fpm"
-}
-
-func nginxUser() string {
-	b, err := os.ReadFile("/etc/nginx/nginx.conf")
-	if err == nil {
-		for _, line := range strings.Split(string(b), "\n") {
-			line = strings.TrimSpace(line)
-			if !strings.HasPrefix(line, "user") {
-				continue
-			}
-			fields := strings.Fields(strings.TrimSuffix(line, ";"))
-			if len(fields) >= 2 && fields[0] == "user" {
-				return fields[1]
-			}
+func restartFPM(v string) error {
+	svc := "php" + v + "-fpm"
+	_ = exec.Command("systemctl", "enable", svc).Run()
+	if err := exec.Command("systemctl", "restart", svc).Run(); err != nil {
+		if out, err2 := exec.Command("systemctl", "start", svc).CombinedOutput(); err2 != nil {
+			return fmt.Errorf("start %s: %s", svc, strings.TrimSpace(string(out)))
 		}
 	}
-	return "www-data"
+	return nil
 }
 
-func writePool() error {
-	v := phpVersion()
+func waitTCP(addr string, d time.Duration) error {
+	deadline := time.Now().Add(d)
+	var last error
+	for time.Now().Before(deadline) {
+		c, err := net.DialTimeout("tcp", addr, 300*time.Millisecond)
+		if err == nil {
+			_ = c.Close()
+			return nil
+		}
+		last = err
+		time.Sleep(150 * time.Millisecond)
+	}
+	if last == nil {
+		last = fmt.Errorf("timeout")
+	}
+	return fmt.Errorf("phpMyAdmin backend %s is not listening: %v", addr, last)
+}
+
+func writePool(v string) error {
 	dir := "/etc/php/" + v + "/fpm/pool.d"
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	sockUser := nginxUser()
 	body := fmt.Sprintf(`[pma]
 user = www-data
 group = www-data
-listen = /run/php/php-pma.sock
-listen.owner = %s
-listen.group = %s
-listen.mode = 0660
+listen = %s
+listen.allowed_clients = 127.0.0.1
 pm = ondemand
 pm.max_children = 8
 pm.process_idle_timeout = 10s
-php_admin_value[open_basedir] = %s:%s:%s
+php_admin_value[open_basedir] = %s:%s:%s:/tmp:/usr/share/php
 php_admin_value[upload_tmp_dir] = %s
 php_admin_value[session.save_path] = %s
-`, sockUser, sockUser, rootDir, tmpDir, tokenDir, tmpDir, tmpDir)
+`, fpmListen, rootDir, tmpDir, tokenDir, tmpDir, tmpDir)
 	return os.WriteFile(filepath.Join(dir, "pma.conf"), []byte(body), 0644)
 }
 
@@ -275,8 +306,11 @@ func writeNginx() error {
         try_files $uri $uri/ /index.php?$args;
     }
     location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/run/php/php-pma.sock;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param HTTPS $http_x_forwarded_proto if_not_empty;
+        fastcgi_pass 127.0.0.1:9008;
+        fastcgi_read_timeout 120s;
     }
     location ~ /\. { deny all; }
 }

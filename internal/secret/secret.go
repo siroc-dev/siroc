@@ -11,6 +11,8 @@ import (
 )
 
 const passwordChars = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*"
+const identLetters = "abcdefghijkmnopqrstuvwxyz"
+const identChars = "abcdefghijkmnopqrstuvwxyz23456789"
 
 func RandomPassword(n int) (string, error) {
 	if n < 8 {
@@ -23,6 +25,22 @@ func RandomPassword(n int) (string, error) {
 	out := make([]byte, n)
 	for i, b := range buf {
 		out[i] = passwordChars[int(b)%len(passwordChars)]
+	}
+	return string(out), nil
+}
+
+func RandomIdent(n int) (string, error) {
+	if n < 3 {
+		n = 6
+	}
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	out := make([]byte, n)
+	out[0] = identLetters[int(buf[0])%len(identLetters)]
+	for i := 1; i < n; i++ {
+		out[i] = identChars[int(buf[i])%len(identChars)]
 	}
 	return string(out), nil
 }

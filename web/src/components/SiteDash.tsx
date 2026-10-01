@@ -117,7 +117,7 @@ export function SiteDash({
     { key: "logs", title: "Logs", desc: "Access and error logs", icon: <FileTextOutlined />, color: "#fa8c16" },
     { key: "ssh", title: "SSH terminal", desc: `Shell as ${site.username}`, icon: <LaptopOutlined />, color: "#262626" },
     { key: "git", title: "Git", desc: "Force-pull deploy and webhook", icon: <ThunderboltOutlined />, color: "#f5222d" },
-    { key: "stats", title: "Statistics", desc: "GoAccess report", icon: <GlobalOutlined />, color: "#2f54eb" },
+    { key: "stats", title: "Statistics", desc: "Geo, ASN, AI crawlers, time", icon: <GlobalOutlined />, color: "#2f54eb" },
   ];
   if (phpSite) {
     dev.push(

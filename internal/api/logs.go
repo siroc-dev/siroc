@@ -102,6 +102,7 @@ func (s *Server) siteLogs(w http.ResponseWriter, r *http.Request) {
 		Domain:   st.Domain,
 		DocRoot:  st.DocRoot,
 		ID:       r.URL.Query().Get("id"),
+		Probe:    r.URL.Query().Get("probe") == "1",
 	})
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)

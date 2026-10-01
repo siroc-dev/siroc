@@ -5,6 +5,7 @@ package weblog
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,14 @@ func SiteLogs(req rpc.SiteLogReq) (*rpc.SiteLogsResp, error) {
 		return nil, err
 	}
 	_ = TouchSiteLogs(req.Domain)
+	var probeErr error
+	if req.Probe {
+		probeErr = ProbeHTTP(req.Domain)
+		if probeErr == nil {
+			time.Sleep(250 * time.Millisecond)
+			reopenNginxLogs()
+		}
+	}
 	files, err := listSiteLogFiles(req.Username, req.Domain, req.DocRoot)
 	if err != nil {
 		return nil, err
@@ -51,6 +60,7 @@ func SiteLogs(req rpc.SiteLogReq) (*rpc.SiteLogsResp, error) {
 	}
 	out.Current = current
 	if current.Path == "" {
+		out.Hint = logHint(req, files, current, false, probeErr)
 		return out, nil
 	}
 	content, size, trunc, err := ReadTail(current.Path, req.Bytes)
@@ -69,6 +79,7 @@ func SiteLogs(req rpc.SiteLogReq) (*rpc.SiteLogsResp, error) {
 				}
 			}
 		}
+		out.Hint = logHint(req, files, current, strings.TrimSpace(out.Content) != "", probeErr)
 		return out, nil
 	}
 	current.Exists = true
@@ -88,7 +99,30 @@ func SiteLogs(req rpc.SiteLogReq) (*rpc.SiteLogsResp, error) {
 	}
 	out.Entries = ParseLogEntries(current.Group, current.Kind, content)
 	out.Counts = CountLevels(out.Entries)
+	out.Hint = logHint(req, files, current, strings.TrimSpace(content) != "", probeErr)
 	return out, nil
+}
+
+func ProbeHTTP(domain string) error {
+	client := &http.Client{
+		Timeout: 4 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	req, err := http.NewRequest(http.MethodHead, "http://127.0.0.1/", nil)
+	if err != nil {
+		return err
+	}
+	req.Host = domain
+	req.Header.Set("User-Agent", "Siroc-Log-Probe/1.0")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	return nil
 }
 
 func pickDefaultID(files []rpc.SiteLogFile) string {
@@ -141,8 +175,16 @@ func listSiteLogFiles(user, domain, doc string) ([]rpc.SiteLogFile, error) {
 }
 
 func siteLogMeta(id, label, group, kind, path string) rpc.SiteLogFile {
-	f := rpc.SiteLogFile{ID: id, Label: label, Group: group, Kind: kind, Path: path}
-	st, err := os.Stat(path)
+	chosen := path
+	if st, err := os.Stat(path); err != nil || st.Size() == 0 {
+		if _, alt := leftoverFor(group, kind, domainFromLogPath(path)); alt != "" && alt != path {
+			if ast, aerr := os.Stat(alt); aerr == nil && ast.Size() > 0 {
+				chosen = alt
+			}
+		}
+	}
+	f := rpc.SiteLogFile{ID: id, Label: label, Group: group, Kind: kind, Path: chosen}
+	st, err := os.Stat(chosen)
 	if err != nil {
 		return f
 	}

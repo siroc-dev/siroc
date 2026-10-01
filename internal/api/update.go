@@ -10,12 +10,12 @@ import (
 	"github.com/siroc-dev/siroc/internal/version"
 )
 
+func defaultUpdateChannel() string {
+	return update.ResolveChannel(os.Getenv("SIROC_UPDATE_URL"))
+}
+
 func (s *Server) panelUpdateStatus(w http.ResponseWriter, _ *http.Request) {
-	channel, _ := s.Store.Setting("update_channel")
-	if channel == "" {
-		channel = update.ResolveChannel(os.Getenv("SIROC_UPDATE_URL"))
-		_ = s.Store.SetSetting("update_channel", channel)
-	}
+	channel := defaultUpdateChannel()
 	st, err := s.Agent.PanelUpdateStatus()
 	if err != nil {
 		writeJSON(w, http.StatusOK, rpc.PanelUpdateStatus{
@@ -26,9 +26,7 @@ func (s *Server) panelUpdateStatus(w http.ResponseWriter, _ *http.Request) {
 		})
 		return
 	}
-	if st.Channel == "" {
-		st.Channel = channel
-	}
+	st.Channel = channel
 	if st.Version == "" {
 		st.Version = version.Current()
 	}
@@ -40,13 +38,9 @@ func (s *Server) panelUpdate(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	if ch := strings.TrimSpace(body.Channel); ch != "" {
-		_ = s.Store.SetSetting("update_channel", ch)
-	} else if saved, _ := s.Store.Setting("update_channel"); saved != "" {
-		body.Channel = saved
-	} else {
-		body.Channel = update.ResolveChannel(os.Getenv("SIROC_UPDATE_URL"))
-	}
+	body.Channel = defaultUpdateChannel()
+	body.URL = ""
+	body.Path = ""
 	action := strings.ToLower(strings.TrimSpace(body.Action))
 	if action == "" || action == "status" {
 		s.panelUpdateStatus(w, r)

@@ -2,8 +2,8 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useOutletContext, useSearchParams } from "react-router-dom";
 import {
   App,
+  Breadcrumb,
   Button,
-  Card,
   Checkbox,
   Dropdown,
   Input,
@@ -15,23 +15,28 @@ import {
   Table,
   Tag,
   Tooltip,
+  Tree,
   Typography,
   Upload,
 } from "antd";
 import type { MenuProps } from "antd";
+import type { DataNode } from "antd/es/tree";
 import {
   CloudDownloadOutlined,
   CopyOutlined,
   DeleteOutlined,
   DownloadOutlined,
+  FileAddOutlined,
   FileOutlined,
   FileZipOutlined,
   FolderAddOutlined,
   FolderOutlined,
+  HomeOutlined,
   InboxOutlined,
   LaptopOutlined,
   LockOutlined,
   MoreOutlined,
+  ReloadOutlined,
   SearchOutlined,
   ScissorOutlined,
   SnippetsOutlined,
@@ -73,6 +78,29 @@ function bits(v: number, flag: number) {
   return (v & flag) === flag;
 }
 
+function fmtTime(s: string) {
+  if (!s) return "—";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleString();
+}
+
+function crumbParts(path: string) {
+  const parts = path.split("/").filter(Boolean);
+  const items: { title: string; path: string }[] = [{ title: "Home directory", path: "/" }];
+  let cur = "";
+  for (const part of parts) {
+    cur += "/" + part;
+    items.push({ title: part, path: cur });
+  }
+  return items;
+}
+
+function isSafeName(name: string) {
+  const n = name.trim();
+  return n !== "" && !n.includes("/") && !n.includes("\\") && n !== "." && n !== "..";
+}
+
 export function Files() {
   const { message, modal } = App.useApp();
   const { admin } = useOutletContext<{ user: string; admin?: boolean }>();
@@ -85,7 +113,6 @@ export function Files() {
   const [editPath, setEditPath] = useState("");
   const [absPath, setAbsPath] = useState("");
   const [content, setContent] = useState("");
-  const [mkdir, setMkdir] = useState("");
   const [busy, setBusy] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [lspOn, setLspOn] = useState(false);
@@ -105,6 +132,14 @@ export function Files() {
   const [searchHits, setSearchHits] = useState<{ path: string; line: number; text: string }[]>([]);
   const [termOpen, setTermOpen] = useState(false);
   const [termCwd, setTermCwd] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [filter, setFilter] = useState("");
+  const [treeKids, setTreeKids] = useState<Record<string, Entry[]>>({});
+  const [expanded, setExpanded] = useState<string[]>(["/"]);
+  const [fileOpen, setFileOpen] = useState(false);
+  const [folderOpen, setFolderOpen] = useState(false);
+  const [newFile, setNewFile] = useState("");
+  const [newFolder, setNewFolder] = useState("");
 
   const root = user === "root";
 
@@ -112,6 +147,43 @@ export function Files() {
     if (!user) return;
     const data = await api.get<Listing>(`/api/files?user=${encodeURIComponent(user)}&path=${encodeURIComponent(path)}`);
     setListing(data);
+    setTreeKids((prev) => ({ ...prev, [data.path]: data.entries }));
+    setSelected([]);
+    const keys = ["/"];
+    let cur = "";
+    for (const part of data.path.split("/").filter(Boolean)) {
+      cur += "/" + part;
+      keys.push(cur);
+    }
+    setExpanded((prev) => Array.from(new Set([...prev, ...keys])));
+    void prefetchTree(data.path);
+  }
+
+  async function prefetchTree(path: string) {
+    if (!user) return;
+    const parts = path.split("/").filter(Boolean);
+    let cur = "/";
+    const next: Record<string, Entry[]> = {};
+    for (let i = 0; i <= parts.length; i++) {
+      if (treeKids[cur]) {
+        if (i < parts.length) cur = joinPath(cur, parts[i]);
+        continue;
+      }
+      try {
+        const data = await api.get<Listing>(`/api/files?user=${encodeURIComponent(user)}&path=${encodeURIComponent(cur)}`);
+        next[data.path] = data.entries;
+      } catch {
+        break;
+      }
+      if (i < parts.length) cur = joinPath(cur, parts[i]);
+    }
+    if (Object.keys(next).length) setTreeKids((prev) => ({ ...prev, ...next }));
+  }
+
+  async function loadTreeNode(key: string) {
+    if (!user || treeKids[key]) return;
+    const data = await api.get<Listing>(`/api/files?user=${encodeURIComponent(user)}&path=${encodeURIComponent(key)}`);
+    setTreeKids((prev) => ({ ...prev, [data.path]: data.entries }));
   }
 
   useEffect(() => {
@@ -126,6 +198,8 @@ export function Files() {
 
   useEffect(() => {
     if (!user) return;
+    setTreeKids({});
+    setExpanded(["/"]);
     const start = wantUser && user === wantUser ? wantPath : "/";
     load(start).catch((e) => message.error(e.message));
   }, [user, wantUser, wantPath]);
@@ -172,11 +246,39 @@ export function Files() {
   }
 
   async function makeDir() {
-    const path = `${listing.path.replace(/\/$/, "")}/${mkdir}`;
+    if (!isSafeName(newFolder)) {
+      message.error("Enter a folder name without slashes");
+      return;
+    }
+    const path = joinPath(listing.path, newFolder.trim());
     try {
       await api.post("/api/files/mkdir", { user, path });
-      setMkdir("");
+      setNewFolder("");
+      setFolderOpen(false);
       await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  async function makeFile() {
+    if (!isSafeName(newFile)) {
+      message.error("Enter a file name without slashes");
+      return;
+    }
+    const path = joinPath(listing.path, newFile.trim());
+    try {
+      await api.put("/api/files/content", { user, path, content: "" });
+      setNewFile("");
+      setFileOpen(false);
+      await load();
+      const data = await api.get<{ content: string; absPath?: string }>(
+        `/api/files/content?user=${encodeURIComponent(user)}&path=${encodeURIComponent(path)}`,
+      );
+      setEditPath(path);
+      setAbsPath(data.absPath || "");
+      setContent(data.content);
+      setLspOn(false);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
     }
@@ -316,6 +418,23 @@ export function Files() {
     });
   }
 
+  async function archiveEntry(e: Entry) {
+    setBusy(true);
+    try {
+      const out = await api.post<{ dest?: string }>("/api/files/archive", { user, path: e.path });
+      message.success("Archived");
+      await load();
+      if (out.dest) {
+        const parent = out.dest.replace(/\/[^/]+$/, "") || "/";
+        if (parent !== listing.path) await load(parent);
+      }
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Archive failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function extract(e: Entry) {
     setBusy(true);
     try {
@@ -434,14 +553,34 @@ export function Files() {
   ];
 
   const workspace = editorWorkspace(absPath, listing.absPath);
-  const rows = useMemo(
-    () =>
-      [...listing.entries].sort((a, b) => {
+  const rows = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    return [...listing.entries]
+      .filter((e) => !q || e.name.toLowerCase().includes(q))
+      .sort((a, b) => {
         if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
         return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-      }),
-    [listing.entries],
-  );
+      });
+  }, [listing.entries, filter]);
+  const picked = useMemo(() => rows.filter((e) => selected.includes(e.path)), [rows, selected]);
+  const treeData = useMemo<DataNode[]>(() => {
+    const walk = (path: string): DataNode[] =>
+      (treeKids[path] || [])
+        .filter((e) => e.isDir)
+        .map((e) => ({
+          title: e.name,
+          key: e.path,
+          children: treeKids[e.path] ? walk(e.path) : undefined,
+        }));
+    return [
+      {
+        title: "Home directory",
+        key: "/",
+        icon: <HomeOutlined />,
+        children: walk("/"),
+      },
+    ];
+  }, [treeKids]);
 
   const permWho: { key: "u" | "g" | "o"; label: string }[] = [
     { key: "u", label: "Owner" },
@@ -464,6 +603,54 @@ export function Files() {
     setTermOpen(true);
   }
 
+  function needPicked(action: string) {
+    if (picked.length) return true;
+    message.info(`Select a file or folder to ${action}`);
+    return false;
+  }
+
+  function toolbarCopy() {
+    if (!needPicked("copy")) return;
+    const e = picked[0];
+    setClip({ path: e.path, name: e.name, isDir: e.isDir, op: "copy" });
+    message.success(`Copied ${e.name}`);
+  }
+
+  function toolbarMove() {
+    if (!needPicked("move")) return;
+    const e = picked[0];
+    setMoveItem(e);
+    setMoveDest(joinPath(listing.path, e.name));
+  }
+
+  function toolbarExtract() {
+    const e = picked.find((x) => !x.isDir && isArchive(x.name));
+    if (!e) {
+      message.info("Select a zip, tar, or 7z file to extract");
+      return;
+    }
+    confirmExtract(e);
+  }
+
+  function toolbarArchive() {
+    if (!needPicked("archive")) return;
+    void archiveEntry(picked[0]);
+  }
+
+  function toolbarDelete() {
+    if (!needPicked("delete")) return;
+    const names = picked.map((e) => e.name).join(", ");
+    modal.confirm({
+      title: picked.length === 1 ? `Delete ${picked[0].name}?` : `Delete ${picked.length} items?`,
+      content: names,
+      okText: "Delete",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        for (const e of picked) await remove(e.path);
+      },
+    });
+  }
+
   function fileActions(e: Entry): MenuProps["items"] {
     const items: MenuProps["items"] = [
       { key: "download", icon: <DownloadOutlined />, label: "Download" },
@@ -473,6 +660,8 @@ export function Files() {
     }
     if (!e.isDir && isArchive(e.name)) {
       items.push({ key: "extract", icon: <FileZipOutlined />, label: "Extract", disabled: busy });
+    } else {
+      items.push({ key: "archive", icon: <FileZipOutlined />, label: "Archive", disabled: busy });
     }
     items.push(
       { key: "perm", icon: <LockOutlined />, label: "Permissions" },
@@ -494,6 +683,7 @@ export function Files() {
     if (key === "download") void download(e);
     if (key === "terminal") openTerminal(e.path);
     if (key === "extract") confirmExtract(e);
+    if (key === "archive") void archiveEntry(e);
     if (key === "perm") openPerm(e);
     if (key === "copy") setClip({ path: e.path, name: e.name, isDir: e.isDir, op: "copy" });
     if (key === "move") {
@@ -520,115 +710,215 @@ export function Files() {
         <Select style={{ minWidth: 160, maxWidth: "100%", width: 220 }} value={user || undefined} placeholder="Select account" onChange={setUser} options={options} />
       </div>
       {!user ? <Typography.Text type="secondary">Create a hosting account first.</Typography.Text> : null}
-      <Card
-        className="file-card"
-        title={
-          <Space wrap size={8} style={{ maxWidth: "100%" }}>
-            <Typography.Text code className="file-path">
-              {listing.path}
-            </Typography.Text>
+      <div className="fm-shell file-card">
+        <aside className="fm-tree">
+          <div className="fm-tree-title">Home directory</div>
+          {root ? (
+            <div className="fm-tree-shortcuts">
+              {rootShortcuts.map((p) => (
+                <Button key={p} type="link" size="small" onClick={() => void load(p)}>
+                  {p}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+          <Tree.DirectoryTree
+            blockNode
+            showIcon
+            treeData={treeData}
+            selectedKeys={[listing.path]}
+            expandedKeys={expanded}
+            onExpand={(keys) => setExpanded(keys.map(String))}
+            onSelect={(keys) => {
+              const key = String(keys[0] || "/");
+              void load(key);
+            }}
+            loadData={async (node) => loadTreeNode(String(node.key))}
+          />
+        </aside>
+        <section className="fm-main">
+          <div className="fm-toolbar">
+            <Button icon={<FileAddOutlined />} disabled={!user} onClick={() => setFileOpen(true)}>
+              New file
+            </Button>
+            <Button icon={<FolderAddOutlined />} disabled={!user} onClick={() => setFolderOpen(true)}>
+              New folder
+            </Button>
+            <Button type="primary" icon={<UploadOutlined />} onClick={() => setUpOpen(true)} disabled={!user}>
+              Upload
+            </Button>
+            <Button icon={<FileZipOutlined />} disabled={!user || busy} onClick={toolbarExtract}>
+              Extract
+            </Button>
+            <Button icon={<FileZipOutlined />} disabled={!user || busy} onClick={toolbarArchive}>
+              Archive
+            </Button>
+            <Button icon={<CopyOutlined />} disabled={!user} onClick={toolbarCopy}>
+              Copy
+            </Button>
+            <Button icon={<ScissorOutlined />} disabled={!user} onClick={toolbarMove}>
+              Move
+            </Button>
+            <Tooltip title="Paste here">
+              <Button icon={<SnippetsOutlined />} disabled={!clip || busy} onClick={() => void pasteInto(listing.path)}>
+                Paste
+              </Button>
+            </Tooltip>
+            <Button danger icon={<DeleteOutlined />} disabled={!user || busy} onClick={toolbarDelete}>
+              Remove
+            </Button>
+            <Dropdown
+              menu={{
+                items: [
+                  { key: "fetch", icon: <CloudDownloadOutlined />, label: "Remote download" },
+                  { key: "search", icon: <SearchOutlined />, label: "Search contents" },
+                  { key: "term", icon: <LaptopOutlined />, label: "Terminal" },
+                  { key: "up", label: "Go up", disabled: listing.path === "/" },
+                  { key: "refresh", icon: <ReloadOutlined />, label: "Refresh" },
+                ],
+                onClick: ({ key }) => {
+                  if (key === "fetch") setFetchOpen(true);
+                  if (key === "search") setSearchOpen(true);
+                  if (key === "term") openTerminal();
+                  if (key === "up") void load(parent());
+                  if (key === "refresh") void load();
+                },
+              }}
+            >
+              <Button icon={<MoreOutlined />}>More</Button>
+            </Dropdown>
+            <Input.Search
+              allowClear
+              placeholder="Search in this folder"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              style={{ marginLeft: "auto", maxWidth: 240 }}
+            />
+          </div>
+          <div className="fm-crumb">
+            <Breadcrumb
+              items={crumbParts(listing.path).map((c) => ({
+                title: (
+                  <button type="button" className="fm-crumb-btn" onClick={() => void load(c.path)}>
+                    {c.path === "/" ? <HomeOutlined /> : null} {c.title}
+                  </button>
+                ),
+              }))}
+            />
             {root ? <Tag color="red">root</Tag> : null}
             {listing.absPath && listing.absPath !== listing.path ? (
               <Typography.Text type="secondary" className="file-path">
                 {listing.absPath}
               </Typography.Text>
             ) : null}
-          </Space>
-        }
-      >
-        <div className="file-toolbar">
-          <Button onClick={() => load(parent())} disabled={listing.path === "/"}>
-            Up
-          </Button>
-          {root
-            ? rootShortcuts.map((p) => (
-                <Button key={p} size="small" onClick={() => load(p)}>
-                  {p}
-                </Button>
-              ))
-            : null}
-          <Input.Search placeholder="new folder" value={mkdir} onChange={(e) => setMkdir(e.target.value)} onSearch={makeDir} enterButton="Mkdir" />
-          <Button type="primary" icon={<UploadOutlined />} onClick={() => setUpOpen(true)} disabled={!user}>
-            Upload
-          </Button>
-          <Button icon={<CloudDownloadOutlined />} onClick={() => setFetchOpen(true)} disabled={!user || busy}>
-            Remote download
-          </Button>
-          <Button icon={<SearchOutlined />} onClick={() => setSearchOpen(true)} disabled={!user || busy}>
-            Search
-          </Button>
-          <Button icon={<LaptopOutlined />} onClick={() => openTerminal()} disabled={!user}>
-            Terminal
-          </Button>
-          <Tooltip title="Paste here">
-            <Button icon={<SnippetsOutlined />} disabled={!clip || busy} onClick={() => void pasteInto(listing.path)}>
-              Paste
-            </Button>
-          </Tooltip>
-        </div>
-        {clip ? (
-          <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-            {clip.op === "move" ? "Moving" : "Copied"} <Typography.Text code>{clip.name}</Typography.Text> — choose a folder, then Paste.
-            <Button type="link" size="small" onClick={() => setClip(null)}>
-              Cancel
-            </Button>
-          </Typography.Paragraph>
-        ) : null}
-        <div className="cp-table-wrap file-table">
-          <Table
-            size="small"
-            rowKey="path"
-            pagination={false}
-            dataSource={rows}
-            tableLayout="auto"
-            columns={[
-              {
-                title: "Name",
-                ellipsis: true,
-                render: (_, e) => (
-                  <Button type="link" className="file-name" onClick={() => open(e)}>
-                    {e.isDir ? <FolderOutlined /> : isArchive(e.name) ? <FileZipOutlined /> : <FileOutlined />}
-                    <span>{e.name}</span>
-                  </Button>
-                ),
-              },
-              {
-                title: "Size",
-                width: 110,
-                align: "right" as const,
-                render: (_, e: Entry) => (e.isDir ? "—" : formatBytes(e.size || 0)),
-                sorter: (a: Entry, b: Entry) => {
-                  if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-                  return (a.size || 0) - (b.size || 0);
+          </div>
+          {clip ? (
+            <Typography.Paragraph type="secondary" style={{ margin: "8px 12px 0" }}>
+              {clip.op === "move" ? "Moving" : "Copied"} <Typography.Text code>{clip.name}</Typography.Text> — open a folder, then Paste.
+              <Button type="link" size="small" onClick={() => setClip(null)}>
+                Cancel
+              </Button>
+            </Typography.Paragraph>
+          ) : null}
+          <div className="cp-table-wrap file-table fm-table">
+            <Table
+              size="small"
+              rowKey="path"
+              pagination={false}
+              dataSource={rows}
+              tableLayout="auto"
+              rowSelection={{
+                selectedRowKeys: selected,
+                onChange: (keys) => setSelected(keys.map(String)),
+              }}
+              columns={[
+                {
+                  title: "Name",
+                  ellipsis: true,
+                  render: (_, e) => (
+                    <Button type="link" className="file-name" onClick={() => open(e)}>
+                      {e.isDir ? <FolderOutlined /> : isArchive(e.name) ? <FileZipOutlined /> : <FileOutlined />}
+                      <span>{e.name}</span>
+                    </Button>
+                  ),
                 },
-              },
-              { title: "Mode", dataIndex: "mode", width: 80, responsive: ["sm"] },
-              {
-                title: "",
-                width: 48,
-                align: "right" as const,
-                render: (_, e) => (
-                  <Dropdown
-                    trigger={["click"]}
-                    placement="bottomRight"
-                    getPopupContainer={() => document.body}
-                    menu={{
-                      items: fileActions(e),
-                      onClick: ({ key, domEvent }) => {
-                        domEvent.stopPropagation();
-                        onFileAction(e, key);
-                      },
-                    }}
-                  >
-                    <Button type="text" size="small" icon={<MoreOutlined />} onClick={(ev) => ev.stopPropagation()} />
-                  </Dropdown>
-                ),
-              },
-            ]}
-          />
-        </div>
-      </Card>
+                {
+                  title: "Modified",
+                  width: 180,
+                  responsive: ["sm"],
+                  render: (_, e: Entry) => fmtTime(e.modTime),
+                  sorter: (a: Entry, b: Entry) => (a.modTime || "").localeCompare(b.modTime || ""),
+                },
+                {
+                  title: "Size",
+                  width: 110,
+                  align: "right" as const,
+                  render: (_, e: Entry) => (e.isDir ? "—" : formatBytes(e.size || 0)),
+                  sorter: (a: Entry, b: Entry) => {
+                    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+                    return (a.size || 0) - (b.size || 0);
+                  },
+                },
+                { title: "Permissions", dataIndex: "mode", width: 110, responsive: ["md"] },
+                {
+                  title: "",
+                  width: 48,
+                  align: "right" as const,
+                  render: (_, e) => (
+                    <Dropdown
+                      trigger={["click"]}
+                      placement="bottomRight"
+                      getPopupContainer={() => document.body}
+                      menu={{
+                        items: fileActions(e),
+                        onClick: ({ key, domEvent }) => {
+                          domEvent.stopPropagation();
+                          onFileAction(e, key);
+                        },
+                      }}
+                    >
+                      <Button type="text" size="small" icon={<MoreOutlined />} onClick={(ev) => ev.stopPropagation()} />
+                    </Dropdown>
+                  ),
+                },
+              ]}
+            />
+          </div>
+        </section>
+      </div>
 
+      <Modal
+        title="New file"
+        open={fileOpen}
+        onCancel={() => setFileOpen(false)}
+        onOk={() => void makeFile()}
+        okText="Create"
+        destroyOnHidden
+      >
+        <Input
+          autoFocus
+          placeholder="index.php"
+          value={newFile}
+          onChange={(e) => setNewFile(e.target.value)}
+          onPressEnter={() => void makeFile()}
+        />
+      </Modal>
+      <Modal
+        title="New folder"
+        open={folderOpen}
+        onCancel={() => setFolderOpen(false)}
+        onOk={() => void makeDir()}
+        okText="Create"
+        destroyOnHidden
+      >
+        <Input
+          autoFocus
+          placeholder="httpdocs"
+          value={newFolder}
+          onChange={(e) => setNewFolder(e.target.value)}
+          onPressEnter={() => void makeDir()}
+        />
+      </Modal>
       <Modal
         title={`Upload to ${listing.path}`}
         open={upOpen}

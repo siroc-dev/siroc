@@ -154,7 +154,23 @@ func TouchSiteLogs(domain string) error {
 		_ = fh.Close()
 		_ = exec.Command("chown", f.owner, f.path).Run()
 	}
+	reopenNginxLogs()
 	return nil
+}
+
+func reopenNginxLogs() {
+	for _, p := range []string{"/run/nginx.pid", "/var/run/nginx.pid"} {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		pid := strings.TrimSpace(string(b))
+		if pid == "" {
+			continue
+		}
+		_ = exec.Command("kill", "-USR1", pid).Run()
+		return
+	}
 }
 
 func NginxAccessLog(domain string) string {

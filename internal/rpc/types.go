@@ -807,6 +807,7 @@ type SiteLogReq struct {
 	DocRoot  string `json:"docRoot,omitempty"`
 	ID       string `json:"id,omitempty"`
 	Bytes    int    `json:"bytes,omitempty"`
+	Probe    bool   `json:"probe,omitempty"`
 }
 
 type SiteLogFile struct {
@@ -838,6 +839,7 @@ type SiteLogsResp struct {
 	Counts    map[string]int `json:"counts,omitempty"`
 	Content   string         `json:"content,omitempty"`
 	Truncated bool           `json:"truncated"`
+	Hint      string         `json:"hint,omitempty"`
 }
 
 type SystemStats struct {

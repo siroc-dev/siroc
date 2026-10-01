@@ -311,6 +311,7 @@ func main() {
 	r.Post("/files/chmod", fileHandler(filesMgr, "chmod"))
 	r.Post("/files/copy", fileHandler(filesMgr, "copy"))
 	r.Post("/files/extract", fileHandler(filesMgr, "extract"))
+	r.Post("/files/archive", fileHandler(filesMgr, "archive"))
 	r.Get("/files/download", func(w http.ResponseWriter, r *http.Request) {
 		username := r.URL.Query().Get("username")
 		path := r.URL.Query().Get("path")
@@ -940,6 +941,13 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Post("/pma/ensure", func(w http.ResponseWriter, _ *http.Request) {
+		if err := pma.Ensure(); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
 	r.Post("/pma/signon", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.PMASignonReq
 		if !decode(w, r, &req) {
@@ -1018,6 +1026,10 @@ func fileHandler(m *files.Manager, op string) http.HandlerFunc {
 			out = rpc.OKResp{OK: true}
 		case "extract":
 			dest, e := m.Extract(req.Username, req.Path, req.Root)
+			err = e
+			out = rpc.FileOpResp{OK: err == nil, Dest: dest, Path: dest}
+		case "archive":
+			dest, e := m.Archive(req.Username, req.Path, req.Root)
 			err = e
 			out = rpc.FileOpResp{OK: err == nil, Dest: dest, Path: dest}
 		}

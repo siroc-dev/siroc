@@ -29,7 +29,7 @@ const LEVEL_COLOR: Record<string, string> = {
 };
 
 export function fmtSize(n?: number) {
-  if (!n) return "empty";
+  if (!n) return "0 B";
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
@@ -56,14 +56,17 @@ export function SiteLogs({ siteId, domain }: { siteId: number; domain: string })
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function load(next = id) {
+  async function load(next = id, probe = false) {
     setBusy(true);
     setErr("");
     setOpen(null);
     setPage(1);
     try {
-      const q = next ? `?id=${encodeURIComponent(next)}` : "";
-      const out = await api.get<SiteLogsData>(`/api/sites/${siteId}/logs${q}`);
+      const q = new URLSearchParams();
+      if (next) q.set("id", next);
+      if (probe) q.set("probe", "1");
+      const qs = q.toString() ? `?${q.toString()}` : "";
+      const out = await api.get<SiteLogsData>(`/api/sites/${siteId}/logs${qs}`);
       setData(out);
       if (out.current?.id) setId(out.current.id);
     } catch (e) {
@@ -137,7 +140,9 @@ export function SiteLogs({ siteId, domain }: { siteId: number; domain: string })
                     }}
                   >
                     <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fileName(f)}</div>
-                    <div style={{ fontSize: 11, opacity: 0.75 }}>{f.exists ? fmtSize(f.size) : "none"}</div>
+                    <div style={{ fontSize: 11, opacity: 0.75 }}>
+                      {f.exists ? (f.size ? fmtSize(f.size) : "no traffic") : "none"}
+                    </div>
                   </button>
                 );
               })}
@@ -171,6 +176,9 @@ export function SiteLogs({ siteId, domain }: { siteId: number; domain: string })
             <Button size="small" disabled={!data?.content} onClick={download}>
               Download
             </Button>
+            <Button size="small" loading={busy} onClick={() => void load(id, true)}>
+              Test request
+            </Button>
             <Button size="small" loading={busy} onClick={() => void load(id)}>
               Refresh
             </Button>
@@ -180,16 +188,21 @@ export function SiteLogs({ siteId, domain }: { siteId: number; domain: string })
           <Typography.Text style={{ padding: "6px 12px", color: "#94a3b8", fontSize: 12 }}>Showing the last 256 KB of this file.</Typography.Text>
         ) : null}
         {err ? <Alert type="error" showIcon message={err} style={{ margin: 12 }} /> : null}
+        {data?.hint ? <Alert type="info" showIcon message={data.hint} style={{ margin: 12 }} /> : null}
         <div style={{ flex: 1, overflow: "auto" }}>
           {busy && !data ? (
             <div style={{ padding: 16, color: "#94a3b8" }}>Loading…</div>
           ) : raw ? (
             <pre style={{ margin: 0, padding: 14, fontSize: 12, lineHeight: 1.45, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-              {data?.content || (data?.current?.exists ? "File is empty." : "No log yet.")}
+              {data?.content || (data?.current?.exists ? "File is empty — no traffic has hit this vhost yet." : "No log yet.")}
             </pre>
           ) : !visible.length ? (
             <div style={{ padding: 16, color: "#94a3b8" }}>
-              {data?.current?.exists ? "No matching entries." : "No log yet. Traffic or Laravel errors will appear here."}
+              {data?.current?.exists
+                ? data.current.size
+                  ? "No matching entries."
+                  : "No traffic yet. Visit the site or click Test request."
+                : "No log yet. Traffic or Laravel errors will appear here."}
             </div>
           ) : (
             paged.map((e, i) => {

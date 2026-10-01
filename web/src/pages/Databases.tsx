@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useOutletContext, useSearchParams } from "react-router-dom";
 import { Alert, App, AutoComplete, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Typography } from "antd";
+import { ReloadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
 
@@ -36,6 +37,7 @@ export function Databases() {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
+  const watchUser = Form.useWatch("username", form);
   const [cfg, setCfg] = useState<DBConfig | null>(null);
   const [ramGB, setRamGB] = useState(1);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -89,6 +91,28 @@ export function Databases() {
   useEffect(() => {
     if (admin) loadConfig().catch(() => undefined);
   }, [admin]);
+
+  async function fillRandom(username?: string, kind: "all" | "suffix" | "password" = "all") {
+    const user = username || form.getFieldValue("username") || wantUser || accounts[0]?.username || "";
+    try {
+      const q = user ? `?username=${encodeURIComponent(user)}` : "";
+      const data = await api.get<{ suffix: string; password: string }>(`/api/databases/suggest${q}`);
+      const next: { dbName?: string; dbUser?: string; password?: string } = {};
+      if (kind === "all" || kind === "suffix") {
+        next.dbName = data.suffix;
+        next.dbUser = data.suffix;
+      }
+      if (kind === "all" || kind === "password") next.password = data.password;
+      form.setFieldsValue(next);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Cannot generate database names");
+    }
+  }
+
+  function openCreate() {
+    setOpen(true);
+    setTimeout(() => void fillRandom(), 0);
+  }
 
   async function create(v: { username: string; dbName: string; dbUser: string; password: string }) {
     setBusy(true);
@@ -291,7 +315,7 @@ export function Databases() {
           </Typography.Title>
           <Typography.Text type="secondary">{engine ? `Engine: ${engine}` : "Install MySQL or MariaDB first"}</Typography.Text>
         </div>
-        <Button type="primary" disabled={!engine} onClick={() => setOpen(true)}>
+        <Button type="primary" disabled={!engine} onClick={openCreate}>
           Create database
         </Button>
       </div>
@@ -318,19 +342,30 @@ export function Databases() {
       >
         <Form form={form} layout="vertical" onFinish={create} requiredMark={false} disabled={!engine} style={{ marginTop: 8 }}>
           <Form.Item name="username" label="Account" rules={[{ required: true }]}>
-            <Select options={accounts.map((a) => ({ value: a.username, label: a.username }))} />
+            <Select
+              options={accounts.map((a) => ({ value: a.username, label: a.username }))}
+              onChange={(v) => void fillRandom(v)}
+            />
           </Form.Item>
-          <Form.Item name="dbName" label="DB name suffix" rules={[{ required: true }]}>
-            <Input placeholder="wp" />
+          <Form.Item name="dbName" label="DB name suffix">
+            <Input placeholder="auto" addonBefore={`${watchUser || "user"}_`} />
           </Form.Item>
-          <Form.Item name="dbUser" label="DB user suffix" rules={[{ required: true }]}>
-            <Input placeholder="wp" />
+          <Form.Item name="dbUser" label="DB user suffix">
+            <Input placeholder="same as DB name" addonBefore={`${watchUser || "user"}_`} />
           </Form.Item>
-          <Form.Item name="password" label="Password" rules={[{ required: true, min: 8 }]}>
-            <Input.Password />
+          <Form.Item name="password" label="Password">
+            <Input.Password placeholder="auto" />
           </Form.Item>
+          <Space wrap style={{ marginBottom: 12 }}>
+            <Button icon={<ReloadOutlined />} onClick={() => void fillRandom(undefined, "suffix")}>
+              Random suffix
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={() => void fillRandom(undefined, "password")}>
+              Random password
+            </Button>
+          </Space>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            Names are prefixed with the Linux username, e.g. alice_wp.
+            Empty suffix or password is filled with a random value. Final names look like alice_k7m2nq.
           </Typography.Paragraph>
         </Form>
       </Modal>

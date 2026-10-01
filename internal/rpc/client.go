@@ -173,6 +173,12 @@ func (c *Client) FileExtract(username, path string, root bool) (*FileOpResp, err
 	return &out, err
 }
 
+func (c *Client) FileArchive(username, path string, root bool) (*FileOpResp, error) {
+	var out FileOpResp
+	err := c.do(http.MethodPost, "/files/archive", FileReq{Username: username, Path: path, Root: root}, &out)
+	return &out, err
+}
+
 func (c *Client) FileDownload(username, path string, root bool) (*http.Response, error) {
 	q := url.Values{}
 	q.Set("username", username)
@@ -681,6 +687,10 @@ func (c *Client) PMASignon(in PMASignonReq) (*PMASignonResp, error) {
 	var out PMASignonResp
 	err := c.do(http.MethodPost, "/pma/signon", in, &out)
 	return &out, err
+}
+
+func (c *Client) PMAEnsure() error {
+	return c.do(http.MethodPost, "/pma/ensure", map[string]any{}, nil)
 }
 
 func (c *Client) DBPassword(user, password string) error {

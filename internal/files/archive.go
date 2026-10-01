@@ -108,6 +108,120 @@ func (m *Manager) Extract(username, rel string, root bool) (string, error) {
 	return "/" + filepath.ToSlash(show), nil
 }
 
+func (m *Manager) Archive(username, rel string, root bool) (string, error) {
+	if root {
+		return m.rootArchive(rel)
+	}
+	abs, home, _, _, err := m.resolve(username, rel)
+	if err != nil {
+		return "", err
+	}
+	if abs == home {
+		return "", fmt.Errorf("cannot archive the home directory")
+	}
+	destAbs := uniquePath(abs + ".zip")
+	if err := stillJailed(home, destAbs); err != nil {
+		return "", err
+	}
+	if err := zipTo(abs, destAbs); err != nil {
+		_ = os.Remove(destAbs)
+		return "", err
+	}
+	m.ownPath(destAbs)
+	show, err := filepath.Rel(home, destAbs)
+	if err != nil {
+		return "", err
+	}
+	return "/" + filepath.ToSlash(show), nil
+}
+
+func (m *Manager) rootArchive(rel string) (string, error) {
+	abs, err := resolveRoot(rel)
+	if err != nil {
+		return "", err
+	}
+	if protectedRoot(abs) {
+		return "", fmt.Errorf("cannot archive a system path")
+	}
+	destAbs := uniquePath(abs + ".zip")
+	if protectedRoot(destAbs) {
+		return "", fmt.Errorf("cannot write an archive into a system path")
+	}
+	if err := zipTo(abs, destAbs); err != nil {
+		_ = os.Remove(destAbs)
+		return "", err
+	}
+	m.ownPath(destAbs)
+	return filepath.ToSlash(destAbs), nil
+}
+
+func zipTo(src, dest string) error {
+	info, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
+	if err != nil {
+		return err
+	}
+	zw := zip.NewWriter(f)
+	add := func(path, name string, fi os.FileInfo) error {
+		header, err := zip.FileInfoHeader(fi)
+		if err != nil {
+			return err
+		}
+		header.Name = filepath.ToSlash(name)
+		if fi.IsDir() {
+			header.Name += "/"
+			header.Method = zip.Store
+			_, err = zw.CreateHeader(header)
+			return err
+		}
+		header.Method = zip.Deflate
+		w, err := zw.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+		in, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		_, copyErr := io.Copy(w, in)
+		closeErr := in.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		return closeErr
+	}
+	if info.IsDir() {
+		err = filepath.Walk(src, func(path string, fi os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			rel, relErr := filepath.Rel(src, path)
+			if relErr != nil {
+				return relErr
+			}
+			name := filepath.Join(filepath.Base(src), rel)
+			if rel == "." {
+				name = filepath.Base(src)
+			}
+			return add(path, name, fi)
+		})
+	} else {
+		err = add(src, filepath.Base(src), info)
+	}
+	closeZip := zw.Close()
+	closeFile := f.Close()
+	if err != nil {
+		return err
+	}
+	if closeZip != nil {
+		return closeZip
+	}
+	return closeFile
+}
+
 func (m *Manager) Copy(username, rel, dest string, root bool) error {
 	if root {
 		return m.rootCopy(rel, dest)

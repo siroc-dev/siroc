@@ -18,7 +18,7 @@ var descriptions = map[string]string{
 	"clamav":     "Antivirus scanner for files on the server.",
 	"openssh":    "SSH server. Hosting accounts can be granted or denied shell access.",
 	"vsftpd":     "FTP server. Hosting accounts can be granted or denied FTP.",
-	"goaccess":   "Access-log analytics. Builds per-site HTML stats from Nginx logs.",
+	"goaccess":   "Access-log analytics with time distribution, geo location, ASN mapping, and AI crawlers.",
 	"supervisor": "Process manager for Laravel queue workers and scheduled jobs.",
 	"git":        "Git client for site deploy. First-run stack installs it so force-pull webhooks work.",
 	"composer":   "PHP dependency manager for Laravel and other Composer apps.",

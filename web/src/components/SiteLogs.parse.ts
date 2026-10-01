@@ -26,6 +26,7 @@ export type SiteLogsData = {
   counts?: Record<string, number>;
   content?: string;
   truncated?: boolean;
+  hint?: string;
 };
 
 export const DEFAULT_PAGE_SIZE = 10;

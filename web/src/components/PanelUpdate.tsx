@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, App, Button, Card, Form, Input, Space, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Space, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 
 type UpdateStatus = {
@@ -14,33 +14,26 @@ type UpdateStatus = {
   message?: string;
 };
 
+const DEFAULT_CHANNEL = "https://get.siroc.dev";
+
 export function PanelUpdate() {
   const { message } = App.useApp();
   const [st, setSt] = useState<UpdateStatus | null>(null);
   const [busy, setBusy] = useState("");
-  const [form] = Form.useForm();
 
   async function load() {
     const data = await api.get<UpdateStatus>("/api/panel/update");
     setSt(data);
-    form.setFieldsValue({ channel: data.channel || "https://get.siroc.dev", url: data.packageUrl || "", path: "" });
   }
 
   useEffect(() => {
     load().catch((e) => message.error(e.message));
   }, []);
 
-  async function run(action: string, extra?: Record<string, string>) {
+  async function run(action: string) {
     setBusy(action);
     try {
-      const values = form.getFieldsValue();
-      const data = await api.post<UpdateStatus>("/api/panel/update", {
-        action,
-        channel: values.channel || "",
-        url: values.url || "",
-        path: values.path || "",
-        ...extra,
-      });
+      const data = await api.post<UpdateStatus>("/api/panel/update", { action });
       setSt(data);
       if (data.restarting) {
         message.success("Update applied. The panel will reconnect in a few seconds.");
@@ -57,6 +50,8 @@ export function PanelUpdate() {
     }
   }
 
+  const channel = st?.channel || DEFAULT_CHANNEL;
+
   return (
     <Card title="Siroc updates">
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
@@ -68,39 +63,20 @@ export function PanelUpdate() {
         </Space>
         {st?.message ? <Alert type={st.available ? "info" : "success"} showIcon message={st.message} /> : null}
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          From the server: <code>sudo siroc update</code> to check, <code>sudo siroc upgrade</code> to apply.
-          Or build a package with <code>./scripts/package.sh</code> and publish <code>latest.json</code>:
+          Updates always come from the public channel. On the server you can also run <code>sudo siroc update</code> then{" "}
+          <code>sudo siroc upgrade</code>.
         </Typography.Paragraph>
-        <pre style={{ margin: 0, padding: 12, background: "#f8fafc", borderRadius: 8, fontSize: 12 }}>
-{`{
-  "version": "0.2.6",
-  "url": "https://get.siroc.dev/siroc-linux-amd64.tar.gz",
-  "sha256": "optional"
-}`}
-        </pre>
-        <Form form={form} layout="vertical">
-          <Form.Item name="channel" label="Update channel" extra="Folder URL that contains latest.json, or a direct latest.json URL.">
-            <Input placeholder="https://get.siroc.dev" />
-          </Form.Item>
-          <Form.Item name="url" label="Package URL" extra="Direct .tar.gz if you are not using a channel.">
-            <Input placeholder="https://get.siroc.dev/siroc-linux-amd64.tar.gz" />
-          </Form.Item>
-          <Form.Item
-            name="path"
-            label="Local package path"
-            extra="Absolute path on this server. Allowed: /var/lib/siroc, /opt/siroc, /root, /tmp."
-          >
-            <Input placeholder="/var/lib/siroc/updates/siroc-linux-amd64.tar.gz" />
-          </Form.Item>
-          <Space wrap>
-            <Button loading={busy === "check"} onClick={() => void run("check")}>
-              Check for updates
-            </Button>
-            <Button type="primary" loading={busy === "apply"} onClick={() => void run("apply")}>
-              Apply update
-            </Button>
-          </Space>
-        </Form>
+        <Typography.Text>
+          Channel <code>{channel}</code>
+        </Typography.Text>
+        <Space wrap>
+          <Button loading={busy === "check"} onClick={() => void run("check")}>
+            Check for updates
+          </Button>
+          <Button type="primary" loading={busy === "apply"} onClick={() => void run("apply")}>
+            Apply update
+          </Button>
+        </Space>
       </Space>
     </Card>
   );

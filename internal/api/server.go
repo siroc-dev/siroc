@@ -31,6 +31,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/auth"
 	"github.com/siroc-dev/siroc/internal/config"
 	"github.com/siroc-dev/siroc/internal/rpc"
+	"github.com/siroc-dev/siroc/internal/secret"
 	"github.com/siroc-dev/siroc/internal/store"
 	"github.com/siroc-dev/siroc/internal/validate"
 	"github.com/siroc-dev/siroc/internal/version"
@@ -96,6 +97,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/files/chmod", s.chmodFile)
 		r.Post("/api/files/copy", s.copyFile)
 		r.Post("/api/files/extract", s.extractFile)
+		r.Post("/api/files/archive", s.archiveFile)
 		r.Delete("/api/files", s.deleteFile)
 		r.Post("/api/files/upload", s.uploadFile)
 		r.Get("/api/files/download", s.downloadFile)
@@ -176,6 +178,7 @@ func (s *Server) Router() http.Handler {
 		r.Delete("/api/sites/{id}", s.deleteSite)
 
 		r.Get("/api/databases", s.listDatabases)
+		r.Get("/api/databases/suggest", s.suggestDatabase)
 		r.Post("/api/databases", s.createDatabase)
 		r.Delete("/api/databases/{id}", s.deleteDatabase)
 		r.Get("/api/databases/engine", s.dbEngine)
@@ -850,6 +853,26 @@ func (s *Server) extractFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := s.Agent.FileExtract(username, body.Path, root)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) archiveFile(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		User string `json:"user"`
+		Path string `json:"path"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	username, root, ok := s.fileUser(w, r, body.User)
+	if !ok {
+		return
+	}
+	out, err := s.Agent.FileArchive(username, body.Path, root)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -1878,6 +1901,26 @@ func (s *Server) listDatabases(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, list)
 }
 
+func (s *Server) suggestDatabase(w http.ResponseWriter, r *http.Request) {
+	suf, err := secret.RandomIdent(6)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	pw, err := secret.RandomPassword(16)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	user := strings.TrimSpace(r.URL.Query().Get("username"))
+	out := map[string]any{"suffix": suf, "password": pw}
+	if user != "" {
+		out["dbName"] = user + "_" + suf
+		out["dbUser"] = user + "_" + suf
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) createDatabase(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Username string `json:"username"`
@@ -1888,13 +1931,34 @@ func (s *Server) createDatabase(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	if err := validate.DBIdent(body.DBName); err != nil {
+	nameSuf := strings.TrimSpace(body.DBName)
+	userSuf := strings.TrimSpace(body.DBUser)
+	if nameSuf == "" {
+		suf, err := secret.RandomIdent(6)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		nameSuf = suf
+	}
+	if userSuf == "" {
+		userSuf = nameSuf
+	}
+	if err := validate.DBIdent(nameSuf); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := validate.DBIdent(body.DBUser); err != nil {
+	if err := validate.DBIdent(userSuf); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
+	}
+	if strings.TrimSpace(body.Password) == "" {
+		pw, err := secret.RandomPassword(16)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		body.Password = pw
 	}
 	if !auth.ValidPassword(body.Password) {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("password must be at least 8 characters"))
@@ -1909,8 +1973,8 @@ func (s *Server) createDatabase(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("MySQL/MariaDB is not installed"))
 		return
 	}
-	name := acc.Username + "_" + body.DBName
-	user := acc.Username + "_" + body.DBUser
+	name := acc.Username + "_" + nameSuf
+	user := acc.Username + "_" + userSuf
 	if err := s.Agent.DBCreate(rpc.DBCreateReq{DBName: name, DBUser: user, Password: body.Password, Engine: engine}); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
