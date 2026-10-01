@@ -191,6 +191,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/backup/jobs", s.listBackupJobs)
 		r.Post("/api/backup/run", s.runBackup)
 		r.Post("/api/backup/restore", s.restoreBackup)
+		r.Get("/api/backup/inspect", s.inspectBackup)
 		r.Put("/api/accounts/{username}/quota", s.setAccountQuota)
 		r.Get("/api/quota", s.listQuota)
 		r.Get("/api/accounts/redis", s.listAccountRedis)

@@ -66,12 +66,15 @@ export function Backup() {
     }
   }
 
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [restorePath, setRestorePath] = useState("");
+
   async function run(values: { username: string; destId: number; includeDB: boolean }) {
     setBusy(true);
     try {
       await api.post("/api/backup/run", values);
       setRunOpen(false);
-      message.success("Backup finished");
+      message.success(values.username === "*" ? "Created one archive per account" : "Backup finished");
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -81,11 +84,19 @@ export function Backup() {
     }
   }
 
-  async function restore(j: Job) {
+  async function restore(path: string, username?: string) {
+    if (!path) return;
     setBusy(true);
     try {
-      await api.post("/api/backup/restore", { username: j.account, path: j.localPath });
-      message.success("Restored " + j.account);
+      const out = await api.post<{ createdUser?: boolean; message?: string; manifest?: { username?: string } }>("/api/backup/restore", {
+        username: username || "",
+        path,
+      });
+      const name = out.manifest?.username || username || "account";
+      message.success(out.createdUser ? `Created user ${name} and restored` : out.message || `Restored ${name}`);
+      setRestoreOpen(false);
+      setRestorePath("");
+      await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
     } finally {
@@ -100,10 +111,11 @@ export function Backup() {
           <Typography.Title level={3} style={{ margin: 0 }}>
             Backup
           </Typography.Title>
-          <Typography.Text type="secondary">Local disk, FTP, or S3-compatible object storage</Typography.Text>
+          <Typography.Text type="secondary">One tar.gz per hosting user. Restore recreates a missing Linux user and their sites and databases.</Typography.Text>
         </div>
         <Space>
           <Button onClick={() => setOpen(true)}>Add destination</Button>
+          <Button onClick={() => setRestoreOpen(true)}>Restore archive</Button>
           <Button type="primary" onClick={() => setRunOpen(true)} disabled={!dests.length}>
             Run backup
           </Button>
@@ -156,9 +168,15 @@ export function Backup() {
               width: 110,
               render: (_, j) =>
                 j.localPath && j.status === "ok" ? (
-                  <Button size="small" loading={busy} onClick={() => void restore(j)}>
-                    Restore
-                  </Button>
+                  <Popconfirm
+                    title={`Restore ${j.account}?`}
+                    description="Creates the Linux user if it is missing, then restores home, databases, and sites."
+                    onConfirm={() => void restore(j.localPath || "", j.account)}
+                  >
+                    <Button size="small" loading={busy}>
+                      Restore
+                    </Button>
+                  </Popconfirm>
                 ) : null,
             },
           ]}
@@ -234,7 +252,12 @@ export function Backup() {
       <Modal title="Run backup" open={runOpen} onCancel={() => setRunOpen(false)} onOk={() => runForm.submit()} confirmLoading={busy} destroyOnHidden>
         <Form form={runForm} layout="vertical" onFinish={run} initialValues={{ includeDB: true, username: accounts[0]?.username, destId: dests[0]?.id }}>
           <Form.Item name="username" label="Account" rules={[{ required: true }]}>
-            <Select options={accounts.map((a) => ({ value: a.username, label: a.username }))} />
+            <Select
+              options={[
+                { value: "*", label: "All accounts (one file each)" },
+                ...accounts.map((a) => ({ value: a.username, label: a.username })),
+              ]}
+            />
           </Form.Item>
           <Form.Item name="destId" label="Destination" rules={[{ required: true }]}>
             <Select options={dests.map((d) => ({ value: d.id, label: `${d.name} (${d.kind})` }))} />
@@ -242,8 +265,22 @@ export function Backup() {
           <Form.Item name="includeDB" label="Include MySQL dumps" valuePropName="checked">
             <Switch />
           </Form.Item>
-          <Alert type="info" showIcon message="Creates a tar.gz of the account home, then uploads to the destination." />
+          <Alert type="info" showIcon message="Writes one tar.gz per user: home, databases, sites, FTP, crontab, and account settings. Restore can create the user if it is gone." />
         </Form>
+      </Modal>
+      <Modal
+        title="Restore archive"
+        open={restoreOpen}
+        onCancel={() => setRestoreOpen(false)}
+        onOk={() => void restore(restorePath)}
+        confirmLoading={busy}
+        okText="Restore"
+        destroyOnHidden
+      >
+        <Typography.Paragraph type="secondary">
+          Path to a per-user archive under /var/backups. If the user is not on this server, Siroc creates it from the backup.
+        </Typography.Paragraph>
+        <Input value={restorePath} onChange={(e) => setRestorePath(e.target.value)} placeholder="/var/backups/siroc/alice/alice-20261001-120000.tar.gz" />
       </Modal>
     </div>
   );

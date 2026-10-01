@@ -1091,32 +1091,93 @@ type QuotaInfo struct {
 }
 
 type BackupReq struct {
-	Username  string   `json:"username"`
-	Kind      string   `json:"kind"`
-	LocalDir  string   `json:"localDir,omitempty"`
-	Host      string   `json:"host,omitempty"`
-	Port      int      `json:"port,omitempty"`
-	User      string   `json:"user,omitempty"`
-	Password  string   `json:"password,omitempty"`
-	Path      string   `json:"path,omitempty"`
-	Endpoint  string   `json:"endpoint,omitempty"`
-	Region    string   `json:"region,omitempty"`
-	Bucket    string   `json:"bucket,omitempty"`
-	Prefix    string   `json:"prefix,omitempty"`
-	AccessKey string   `json:"accessKey,omitempty"`
-	SecretKey string   `json:"secretKey,omitempty"`
-	UseSSL    bool     `json:"useSSL,omitempty"`
-	IncludeDB bool     `json:"includeDB,omitempty"`
-	Databases []string `json:"databases,omitempty"`
-	Restore   string   `json:"restore,omitempty"`
+	Username  string          `json:"username"`
+	Kind      string          `json:"kind"`
+	LocalDir  string          `json:"localDir,omitempty"`
+	Host      string          `json:"host,omitempty"`
+	Port      int             `json:"port,omitempty"`
+	User      string          `json:"user,omitempty"`
+	Password  string          `json:"password,omitempty"`
+	Path      string          `json:"path,omitempty"`
+	Endpoint  string          `json:"endpoint,omitempty"`
+	Region    string          `json:"region,omitempty"`
+	Bucket    string          `json:"bucket,omitempty"`
+	Prefix    string          `json:"prefix,omitempty"`
+	AccessKey string          `json:"accessKey,omitempty"`
+	SecretKey string          `json:"secretKey,omitempty"`
+	UseSSL    bool            `json:"useSSL,omitempty"`
+	IncludeDB bool            `json:"includeDB,omitempty"`
+	Databases []string        `json:"databases,omitempty"`
+	Restore   string          `json:"restore,omitempty"`
+	Inspect   bool            `json:"inspect,omitempty"`
+	Manifest  *BackupManifest `json:"manifest,omitempty"`
 }
 
 type BackupResp struct {
-	OK      bool   `json:"ok"`
-	Path    string `json:"path,omitempty"`
-	Remote  string `json:"remote,omitempty"`
-	Size    int64  `json:"size,omitempty"`
-	Message string `json:"message,omitempty"`
+	OK          bool            `json:"ok"`
+	Path        string          `json:"path,omitempty"`
+	Remote      string          `json:"remote,omitempty"`
+	Size        int64           `json:"size,omitempty"`
+	Message     string          `json:"message,omitempty"`
+	CreatedUser bool            `json:"createdUser,omitempty"`
+	Manifest    *BackupManifest `json:"manifest,omitempty"`
+}
+
+type BackupManifest struct {
+	Version   int              `json:"version"`
+	Username  string           `json:"username"`
+	Created   string           `json:"created,omitempty"`
+	Account   BackupAccount    `json:"account"`
+	Sites     []BackupSite     `json:"sites,omitempty"`
+	Databases []BackupDatabase `json:"databases,omitempty"`
+	FTP       []BackupFTP      `json:"ftp,omitempty"`
+}
+
+type BackupAccount struct {
+	Username    string `json:"username"`
+	Password    string `json:"password,omitempty"`
+	SSH         bool   `json:"ssh"`
+	FTP         bool   `json:"ftp"`
+	PHPCLI      string `json:"phpCli,omitempty"`
+	PythonCLI   string `json:"pythonCli,omitempty"`
+	NodeCLI     string `json:"nodeCli,omitempty"`
+	DiskQuotaMB int64  `json:"diskQuotaMB,omitempty"`
+	WAFEnabled  bool   `json:"wafEnabled,omitempty"`
+	PHPFpmJSON  string `json:"phpFpmJson,omitempty"`
+}
+
+type BackupSite struct {
+	Domain     string   `json:"domain"`
+	DocRoot    string   `json:"docRoot,omitempty"`
+	PHPVersion string   `json:"phpVersion,omitempty"`
+	Enabled    bool     `json:"enabled"`
+	Aliases    []string `json:"aliases,omitempty"`
+	SSL        bool     `json:"ssl,omitempty"`
+	SSLKind    string   `json:"sslKind,omitempty"`
+	Rewrite    string   `json:"rewrite,omitempty"`
+	Kind       string   `json:"kind,omitempty"`
+	ProxyPass  string   `json:"proxyPass,omitempty"`
+	AppPort    int      `json:"appPort,omitempty"`
+	AppCmd     string   `json:"appCmd,omitempty"`
+	WAF        bool     `json:"waf,omitempty"`
+	GitRepo    string   `json:"gitRepo,omitempty"`
+	GitBranch  string   `json:"gitBranch,omitempty"`
+	GitPath    string   `json:"gitPath,omitempty"`
+	GitCommand string   `json:"gitCommand,omitempty"`
+	GitToken   string   `json:"gitToken,omitempty"`
+}
+
+type BackupDatabase struct {
+	DBName   string `json:"dbName"`
+	DBUser   string `json:"dbUser"`
+	Password string `json:"password,omitempty"`
+	Engine   string `json:"engine,omitempty"`
+}
+
+type BackupFTP struct {
+	Login    string `json:"login"`
+	Home     string `json:"home,omitempty"`
+	Password string `json:"password,omitempty"`
 }
 
 type SysopsReq struct {

@@ -7,21 +7,27 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
+	"github.com/siroc-dev/siroc/internal/users"
 	"github.com/siroc-dev/siroc/internal/validate"
 )
 
 func Run(req rpc.BackupReq) (*rpc.BackupResp, error) {
+	if req.Inspect {
+		return inspect(req)
+	}
 	if req.Restore != "" {
 		return restore(req)
 	}
@@ -37,35 +43,48 @@ func Run(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, err
 	}
-	archive := filepath.Join(dir, req.Username+"-"+stamp+".tar.gz")
-	args := []string{"-czf", archive, "-C", "/home", req.Username}
-	if req.IncludeDB && len(req.Databases) > 0 {
-		sqlPath := filepath.Join(dir, req.Username+"-"+stamp+".sql")
-		dumpBin := "mysqldump"
-		if _, err := exec.LookPath("mariadb-dump"); err == nil {
-			dumpBin = "mariadb-dump"
-		}
-		var dumpOut []byte
-		var dumpErr error
-		for _, extra := range [][]string{{"--skip-ssl"}, {"--ssl-mode=DISABLED"}, nil} {
-			dargs := append([]string{"--single-transaction", "--routines"}, extra...)
-			dargs = append(dargs, "--databases")
-			dargs = append(dargs, req.Databases...)
-			cmd := exec.Command(dumpBin, dargs...)
-			dumpOut, dumpErr = cmd.CombinedOutput()
-			if dumpErr == nil {
-				break
+	stage := filepath.Join("/var/backups/siroc", ".work", req.Username+"-"+stamp)
+	meta := filepath.Join(stage, "siroc-meta")
+	if err := os.MkdirAll(filepath.Join(meta, "dumps"), 0750); err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(stage)
+	man := req.Manifest
+	if man == nil {
+		man = &rpc.BackupManifest{Version: 1, Username: req.Username}
+	}
+	man.Version = 1
+	man.Username = req.Username
+	if man.Created == "" {
+		man.Created = time.Now().UTC().Format(time.RFC3339)
+	}
+	if man.Account.Username == "" {
+		man.Account.Username = req.Username
+	}
+	raw, err := json.MarshalIndent(man, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(meta, "manifest.json"), raw, 0640); err != nil {
+		return nil, err
+	}
+	if req.IncludeDB {
+		names := req.Databases
+		if len(names) == 0 {
+			for _, d := range man.Databases {
+				if d.DBName != "" {
+					names = append(names, d.DBName)
+				}
 			}
 		}
-		if dumpErr != nil {
-			return nil, fmt.Errorf("mysqldump: %s", strings.TrimSpace(string(dumpOut)))
-		}
-		if err := os.WriteFile(sqlPath, dumpOut, 0640); err != nil {
+		if err := dumpDatabases(filepath.Join(meta, "dumps"), names); err != nil {
 			return nil, err
 		}
-		defer os.Remove(sqlPath)
-		args = append(args, "-C", dir, filepath.Base(sqlPath))
 	}
+	writeCrontab(req.Username, filepath.Join(meta, "crontab"))
+	copySiteCerts(man.Sites, filepath.Join(meta, "ssl"))
+	archive := filepath.Join(dir, req.Username+"-"+stamp+".tar.gz")
+	args := []string{"-czf", archive, "-C", "/home", req.Username, "-C", stage, "siroc-meta"}
 	if out, err := exec.Command("tar", args...).CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("archive: %s", strings.TrimSpace(string(out)))
 	}
@@ -73,7 +92,7 @@ func Run(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp := &rpc.BackupResp{OK: true, Path: archive, Size: fi.Size()}
+	resp := &rpc.BackupResp{OK: true, Path: archive, Size: fi.Size(), Manifest: man, Message: "saved " + filepath.Base(archive)}
 	kind := strings.ToLower(strings.TrimSpace(req.Kind))
 	if kind == "" {
 		kind = "local"
@@ -108,24 +127,255 @@ func Run(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	return resp, nil
 }
 
-func restore(req rpc.BackupReq) (*rpc.BackupResp, error) {
-	if err := validate.LinuxUser(req.Username); err != nil {
-		return nil, err
-	}
+func inspect(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	src := strings.TrimSpace(req.Restore)
-	if src == "" || strings.Contains(src, "..") {
-		return nil, fmt.Errorf("invalid restore path")
-	}
-	if !strings.HasPrefix(src, "/var/backups/siroc/") && !strings.HasPrefix(src, "/home/"+req.Username+"/") {
+	if !RestorePathOK(src, req.Username) {
 		return nil, fmt.Errorf("restore path is not allowed")
 	}
-	home := filepath.Join("/home", req.Username)
-	cmd := exec.Command("tar", "-xzf", src, "-C", "/home")
-	if out, err := cmd.CombinedOutput(); err != nil {
+	man, err := readManifest(src)
+	if err != nil {
+		return nil, err
+	}
+	return &rpc.BackupResp{OK: true, Path: src, Manifest: man, Message: "archive for " + man.Username}, nil
+}
+
+func restore(req rpc.BackupReq) (*rpc.BackupResp, error) {
+	src := strings.TrimSpace(req.Restore)
+	if !RestorePathOK(src, req.Username) {
+		return nil, fmt.Errorf("restore path is not allowed")
+	}
+	tmp := filepath.Join("/var/backups/siroc", ".restore", fmt.Sprintf("%d", time.Now().UnixNano()))
+	if err := os.MkdirAll(tmp, 0750); err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmp)
+	if out, err := exec.Command("tar", "-xzf", src, "-C", tmp).CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("restore: %s", strings.TrimSpace(string(out)))
 	}
-	_ = exec.Command("chown", "-R", req.Username+":"+req.Username, home).Run()
-	return &rpc.BackupResp{OK: true, Path: src, Message: "restored into " + home}, nil
+	man, err := loadExtractedManifest(tmp)
+	if err != nil {
+		man = req.Manifest
+	}
+	if man == nil {
+		man = &rpc.BackupManifest{Version: 1, Username: req.Username}
+	}
+	username := strings.TrimSpace(man.Username)
+	if username == "" {
+		username = strings.TrimSpace(req.Username)
+	}
+	if err := validate.LinuxUser(username); err != nil {
+		return nil, err
+	}
+	man.Username = username
+	if man.Account.Username == "" {
+		man.Account.Username = username
+	}
+	pass := strings.TrimSpace(man.Account.Password)
+	_, existed := user.Lookup(username)
+	created := existed != nil
+	homeSrc := filepath.Join(tmp, username)
+	home := filepath.Join("/home", username)
+	if st, err := os.Stat(homeSrc); err == nil && st.IsDir() {
+		if err := os.MkdirAll(filepath.Dir(home), 0755); err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(home); err != nil {
+			if out, cpErr := exec.Command("cp", "-a", homeSrc, home).CombinedOutput(); cpErr != nil {
+				return nil, fmt.Errorf("restore home: %s", strings.TrimSpace(string(out)))
+			}
+		} else if out, cpErr := exec.Command("cp", "-a", homeSrc+"/.", home+"/").CombinedOutput(); cpErr != nil {
+			return nil, fmt.Errorf("restore home: %s", strings.TrimSpace(string(out)))
+		}
+	}
+	um := &users.Manager{HomeRoot: "/home"}
+	if _, err := um.Ensure(username, 0, 0, pass); err != nil {
+		return nil, fmt.Errorf("create user: %w", err)
+	}
+	_ = exec.Command("chown", "-R", username+":"+username, home).Run()
+	_ = os.Chmod(home, 0711)
+	if err := importDumps(filepath.Join(tmp, "siroc-meta", "dumps"), man.Databases); err != nil {
+		return nil, err
+	}
+	restoreCrontab(username, filepath.Join(tmp, "siroc-meta", "crontab"))
+	restoreSiteCerts(filepath.Join(tmp, "siroc-meta", "ssl"))
+	msg := "restored " + username + " from " + filepath.Base(src)
+	if created {
+		msg = "created user " + username + " and restored from " + filepath.Base(src)
+	}
+	return &rpc.BackupResp{OK: true, Path: src, CreatedUser: created, Manifest: man, Message: msg}, nil
+}
+
+func dumpDatabases(dir string, names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return err
+	}
+	dumpBin := "mysqldump"
+	if _, err := exec.LookPath("mariadb-dump"); err == nil {
+		dumpBin = "mariadb-dump"
+	}
+	for _, name := range names {
+		if err := validate.DBIdent(name); err != nil {
+			return err
+		}
+		var dumpOut []byte
+		var dumpErr error
+		for _, extra := range [][]string{{"--skip-ssl"}, {"--ssl-mode=DISABLED"}, nil} {
+			dargs := append([]string{"--single-transaction", "--routines"}, extra...)
+			dargs = append(dargs, "--databases", name)
+			dumpOut, dumpErr = exec.Command(dumpBin, dargs...).CombinedOutput()
+			if dumpErr == nil {
+				break
+			}
+		}
+		if dumpErr != nil {
+			return fmt.Errorf("mysqldump %s: %s", name, strings.TrimSpace(string(dumpOut)))
+		}
+		if err := os.WriteFile(filepath.Join(dir, name+".sql"), dumpOut, 0640); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func importDumps(dir string, dbs []rpc.BackupDatabase) error {
+	bin := "mysql"
+	if _, err := exec.LookPath("mariadb"); err == nil {
+		bin = "mariadb"
+	}
+	if exec.Command(bin, "--version").Run() != nil {
+		if len(dbs) == 0 {
+			return nil
+		}
+		return fmt.Errorf("MySQL/MariaDB is not installed")
+	}
+	ents, _ := os.ReadDir(dir)
+	for _, e := range ents {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			return err
+		}
+		cmd := exec.Command(bin)
+		cmd.Stdin = bytes.NewReader(b)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("import %s: %s", e.Name(), strings.TrimSpace(string(out)))
+		}
+	}
+	for _, d := range dbs {
+		if err := validate.DBIdent(d.DBName); err != nil {
+			continue
+		}
+		if err := validate.DBIdent(d.DBUser); err != nil || d.Password == "" {
+			continue
+		}
+		sql := strings.Join([]string{
+			fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`;", d.DBName),
+			fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'localhost' IDENTIFIED BY '%s';", escapeSQL(d.DBUser), escapeSQL(d.Password)),
+			fmt.Sprintf("ALTER USER '%s'@'localhost' IDENTIFIED BY '%s';", escapeSQL(d.DBUser), escapeSQL(d.Password)),
+			fmt.Sprintf("GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'localhost';", d.DBName, escapeSQL(d.DBUser)),
+			"FLUSH PRIVILEGES;",
+		}, "\n")
+		cmd := exec.Command(bin)
+		cmd.Stdin = strings.NewReader(sql)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("restore database user %s: %s", d.DBUser, strings.TrimSpace(string(out)))
+		}
+	}
+	return nil
+}
+
+func escapeSQL(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `'`, `''`)
+	return s
+}
+
+func writeCrontab(username, dest string) {
+	out, err := exec.Command("crontab", "-u", username, "-l").CombinedOutput()
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(dest, out, 0640)
+}
+
+func restoreCrontab(username, src string) {
+	b, err := os.ReadFile(src)
+	if err != nil || len(bytes.TrimSpace(b)) == 0 {
+		return
+	}
+	cmd := exec.Command("crontab", "-u", username, "-")
+	cmd.Stdin = bytes.NewReader(b)
+	_ = cmd.Run()
+}
+
+func copySiteCerts(sites []rpc.BackupSite, dest string) {
+	for _, st := range sites {
+		domain := strings.TrimSpace(st.Domain)
+		if domain == "" {
+			continue
+		}
+		live := filepath.Join("/etc/letsencrypt/live", domain)
+		if _, err := os.Stat(filepath.Join(live, "fullchain.pem")); err != nil {
+			continue
+		}
+		out := filepath.Join(dest, domain)
+		_ = os.MkdirAll(out, 0750)
+		for _, name := range []string{"fullchain.pem", "privkey.pem", "chain.pem", "cert.pem"} {
+			_ = exec.Command("cp", "-a", filepath.Join(live, name), filepath.Join(out, name)).Run()
+		}
+	}
+}
+
+func restoreSiteCerts(src string) {
+	ents, err := os.ReadDir(src)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		if !e.IsDir() {
+			continue
+		}
+		domain := e.Name()
+		if validate.Domain(domain) != nil {
+			continue
+		}
+		live := filepath.Join("/etc/letsencrypt/live", domain)
+		_ = os.MkdirAll(live, 0755)
+		_ = exec.Command("cp", "-a", filepath.Join(src, domain)+"/.", live+"/").Run()
+	}
+}
+
+func readManifest(archive string) (*rpc.BackupManifest, error) {
+	cmd := exec.Command("tar", "-xOf", archive, "siroc-meta/manifest.json")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("archive has no user metadata")
+	}
+	var man rpc.BackupManifest
+	if err := json.Unmarshal(out, &man); err != nil {
+		return nil, fmt.Errorf("invalid backup manifest")
+	}
+	if strings.TrimSpace(man.Username) == "" {
+		return nil, fmt.Errorf("backup manifest is missing a username")
+	}
+	return &man, nil
+}
+
+func loadExtractedManifest(root string) (*rpc.BackupManifest, error) {
+	b, err := os.ReadFile(filepath.Join(root, "siroc-meta", "manifest.json"))
+	if err != nil {
+		return nil, err
+	}
+	var man rpc.BackupManifest
+	if err := json.Unmarshal(b, &man); err != nil {
+		return nil, err
+	}
+	return &man, nil
 }
 
 func uploadFTP(req rpc.BackupReq, local string) (string, error) {

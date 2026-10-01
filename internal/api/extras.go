@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/siroc-dev/siroc/internal/auth"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/secret"
 	"github.com/siroc-dev/siroc/internal/store"
@@ -455,39 +456,107 @@ func (s *Server) runBackup(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Username  string `json:"username"`
 		DestID    int64  `json:"destId"`
-		IncludeDB bool   `json:"includeDB"`
+		IncludeDB *bool  `json:"includeDB"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	acc, ok := s.accountOrErr(w, r, body.Username)
-	if !ok {
-		return
+	includeDB := true
+	if body.IncludeDB != nil {
+		includeDB = *body.IncludeDB
 	}
 	dest, err := s.Store.GetBackupDest(body.DestID)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, fmt.Errorf("destination not found"))
 		return
 	}
-	job, err := s.Store.CreateBackupJob(acc.Username, dest.ID, dest.Name)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err)
+	names, ok := s.backupUsernames(w, r, body.Username)
+	if !ok {
 		return
 	}
+	var jobs []*store.BackupJob
+	var last *rpc.BackupResp
+	var firstErr error
+	for _, name := range names {
+		acc, err := s.Store.GetAccountByName(name)
+		if err != nil {
+			continue
+		}
+		job, err := s.Store.CreateBackupJob(acc.Username, dest.ID, dest.Name)
+		if err != nil {
+			firstErr = err
+			continue
+		}
+		req := s.backupDestReq(dest)
+		req.Username = acc.Username
+		req.IncludeDB = includeDB
+		req.Manifest = s.userBackupManifest(acc)
+		for _, d := range req.Manifest.Databases {
+			req.Databases = append(req.Databases, d.DBName)
+		}
+		out, err := s.Agent.BackupRun(req)
+		if err != nil {
+			_ = s.Store.FinishBackupJob(job.ID, "error", err.Error(), "", "", 0)
+			if firstErr == nil {
+				firstErr = err
+			}
+			job, _ = s.Store.GetBackupJob(job.ID)
+			jobs = append(jobs, job)
+			continue
+		}
+		_ = s.Store.FinishBackupJob(job.ID, "ok", out.Message, out.Path, out.Remote, out.Size)
+		job, _ = s.Store.GetBackupJob(job.ID)
+		jobs = append(jobs, job)
+		last = out
+	}
+	if firstErr != nil && last == nil {
+		writeErr(w, http.StatusBadRequest, firstErr)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs, "result": last})
+}
+
+func (s *Server) backupUsernames(w http.ResponseWriter, r *http.Request, raw string) ([]string, bool) {
+	name := strings.TrimSpace(raw)
+	if name == "" || name == "*" {
+		if !isAdmin(currentUser(r)) {
+			writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
+			return nil, false
+		}
+		list, err := s.Store.ListAccounts()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return nil, false
+		}
+		var out []string
+		for _, a := range list {
+			out = append(out, a.Username)
+		}
+		if len(out) == 0 {
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("no hosting accounts to back up"))
+			return nil, false
+		}
+		return out, true
+	}
+	if _, ok := s.accountOrErr(w, r, name); !ok {
+		return nil, false
+	}
+	return []string{name}, true
+}
+
+func (s *Server) backupDestReq(dest *store.BackupDest) rpc.BackupReq {
 	req := rpc.BackupReq{
-		Username:  acc.Username,
-		Kind:      dest.Kind,
-		LocalDir:  dest.Path,
-		Host:      dest.Host,
-		Port:      dest.Port,
-		User:      dest.User,
-		Path:      dest.Path,
-		Endpoint:  dest.Endpoint,
-		Region:    dest.Region,
-		Bucket:    dest.Bucket,
-		Prefix:    dest.Prefix,
-		UseSSL:    dest.UseSSL,
-		IncludeDB: body.IncludeDB,
+		Kind:     dest.Kind,
+		LocalDir: dest.Path,
+		Host:     dest.Host,
+		Port:     dest.Port,
+		User:     dest.User,
+		Path:     dest.Path,
+		Endpoint: dest.Endpoint,
+		Region:   dest.Region,
+		Bucket:   dest.Bucket,
+		Prefix:   dest.Prefix,
+		UseSSL:   dest.UseSSL,
 	}
 	if dest.PasswordEnc != "" {
 		req.Password, _ = s.decryptPassword(dest.PasswordEnc)
@@ -496,26 +565,21 @@ func (s *Server) runBackup(w http.ResponseWriter, r *http.Request) {
 		req.SecretKey, _ = s.decryptPassword(dest.SecretEnc)
 	}
 	req.AccessKey = dest.User
-	if dest.Kind == "s3" && dest.User != "" {
-		req.AccessKey = dest.User
+	return req
+}
+
+func (s *Server) inspectBackup(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(currentUser(r)) {
+		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
+		return
 	}
-	if body.IncludeDB {
-		dbs, _ := s.Store.ListDatabases()
-		for _, d := range dbs {
-			if d.Username == acc.Username {
-				req.Databases = append(req.Databases, d.DBName)
-			}
-		}
-	}
-	out, err := s.Agent.BackupRun(req)
+	path := strings.TrimSpace(r.URL.Query().Get("path"))
+	out, err := s.Agent.BackupRun(rpc.BackupReq{Restore: path, Inspect: true})
 	if err != nil {
-		_ = s.Store.FinishBackupJob(job.ID, "error", err.Error(), "", "", 0)
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	_ = s.Store.FinishBackupJob(job.ID, "ok", out.Message, out.Path, out.Remote, out.Size)
-	job, _ = s.Store.GetBackupJob(job.ID)
-	writeJSON(w, http.StatusOK, map[string]any{"job": job, "result": out})
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) restoreBackup(w http.ResponseWriter, r *http.Request) {
@@ -530,13 +594,16 @@ func (s *Server) restoreBackup(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	if !s.allowAccount(w, r, body.Username) {
-		return
-	}
-	out, err := s.Agent.BackupRun(rpc.BackupReq{Username: body.Username, Restore: body.Path})
+	out, err := s.Agent.BackupRun(rpc.BackupReq{Username: strings.TrimSpace(body.Username), Restore: body.Path})
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
+	}
+	if out != nil && out.Manifest != nil {
+		if err := s.applyBackupManifest(out.Manifest); err != nil {
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("files restored, but panel records failed: %w", err))
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -634,4 +701,241 @@ func (s *Server) installWordPress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) userBackupManifest(acc *store.Account) *rpc.BackupManifest {
+	man := &rpc.BackupManifest{
+		Version:  1,
+		Username: acc.Username,
+		Created:  time.Now().UTC().Format(time.RFC3339),
+		Account: rpc.BackupAccount{
+			Username:    acc.Username,
+			SSH:         acc.SSHEnabled,
+			FTP:         acc.FTPEnabled,
+			PHPCLI:      acc.PHPCLI,
+			PythonCLI:   acc.PythonCLI,
+			NodeCLI:     acc.NodeCLI,
+			DiskQuotaMB: acc.DiskQuotaMB,
+			WAFEnabled:  acc.WAFEnabled,
+			PHPFpmJSON:  acc.PHPFpmJSON,
+		},
+	}
+	if acc.PasswordEnc != "" {
+		if pw, err := s.decryptPassword(acc.PasswordEnc); err == nil {
+			man.Account.Password = pw
+		}
+	}
+	sites, _ := s.Store.ListSites()
+	for _, st := range sites {
+		if st.Username != acc.Username {
+			continue
+		}
+		row := rpc.BackupSite{
+			Domain:     st.Domain,
+			DocRoot:    st.DocRoot,
+			PHPVersion: st.PHPVersion,
+			Enabled:    st.Enabled,
+			Aliases:    st.Aliases,
+			SSL:        st.SSL,
+			SSLKind:    st.SSLKind,
+			Rewrite:    st.Rewrite,
+			Kind:       st.Kind,
+			ProxyPass:  st.ProxyPass,
+			AppPort:    st.AppPort,
+			AppCmd:     st.AppCmd,
+			WAF:        st.WAFEnabled,
+		}
+		if g, err := s.Store.GetSiteGit(st.ID); err == nil && g != nil {
+			row.GitRepo = g.Repo
+			row.GitBranch = g.Branch
+			row.GitPath = g.Path
+			row.GitCommand = g.Command
+			row.GitToken = g.Token
+		}
+		man.Sites = append(man.Sites, row)
+	}
+	dbs, _ := s.Store.ListDatabases()
+	for _, d := range dbs {
+		if d.Username != acc.Username {
+			continue
+		}
+		row := rpc.BackupDatabase{DBName: d.DBName, DBUser: d.DBUser, Engine: d.Engine}
+		if d.PasswordEnc != "" {
+			if pw, err := s.decryptPassword(d.PasswordEnc); err == nil {
+				row.Password = pw
+			}
+		}
+		man.Databases = append(man.Databases, row)
+	}
+	ftps, _ := s.Store.ListFTPUsers(acc.ID)
+	for _, f := range ftps {
+		row := rpc.BackupFTP{Login: f.Login, Home: f.Home}
+		if f.PasswordEnc != "" {
+			if pw, err := s.decryptPassword(f.PasswordEnc); err == nil {
+				row.Password = pw
+			}
+		}
+		man.FTP = append(man.FTP, row)
+	}
+	return man
+}
+
+func (s *Server) applyBackupManifest(man *rpc.BackupManifest) error {
+	if man == nil {
+		return nil
+	}
+	username := strings.TrimSpace(man.Username)
+	if username == "" {
+		username = strings.TrimSpace(man.Account.Username)
+	}
+	if err := validate.LinuxUser(username); err != nil {
+		return err
+	}
+	pass := strings.TrimSpace(man.Account.Password)
+	if pass == "" {
+		pw, err := secret.RandomPassword(16)
+		if err != nil {
+			return err
+		}
+		pass = pw
+		man.Account.Password = pass
+	}
+	u, err := s.Agent.UserEnsure(rpc.UserEnsureReq{Username: username, Password: pass})
+	if err != nil {
+		return err
+	}
+	_ = s.Agent.UserAccess(username, man.Account.SSH, man.Account.FTP)
+	enc, err := s.encryptPassword(pass)
+	if err != nil {
+		return err
+	}
+	hash, err := auth.Hash(pass)
+	if err != nil {
+		return err
+	}
+	if err := s.Store.UpsertHostPanelUser(username, hash); err != nil {
+		return err
+	}
+	acc, err := s.Store.GetAccountByName(username)
+	if err != nil {
+		acc, err = s.Store.CreateAccount(username, u.UID, u.GID, enc, man.Account.SSH, man.Account.FTP)
+		if err != nil {
+			return err
+		}
+	} else {
+		_ = s.Store.UpdateAccountPassword(username, enc)
+		_ = s.Store.UpdateAccountAccess(username, man.Account.SSH, man.Account.FTP)
+	}
+	if man.Account.PHPCLI != "" || man.Account.PythonCLI != "" || man.Account.NodeCLI != "" {
+		_ = s.Store.UpdateAccountCLI(username, man.Account.PHPCLI, man.Account.PythonCLI, man.Account.NodeCLI)
+	}
+	if man.Account.DiskQuotaMB > 0 {
+		_ = s.Store.UpdateAccountQuota(username, man.Account.DiskQuotaMB)
+	}
+	_ = s.Store.UpdateAccountWAF(username, man.Account.WAFEnabled)
+	if man.Account.PHPFpmJSON != "" {
+		_ = s.Store.UpdateAccountPHP(username, man.Account.PHPFpmJSON)
+	}
+	for _, d := range man.Databases {
+		if _, err := s.Store.GetDatabaseByName(d.DBName); err == nil {
+			continue
+		}
+		dbEnc := ""
+		if d.Password != "" {
+			dbEnc, _ = s.encryptPassword(d.Password)
+		}
+		_, _ = s.Store.CreateDatabase(acc.ID, d.DBName, d.DBUser, d.Engine, dbEnc)
+	}
+	for _, st := range man.Sites {
+		if existing, err := s.Store.GetSiteByDomain(st.Domain); err == nil {
+			if existing.Username != username {
+				continue
+			}
+			_ = s.writeRestoredSite(acc, st)
+			if st.GitRepo != "" {
+				_ = s.Store.UpsertSiteGit(&store.SiteGit{
+					SiteID: existing.ID, Repo: st.GitRepo, Branch: st.GitBranch, Path: st.GitPath, Command: st.GitCommand, Token: st.GitToken,
+				})
+			}
+			continue
+		}
+		created, err := s.Store.CreateSite(acc.ID, st.Domain, st.DocRoot, st.PHPVersion, st.Aliases, st.Kind, st.ProxyPass, st.Rewrite, st.AppPort, st.AppCmd)
+		if err != nil {
+			return err
+		}
+		if err := s.writeRestoredSite(acc, st); err != nil {
+			return err
+		}
+		if st.GitRepo != "" {
+			token := st.GitToken
+			if token == "" {
+				token, _ = secret.RandomIdent(16)
+			}
+			_ = s.Store.UpsertSiteGit(&store.SiteGit{
+				SiteID: created.ID, Repo: st.GitRepo, Branch: st.GitBranch, Path: st.GitPath, Command: st.GitCommand, Token: token,
+			})
+		}
+	}
+	for _, f := range man.FTP {
+		if _, err := s.Store.GetFTPUserByLogin(f.Login); err == nil {
+			continue
+		}
+		if f.Password == "" {
+			continue
+		}
+		if _, err := s.Agent.FTPCreate(rpc.FTPCreateReq{Owner: username, Name: ftpNameFromLogin(username, f.Login), Password: f.Password, Home: ftpHomeRel(username, f.Home)}); err != nil {
+			continue
+		}
+		ftpEnc, _ := s.encryptPassword(f.Password)
+		_, _ = s.Store.CreateFTPUser(acc.ID, f.Login, f.Home, ftpEnc)
+	}
+	return nil
+}
+
+func (s *Server) writeRestoredSite(acc *store.Account, st rpc.BackupSite) error {
+	php := st.PHPVersion
+	if php == "" {
+		php = "8.3"
+	}
+	kind := st.Kind
+	if kind == "" {
+		kind = "php"
+	}
+	return s.Agent.SiteWrite(rpc.SiteWriteReq{
+		Username:   acc.Username,
+		Domain:     st.Domain,
+		DocRoot:    st.DocRoot,
+		PHPVersion: php,
+		Enabled:    st.Enabled,
+		Aliases:    st.Aliases,
+		SSL:        st.SSL,
+		SSLKind:    st.SSLKind,
+		Rewrite:    st.Rewrite,
+		Kind:       kind,
+		ProxyPass:  st.ProxyPass,
+		AppPort:    st.AppPort,
+		AppCmd:     st.AppCmd,
+		WAF:        st.WAF,
+		FPM:        s.accountFPMPtr(acc),
+	})
+}
+
+func ftpHomeRel(owner, home string) string {
+	home = strings.ReplaceAll(strings.TrimSpace(home), "\\", "/")
+	prefix := "/home/" + owner + "/"
+	if strings.HasPrefix(home, prefix) {
+		return strings.TrimPrefix(home, prefix)
+	}
+	if home == "/home/"+owner {
+		return ""
+	}
+	return strings.TrimPrefix(home, "/")
+}
+
+func ftpNameFromLogin(owner, login string) string {
+	prefix := owner + "_"
+	if strings.HasPrefix(login, prefix) {
+		return strings.TrimPrefix(login, prefix)
+	}
+	return login
 }

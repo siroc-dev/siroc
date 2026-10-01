@@ -867,6 +867,15 @@ func (s *Store) CreateDatabase(accountID int64, name, user, engine, passwordEnc 
 	return s.GetDatabase(id)
 }
 
+func (s *Store) GetDatabaseByName(name string) (*Database, error) {
+	var id int64
+	err := s.DB.QueryRow(`SELECT id FROM databases WHERE db_name = ?`, name).Scan(&id)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetDatabase(id)
+}
+
 func (s *Store) GetDatabase(id int64) (*Database, error) {
 	d := &Database{}
 	var created string
