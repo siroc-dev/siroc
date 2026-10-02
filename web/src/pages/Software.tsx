@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, App, Button, Card, Flex, Form, Input, InputNumber, Modal, Popconfirm, Progress, Select, Space, Switch, Table, Tag, Typography } from "antd";
+import { useNavigate } from "react-router-dom";
+import { Alert, App, Button, Card, Flex, Input, Modal, Popconfirm, Progress, Select, Space, Table, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { elapsed, jobLabel, type InstallJob, type InstallQueue } from "@/lib/jobs";
 
@@ -20,6 +21,7 @@ type Pkg = {
 type InstallKind = "install" | "update";
 
 export function Software() {
+  const nav = useNavigate();
   const { message } = App.useApp();
   const [list, setList] = useState<Pkg[]>([]);
   const [jobs, setJobs] = useState<InstallJob[]>([]);
@@ -29,12 +31,9 @@ export function Software() {
   const [tick, setTick] = useState(0);
   const [cliPick, setCliPick] = useState<Record<string, string>>({});
   const [locking, setLocking] = useState<string[]>([]);
-  const [redisOpen, setRedisOpen] = useState(false);
-  const [redisBusy, setRedisBusy] = useState(false);
   const [q, setQ] = useState("");
   const [modal, setModal] = useState<{ pkg: Pkg; kind: InstallKind } | null>(null);
   const [modalVer, setModalVer] = useState("");
-  const [redisForm] = Form.useForm();
 
   const titles = Object.fromEntries(list.map((p) => [p.name, p.title]));
   const label = (job: InstallJob) => (job.name === "php-ext" ? jobLabel(job) : `${titles[job.name] || job.name}${job.version ? ` ${job.version}` : ""}`);
@@ -182,69 +181,6 @@ export function Software() {
       await loadPkgs();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
-    }
-  }
-
-  async function openRedis() {
-    setRedisBusy(true);
-    try {
-      const st = await api.get<{
-        installed: boolean;
-        bind: string;
-        port: number;
-        hasPassword: boolean;
-        protectedMode: boolean;
-        maxMemory: string;
-        maxMemoryPolicy: string;
-        appendOnly: boolean;
-        timeout: number;
-        databases: number;
-      }>("/api/software/redis");
-      redisForm.setFieldsValue({
-        bind: st.bind || "127.0.0.1",
-        port: st.port || 6379,
-        password: "",
-        clearPassword: false,
-        protectedMode: st.protectedMode,
-        maxMemory: st.maxMemory === "0" ? "" : st.maxMemory,
-        maxMemoryPolicy: st.maxMemoryPolicy || "noeviction",
-        appendOnly: st.appendOnly,
-        timeout: st.timeout || 0,
-        databases: st.databases || 16,
-      });
-      setRedisOpen(true);
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : "Failed");
-    } finally {
-      setRedisBusy(false);
-    }
-  }
-
-  async function saveRedis(values: {
-    bind: string;
-    port: number;
-    password?: string;
-    clearPassword?: boolean;
-    protectedMode: boolean;
-    maxMemory?: string;
-    maxMemoryPolicy: string;
-    appendOnly: boolean;
-    timeout: number;
-    databases: number;
-  }) {
-    setRedisBusy(true);
-    try {
-      await api.put("/api/software/redis", {
-        ...values,
-        maxMemory: values.maxMemory?.trim() || "0",
-      });
-      message.success("Redis settings saved");
-      setRedisOpen(false);
-      await loadPkgs();
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : "Failed");
-    } finally {
-      setRedisBusy(false);
     }
   }
 
@@ -407,9 +343,14 @@ export function Software() {
                       </>
                     ) : null}
                     {p.name === "redis" && p.installed ? (
-                      <Button size="small" loading={redisBusy} onClick={() => void openRedis()}>
-                        Settings
-                      </Button>
+                      <>
+                        <Button size="small" onClick={() => nav("/databases?tab=redis")}>
+                          Status
+                        </Button>
+                        <Button size="small" onClick={() => nav("/databases?tab=redis")}>
+                          Config
+                        </Button>
+                      </>
                     ) : null}
                   </Space>
                 );
@@ -451,58 +392,6 @@ export function Software() {
             )}
           </Space>
         ) : null}
-      </Modal>
-      <Modal
-        title="Redis settings"
-        open={redisOpen}
-        onCancel={() => setRedisOpen(false)}
-        onOk={() => redisForm.submit()}
-        confirmLoading={redisBusy}
-        destroyOnHidden
-        okText="Save and restart"
-      >
-        <Form form={redisForm} layout="vertical" onFinish={saveRedis} requiredMark={false} style={{ marginTop: 8 }}>
-          <Form.Item name="bind" label="Bind" extra="127.0.0.1 keeps Redis local. Use 0.0.0.0 only with a password.">
-            <Input placeholder="127.0.0.1" />
-          </Form.Item>
-          <Form.Item name="port" label="Port">
-            <InputNumber min={1} max={65535} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="password" label="Password" extra="Leave blank to keep the current password.">
-            <Input.Password autoComplete="new-password" />
-          </Form.Item>
-          <Form.Item name="clearPassword" label="Remove password" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-          <Form.Item name="protectedMode" valuePropName="checked" label="Protected mode">
-            <Switch />
-          </Form.Item>
-          <Form.Item name="maxMemory" label="Max memory" extra="Examples: 256mb, 1gb. Empty means unlimited.">
-            <Input placeholder="256mb" />
-          </Form.Item>
-          <Form.Item name="maxMemoryPolicy" label="Eviction policy">
-            <Select
-              options={[
-                { value: "noeviction", label: "noeviction" },
-                { value: "allkeys-lru", label: "allkeys-lru" },
-                { value: "allkeys-lfu", label: "allkeys-lfu" },
-                { value: "volatile-lru", label: "volatile-lru" },
-                { value: "volatile-lfu", label: "volatile-lfu" },
-                { value: "allkeys-random", label: "allkeys-random" },
-                { value: "volatile-ttl", label: "volatile-ttl" },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item name="appendOnly" valuePropName="checked" label="AOF persistence">
-            <Switch />
-          </Form.Item>
-          <Form.Item name="timeout" label="Idle timeout (seconds)">
-            <InputNumber min={0} style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="databases" label="Databases">
-            <InputNumber min={1} max={1024} style={{ width: "100%" }} />
-          </Form.Item>
-        </Form>
       </Modal>
     </div>
   );

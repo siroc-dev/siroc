@@ -105,7 +105,7 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
   const waiting = queue?.queue?.length || 0;
   const installing = !!current || waiting > 0;
   const selected = useMemo(() => {
-    const status = ["/apache", "/nginx", "/php-fpm", "/mysql", "/mariadb"];
+    const status = ["/apache", "/nginx", "/php-fpm", "/mysql", "/mariadb", "/redis"];
     if (status.includes(loc.pathname)) return ["/apache"];
     if (loc.pathname.startsWith("/sites")) return ["/sites"];
     return [loc.pathname === "/" ? "/" : loc.pathname];
@@ -191,6 +191,7 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
                 "/php-fpm": "PHP-FPM status",
                 "/mysql": "MySQL status",
                 "/mariadb": "MariaDB status",
+                "/redis": "Redis status",
                 "/scan-logs": "Scan logs",
                 "/settings": "Settings",
               } as Record<string, string>)[loc.pathname] || loc.pathname.slice(1)}

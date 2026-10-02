@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useOutletContext, useSearchParams } from "react-router-dom";
+import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import { Alert, App, AutoComplete, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
+import { DatabaseMonitorPanel } from "@/pages/DatabaseMonitor";
+import { RedisConfigPanel } from "@/pages/RedisConfig";
+import { RedisStatusPanel, type RedisStatusData } from "@/pages/RedisStatus";
 
 type Account = { username: string };
 type DB = { id: number; username: string; dbName: string; dbUser: string; engine: string };
@@ -27,7 +30,7 @@ const ramOptions = Array.from({ length: 128 }, (_, i) => i + 1);
 export function Databases() {
   const { message } = App.useApp();
   const { admin } = useOutletContext<{ user: string; admin?: boolean }>();
-  const [search] = useSearchParams();
+  const [search, setSearch] = useSearchParams();
   const wantUser = (search.get("user") || "").trim();
   const wantDomain = (search.get("domain") || "").trim();
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -43,6 +46,8 @@ export function Databases() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [cfgBusy, setCfgBusy] = useState(false);
   const [cfgErr, setCfgErr] = useState("");
+  const [redis, setRedis] = useState<RedisStatusData | null>(null);
+  const [redisErr, setRedisErr] = useState("");
 
   async function load() {
     const [a, d, e] = await Promise.all([
@@ -88,8 +93,25 @@ export function Databases() {
     load().catch((err) => message.error(err.message));
   }, []);
 
+  async function loadRedis() {
+    if (!admin) return;
+    try {
+      const st = await api.get<RedisStatusData>("/api/redis/status");
+      setRedis(st);
+      setRedisErr("");
+    } catch (err) {
+      setRedisErr(err instanceof Error ? err.message : "Failed to load Redis");
+    }
+  }
+
   useEffect(() => {
-    if (admin) loadConfig().catch(() => undefined);
+    if (!admin) return;
+    loadConfig().catch(() => undefined);
+    loadRedis().catch(() => undefined);
+    const t = setInterval(() => {
+      loadRedis().catch(() => undefined);
+    }, 4000);
+    return () => clearInterval(t);
   }, [admin]);
 
   async function fillRandom(username?: string, kind: "all" | "suffix" | "password" = "all") {
@@ -155,6 +177,8 @@ export function Databases() {
     }
   }
 
+  const tab = search.get("tab") || "list";
+  const adminTab = tab === "redis" || tab === "monitor" || tab === "config" ? tab : "list";
   const engineLabel = engine === "mariadb" ? "MariaDB" : engine === "mysql" ? "MySQL" : "";
   const ramSelect = useMemo(
     () =>
@@ -306,6 +330,32 @@ export function Databases() {
     </Space>
   );
 
+  const redisTab = (
+    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      {redisErr ? <Alert type="error" showIcon message={redisErr} /> : null}
+      {!redis ? (
+        <Typography.Text type="secondary">Loading Redis status…</Typography.Text>
+      ) : !redis.installed ? (
+        <Alert type="info" showIcon message={redis.message || "Install Redis from Software first"} />
+      ) : !redis.active || !redis.ready ? (
+        <Alert type="warning" showIcon message={redis.message || "Redis is installed but not running"} />
+      ) : (
+        <>
+          <Space wrap>
+            <Tag color="success">Running</Tag>
+            {redis.version ? <Tag>{redis.version}</Tag> : null}
+            <Button size="small" icon={<ReloadOutlined />} onClick={() => void loadRedis()}>
+              Refresh
+            </Button>
+            <Link to="/redis">Open live status</Link>
+          </Space>
+          <RedisStatusPanel data={redis} />
+        </>
+      )}
+      <RedisConfigPanel />
+    </Space>
+  );
+
   return (
     <div className="cp-page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -313,7 +363,18 @@ export function Databases() {
           <Typography.Title level={3} style={{ margin: 0 }}>
             {wantDomain ? `Databases for ${wantDomain}` : "Databases"}
           </Typography.Title>
-          <Typography.Text type="secondary">{engine ? `Engine: ${engine}` : "Install MySQL or MariaDB first"}</Typography.Text>
+          <Typography.Text type="secondary">
+            {engine ? `Engine: ${engine}` : "Install MySQL or MariaDB first"}
+            {admin && redis ? (
+              <>
+                {" · "}
+                Redis:{" "}
+                <Tag color={redis.active && redis.ready ? "success" : redis.installed ? "error" : "default"} style={{ marginInlineEnd: 0 }}>
+                  {redis.active && redis.ready ? "Running" : redis.installed ? "Stopped" : "Not installed"}
+                </Tag>
+              </>
+            ) : null}
+          </Typography.Text>
         </div>
         <Button type="primary" disabled={!engine} onClick={openCreate}>
           Create database
@@ -321,8 +382,17 @@ export function Databases() {
       </div>
       {admin ? (
         <Tabs
+          activeKey={adminTab}
+          onChange={(key) => {
+            const next = new URLSearchParams(search);
+            if (key === "list") next.delete("tab");
+            else next.set("tab", key);
+            setSearch(next, { replace: true });
+          }}
           items={[
             { key: "list", label: "Databases", children: databasesTab },
+            { key: "redis", label: "Redis", children: redisTab },
+            { key: "monitor", label: "Monitor", children: <DatabaseMonitorPanel /> },
             { key: "config", label: "Config", children: configTab },
           ]}
         />

@@ -125,6 +125,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/api/software/cli", s.setCLI)
 			r.Get("/api/software/redis", s.redisSettings)
 			r.Put("/api/software/redis", s.setRedisSettings)
+			r.Put("/api/software/redis/conf", s.setRedisConf)
 			r.Get("/api/ssl/letsencrypt", s.leSettings)
 			r.Put("/api/ssl/letsencrypt", s.setLESettings)
 			r.Post("/api/ssl/letsencrypt/account", s.createLEAccount)
@@ -152,6 +153,8 @@ func (s *Server) Router() http.Handler {
 			r.Get("/api/php-fpm/status", s.phpFpmStatus)
 			r.Get("/api/mysql/status", s.mysqlStatus)
 			r.Get("/api/mariadb/status", s.mariadbStatus)
+			r.Get("/api/redis/status", s.redisStatus)
+			r.Get("/api/databases/monitor", s.dbMonitor)
 			r.Get("/api/databases/config", s.dbConfig)
 			r.Put("/api/databases/config", s.setDBConfig)
 			r.Get("/api/logs", s.logStatus)
@@ -554,6 +557,24 @@ func (s *Server) mysqlStatus(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) mariadbStatus(w http.ResponseWriter, _ *http.Request) {
 	st, err := s.Agent.DBStatus("mariadb")
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+func (s *Server) redisStatus(w http.ResponseWriter, _ *http.Request) {
+	st, err := s.Agent.RedisStatus()
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+func (s *Server) dbMonitor(w http.ResponseWriter, _ *http.Request) {
+	st, err := s.Agent.DatabasesMonitor()
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -1169,6 +1190,19 @@ func (s *Server) setRedisSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Agent.SetRedis(body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	st, _ := s.Agent.Redis()
+	writeJSON(w, http.StatusOK, st)
+}
+
+func (s *Server) setRedisConf(w http.ResponseWriter, r *http.Request) {
+	var body rpc.RedisConfApply
+	if !decode(w, r, &body) {
+		return
+	}
+	if err := s.Agent.SetRedisConf(body.Conf); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}

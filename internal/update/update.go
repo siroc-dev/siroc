@@ -20,10 +20,10 @@ import (
 )
 
 const (
-	workDir    = "/var/lib/siroc/updates"
-	cacheFile  = "/var/lib/siroc/updates/latest.json"
-	versionOut = "/opt/siroc/VERSION"
-	versionAlt = "/var/lib/siroc/version"
+	workDir     = "/var/lib/siroc/updates"
+	cacheFile   = "/var/lib/siroc/updates/latest.json"
+	versionOut  = "/opt/siroc/VERSION"
+	versionAlt  = "/var/lib/siroc/version"
 	installRoot = "/opt/siroc"
 )
 
@@ -109,16 +109,18 @@ func Apply(channel, srcURL, srcPath string) (*rpc.PanelUpdateStatus, error) {
 	}
 	srcURL = strings.TrimSpace(srcURL)
 	srcPath = strings.TrimSpace(srcPath)
+	var expectSHA string
 	if srcURL == "" && srcPath == "" {
-		if b, err := os.ReadFile(cacheFile); err == nil {
-			var meta latestMeta
-			if json.Unmarshal(b, &meta) == nil {
-				srcURL = strings.TrimSpace(meta.URL)
-			}
+		st, err := Check(channel)
+		if err != nil {
+			return nil, err
 		}
+		srcURL = strings.TrimSpace(st.PackageURL)
+	}
+	if srcURL != "" {
+		expectSHA = shaForURL(srcURL)
 	}
 	var archive string
-	var expectSHA string
 	if srcPath != "" {
 		p, err := safePath(srcPath)
 		if err != nil {
@@ -142,12 +144,6 @@ func Apply(channel, srcURL, srcPath string) (*rpc.PanelUpdateStatus, error) {
 	} else if srcURL != "" {
 		if !strings.HasPrefix(srcURL, "https://") && !strings.HasPrefix(srcURL, "http://") {
 			return nil, fmt.Errorf("package URL must be http or https")
-		}
-		if b, err := os.ReadFile(cacheFile); err == nil {
-			var meta latestMeta
-			if json.Unmarshal(b, &meta) == nil && meta.URL == srcURL {
-				expectSHA = strings.TrimSpace(meta.SHA256)
-			}
 		}
 		dest := filepath.Join(workDir, "incoming.tar.gz")
 		if err := download(srcURL, dest); err != nil {
@@ -281,12 +277,36 @@ func safePath(p string) (string, error) {
 	return clean, nil
 }
 
+func shaForURL(rawURL string) string {
+	b, err := os.ReadFile(cacheFile)
+	if err != nil {
+		return ""
+	}
+	var meta latestMeta
+	if json.Unmarshal(b, &meta) != nil {
+		return ""
+	}
+	if strings.TrimSpace(meta.URL) != strings.TrimSpace(rawURL) {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(meta.SHA256))
+}
+
 func download(rawURL, dest string) error {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: 10 * time.Minute}
+	req.Header.Set("Accept-Encoding", "identity")
+	req.Header.Set("Cache-Control", "no-cache")
+	client := &http.Client{
+		Timeout: 10 * time.Minute,
+		Transport: &http.Transport{
+			Proxy:               http.ProxyFromEnvironment,
+			DisableCompression:  true,
+			TLSHandshakeTimeout: 20 * time.Second,
+		},
+	}
 	res, err := client.Do(req)
 	if err != nil {
 		return err
@@ -307,8 +327,13 @@ func download(rawURL, dest string) error {
 }
 
 func httpGet(rawURL string, timeout time.Duration) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Cache-Control", "no-cache")
 	client := &http.Client{Timeout: timeout}
-	res, err := client.Get(rawURL)
+	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +361,7 @@ func verifySHA(path, want string) error {
 	}
 	got := hex.EncodeToString(h.Sum(nil))
 	if got != want {
-		return fmt.Errorf("package checksum mismatch")
+		return fmt.Errorf("package checksum mismatch (got %s, want %s)", got, want)
 	}
 	return nil
 }

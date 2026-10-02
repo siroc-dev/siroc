@@ -478,6 +478,10 @@ func (c *Client) SetRedis(in RedisSettings) error {
 	return c.do(http.MethodPost, "/software/redis", in, nil)
 }
 
+func (c *Client) SetRedisConf(conf string) error {
+	return c.do(http.MethodPost, "/software/redis/conf", RedisConfApply{Conf: conf}, nil)
+}
+
 func (c *Client) UserRedis(username string) (*UserRedis, error) {
 	var out UserRedis
 	err := c.do(http.MethodPost, "/users/redis", UserRedisReq{Username: username}, &out)
@@ -600,6 +604,18 @@ func (c *Client) PHPFPMStatus() (*PHPFPMStatus, error) {
 func (c *Client) DBStatus(engine string) (*DBStatus, error) {
 	var out DBStatus
 	err := c.do(http.MethodGet, "/"+engine+"/status", nil, &out)
+	return &out, err
+}
+
+func (c *Client) RedisStatus() (*RedisStatus, error) {
+	var out RedisStatus
+	err := c.do(http.MethodGet, "/redis/status", nil, &out)
+	return &out, err
+}
+
+func (c *Client) DatabasesMonitor() (*DatabasesMonitor, error) {
+	var out DatabasesMonitor
+	err := c.do(http.MethodGet, "/databases/monitor", nil, &out)
 	return &out, err
 }
 

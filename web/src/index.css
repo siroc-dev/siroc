@@ -367,6 +367,13 @@ html[data-theme="dark"] body {
   box-shadow: 0 12px 32px rgba(3, 105, 161, 0.22);
 }
 
+.svc-hero-redis {
+  background:
+    radial-gradient(1200px 180px at 10% -40%, rgba(255, 255, 255, 0.18), transparent 60%),
+    linear-gradient(135deg, #450a0a 0%, #b91c1c 42%, #f87171 100%);
+  box-shadow: 0 12px 32px rgba(185, 28, 28, 0.22);
+}
+
 .file-actions .ant-btn {
   width: 28px;
   padding-inline: 0;

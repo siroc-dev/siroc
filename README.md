@@ -2,7 +2,7 @@
 
 Open-source Linux hosting control panel. Each hosting account is a Linux user. Nginx reverse-proxies to Apache; PHP-FPM, Node.js, Python, Go, Rust, and Docker sites run per account.
 
-Public repo: [github.com/siroc-dev/siroc](https://github.com/siroc-dev/siroc) · License: [MIT](LICENSE)
+Public repo: [github.com/siroc-dev/siroc](https://github.com/siroc-dev/siroc) · License: [Apache License 2.0](LICENSE)
 
 ## Install on Ubuntu / Debian
 
@@ -65,8 +65,8 @@ Example `latest.json` (published to Cloudflare R2 by CI):
 
 ```json
 {
-  "version": "0.2.10",
-  "url": "https://get.siroc.dev/siroc-linux-amd64.tar.gz",
+  "version": "0.2.11",
+  "url": "https://get.siroc.dev/0.2.11/siroc-linux-amd64.tar.gz",
   "sha256": "optional"
 }
 ```

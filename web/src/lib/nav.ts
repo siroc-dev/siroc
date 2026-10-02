@@ -11,6 +11,7 @@ export const ADMIN_ONLY_PATHS = new Set([
   "/php-fpm",
   "/mysql",
   "/mariadb",
+  "/redis",
 ]);
 
 export function canUsePath(admin: boolean | undefined, path: string) {

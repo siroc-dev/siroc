@@ -53,7 +53,7 @@ jobs:
           BASE="${BASE%/}"
           PKG="dist/siroc-linux-amd64.tar.gz"
           SHA="$(sha256sum "$PKG" | awk '{print $1}')"
-          URL="${BASE}/siroc-linux-amd64.tar.gz"
+          URL="${BASE}/${VER}/siroc-linux-amd64.tar.gz"
           python3 -c 'import json,sys; print(json.dumps({"version":sys.argv[1],"url":sys.argv[2],"sha256":sys.argv[3]}, indent=2))' "$VER" "$URL" "$SHA" > dist/latest.json
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "Published metadata:"
@@ -79,8 +79,14 @@ jobs:
           ENDPOINT="https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com"
           VER="${{ steps.meta.outputs.version }}"
           aws s3 cp dist/siroc-linux-amd64.tar.gz "s3://siroc-cp/siroc-linux-amd64.tar.gz" \
-            --endpoint-url "$ENDPOINT" --content-type application/gzip
+            --endpoint-url "$ENDPOINT" \
+            --content-type application/octet-stream \
+            --cache-control "public, max-age=60"
           aws s3 cp dist/siroc-linux-amd64.tar.gz "s3://siroc-cp/${VER}/siroc-linux-amd64.tar.gz" \
-            --endpoint-url "$ENDPOINT" --content-type application/gzip
+            --endpoint-url "$ENDPOINT" \
+            --content-type application/octet-stream \
+            --cache-control "public, max-age=31536000, immutable"
           aws s3 cp dist/latest.json "s3://siroc-cp/latest.json" \
-            --endpoint-url "$ENDPOINT" --content-type application/json
+            --endpoint-url "$ENDPOINT" \
+            --content-type application/json \
+            --cache-control "no-cache"

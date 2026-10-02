@@ -23,6 +23,7 @@ import { Apache } from "@/pages/Apache";
 import { Nginx } from "@/pages/Nginx";
 import { PHPFPM } from "@/pages/PHPFPM";
 import { MariaDB, MySQL } from "@/pages/DatabaseStatus";
+import { Redis } from "@/pages/RedisStatus";
 import { canUsePath } from "@/lib/nav";
 
 function setupTokenFromURL() {
@@ -150,6 +151,7 @@ export function App() {
         <Route path="/php-fpm" element={<AdminOnly admin={admin}><PHPFPM /></AdminOnly>} />
         <Route path="/mysql" element={<AdminOnly admin={admin}><MySQL /></AdminOnly>} />
         <Route path="/mariadb" element={<AdminOnly admin={admin}><MariaDB /></AdminOnly>} />
+        <Route path="/redis" element={<AdminOnly admin={admin}><Redis /></AdminOnly>} />
       </Route>
     </Routes>
   );

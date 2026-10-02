@@ -412,6 +412,17 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
 	})
+	r.Post("/software/redis/conf", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.RedisConfApply
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := software.ApplyRedisConf(req.Conf); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
 	r.Get("/users/redis", func(w http.ResponseWriter, _ *http.Request) {
 		st, err := softMgr.ListUserRedis()
 		if err != nil {
@@ -782,6 +793,12 @@ func main() {
 	})
 	r.Get("/mariadb/status", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, software.DBStatus("mariadb"))
+	})
+	r.Get("/redis/status", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, software.RedisStatus())
+	})
+	r.Get("/databases/monitor", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, software.DatabasesMonitor(""))
 	})
 	r.Get("/logs/status", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, weblog.Status())

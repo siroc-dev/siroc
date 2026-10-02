@@ -290,6 +290,10 @@ func GetRedis() (*rpc.RedisSettings, error) {
 	}
 	st.HasPassword = redisHasPassword()
 	st.Password = ""
+	st.ConfPath = redisConfPath
+	if b, err := os.ReadFile(redisConfPath); err == nil {
+		st.Conf = string(b)
+	}
 	return st, nil
 }
 
@@ -433,6 +437,49 @@ func ApplyRedis(in rpc.RedisSettings) error {
 	raw, _ := json.Marshal(save)
 	_ = os.MkdirAll(filepath.Dir(redisStatePath), 0750)
 	_ = os.WriteFile(redisStatePath, raw, 0640)
+	return restartRedis()
+}
+
+func ApplyRedisConf(conf string) error {
+	if err := validateRedisConf(conf); err != nil {
+		return err
+	}
+	st := &rpc.RedisSettings{}
+	mergeRedisConf(st, conf)
+	if redisPublicBind(st.Bind) && !redisConfHasPassword(conf) {
+		return fmt.Errorf("set a password before binding Redis on a public address")
+	}
+	if err := os.MkdirAll("/etc/redis", 0755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(redisConfPath, []byte(conf), 0640); err != nil {
+		return err
+	}
+	_ = exec.Command("chown", "redis:redis", redisConfPath).Run()
+	save := rpc.RedisSettings{
+		Bind:            st.Bind,
+		Port:            st.Port,
+		ProtectedMode:   st.ProtectedMode,
+		MaxMemory:       st.MaxMemory,
+		MaxMemoryPolicy: st.MaxMemoryPolicy,
+		AppendOnly:      st.AppendOnly,
+		Timeout:         st.Timeout,
+		Databases:       st.Databases,
+		HasPassword:     redisConfHasPassword(conf),
+	}
+	if save.Bind == "" {
+		save.Bind = "127.0.0.1"
+	}
+	if save.Port < 1 {
+		save.Port = 6379
+	}
+	raw, _ := json.Marshal(save)
+	_ = os.MkdirAll(filepath.Dir(redisStatePath), 0750)
+	_ = os.WriteFile(redisStatePath, raw, 0640)
+	return restartRedis()
+}
+
+func restartRedis() error {
 	out, err := exec.Command("systemctl", "restart", "redis-server").CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("restart redis: %s: %w", strings.TrimSpace(string(out)), err)

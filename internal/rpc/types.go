@@ -639,6 +639,12 @@ type RedisSettings struct {
 	AppendOnly      bool   `json:"appendOnly"`
 	Timeout         int    `json:"timeout"`
 	Databases       int    `json:"databases"`
+	ConfPath        string `json:"confPath,omitempty"`
+	Conf            string `json:"conf,omitempty"`
+}
+
+type RedisConfApply struct {
+	Conf string `json:"conf"`
 }
 
 type UserRedisReq struct {
@@ -1066,6 +1072,78 @@ type DBStatus struct {
 	Processes          []DBProcess `json:"processes,omitempty"`
 	FetchedAt          string      `json:"fetchedAt,omitempty"`
 	Message            string      `json:"message,omitempty"`
+}
+
+type SlowQuery struct {
+	Schema       string  `json:"schema,omitempty"`
+	Query        string  `json:"query"`
+	Count        int64   `json:"count"`
+	AvgMs        float64 `json:"avgMs"`
+	MaxMs        float64 `json:"maxMs"`
+	RowsExamined int64   `json:"rowsExamined"`
+	LastSeen     string  `json:"lastSeen,omitempty"`
+}
+
+type DBSQLMonitor struct {
+	Engine                    string      `json:"engine"`
+	Installed                 bool        `json:"installed"`
+	Active                    bool        `json:"active"`
+	Ready                     bool        `json:"ready"`
+	Version                   string      `json:"version,omitempty"`
+	SlowQueryLog              bool        `json:"slowQueryLog"`
+	LongQueryTime             string      `json:"longQueryTime,omitempty"`
+	SlowLogFile               string      `json:"slowLogFile,omitempty"`
+	LogOutput                 string      `json:"logOutput,omitempty"`
+	LogQueriesNotUsingIndexes bool        `json:"logQueriesNotUsingIndexes"`
+	SlowQueries               int64       `json:"slowQueries"`
+	Questions                 int64       `json:"questions"`
+	QPS                       float64     `json:"qps"`
+	ThreadsConnected          int         `json:"threadsConnected"`
+	ThreadsRunning            int         `json:"threadsRunning"`
+	Recent                    []SlowQuery `json:"recent,omitempty"`
+	Running                   []DBProcess `json:"running,omitempty"`
+	FetchedAt                 string      `json:"fetchedAt,omitempty"`
+	Message                   string      `json:"message,omitempty"`
+}
+
+type RedisSlowLog struct {
+	ID         int64  `json:"id"`
+	Time       string `json:"time,omitempty"`
+	DurationUs int64  `json:"durationUs"`
+	Command    string `json:"command,omitempty"`
+	Client     string `json:"client,omitempty"`
+}
+
+type RedisStatus struct {
+	Installed         bool           `json:"installed"`
+	Active            bool           `json:"active"`
+	Ready             bool           `json:"ready"`
+	Version           string         `json:"version,omitempty"`
+	UptimeSec         int64          `json:"uptimeSec"`
+	ConnectedClients  int            `json:"connectedClients"`
+	BlockedClients    int            `json:"blockedClients"`
+	UsedMemory        int64          `json:"usedMemory"`
+	UsedMemoryPeak    int64          `json:"usedMemoryPeak"`
+	UsedMemoryHuman   string         `json:"usedMemoryHuman,omitempty"`
+	MaxMemory         int64          `json:"maxMemory"`
+	OpsPerSec         int64          `json:"opsPerSec"`
+	Hits              int64          `json:"hits"`
+	Misses            int64          `json:"misses"`
+	HitRate           float64        `json:"hitRate"`
+	Keys              int64          `json:"keys"`
+	EvictedKeys       int64          `json:"evictedKeys"`
+	ExpiredKeys       int64          `json:"expiredKeys"`
+	Role              string         `json:"role,omitempty"`
+	SlowLogSlowerThan int64          `json:"slowLogSlowerThan"`
+	SlowLogLen        int64          `json:"slowLogLen"`
+	SlowLog           []RedisSlowLog `json:"slowLog,omitempty"`
+	FetchedAt         string         `json:"fetchedAt,omitempty"`
+	Message           string         `json:"message,omitempty"`
+}
+
+type DatabasesMonitor struct {
+	SQL   *DBSQLMonitor `json:"sql,omitempty"`
+	Redis *RedisStatus  `json:"redis,omitempty"`
 }
 
 type FileSearchHit struct {

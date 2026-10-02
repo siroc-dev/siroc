@@ -14,5 +14,6 @@ describe("nav", () => {
       expect(canUsePath(false, path)).toBe(false);
       expect(canUsePath(true, path)).toBe(true);
     }
+    expect(ADMIN_ONLY_PATHS.has("/redis")).toBe(true);
   });
 });

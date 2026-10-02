@@ -54,7 +54,7 @@ var (
 		"ufw":        "/security",
 		"openssh":    "/tools",
 		"vsftpd":     "/software",
-		"redis":      "/software",
+		"redis":      "/redis",
 		"docker":     "/software",
 		"memcached":  "/tools",
 		"supervisor": "/software",

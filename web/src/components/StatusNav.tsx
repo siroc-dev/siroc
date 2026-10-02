@@ -8,6 +8,7 @@ export const statusRoutes = [
   { path: "/php-fpm", label: "PHP-FPM" },
   { path: "/mysql", label: "MySQL" },
   { path: "/mariadb", label: "MariaDB" },
+  { path: "/redis", label: "Redis" },
 ];
 
 export function fmtNum(n: number, digits = 2) {
@@ -26,6 +27,20 @@ export function fmtUptime(sec: number) {
   if (h) return `${h}h ${m}m ${s}s`;
   if (m) return `${m}m ${s}s`;
   return `${s}s`;
+}
+
+export function fmtUs(us: number) {
+  if (!Number.isFinite(us)) return "0";
+  if (us >= 1_000_000) return `${(us / 1_000_000).toFixed(2)} s`;
+  if (us >= 1000) return `${(us / 1000).toFixed(1)} ms`;
+  return `${Math.round(us)} µs`;
+}
+
+export function fmtMs(ms: number) {
+  if (!Number.isFinite(ms)) return "0";
+  if (ms >= 1000) return `${(ms / 1000).toFixed(2)} s`;
+  if (ms >= 10) return `${ms.toFixed(1)} ms`;
+  return `${ms.toFixed(2)} ms`;
 }
 
 export function StatusNav() {
