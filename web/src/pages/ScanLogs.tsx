@@ -33,7 +33,10 @@ export function ScanLogs({ embedded }: { embedded?: boolean }) {
     load().catch((e) => message.error(e.message));
   }, []);
 
-  const rows = useMemo(() => (tool ? logs.filter((l) => l.tool === tool) : logs), [logs, tool]);
+  const rows = useMemo(() => {
+    const list = tool ? logs.filter((l) => l.tool === tool) : logs;
+    return [...list].sort((a, b) => Date.parse(b.createdAt || "") - Date.parse(a.createdAt || "") || b.id.localeCompare(a.id));
+  }, [logs, tool]);
 
   const body = (
     <>
@@ -61,7 +64,7 @@ export function ScanLogs({ embedded }: { embedded?: boolean }) {
           size="small"
           rowKey="id"
           dataSource={rows}
-          pagination={{ pageSize: 20 }}
+          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], showTotal: (t, range) => `${range[0]}-${range[1]} of ${t}` }}
           onRow={(row) => ({
             onClick: () => {
               setDetail(row);

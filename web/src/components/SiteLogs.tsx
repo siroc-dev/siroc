@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Input, Pagination, Space, Tag, Typography } from "antd";
+import { Alert, Button, Input, Space, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { asList } from "@/lib/lists";
-import { DEFAULT_PAGE_SIZE, filterEntries, pageEntries, type SiteLogFile, type SiteLogsData } from "./SiteLogs.parse";
+import { LogTable, LEVEL_COLOR } from "./LogTable";
+import { filterEntries, type SiteLogFile, type SiteLogsData } from "./SiteLogs.parse";
 
 export type { SiteLogEntry, SiteLogFile, SiteLogsData } from "./SiteLogs.parse";
-export { DEFAULT_PAGE_SIZE, filterEntries, pageEntries };
+export { DEFAULT_PAGE_SIZE, filterEntries, pageEntries } from "./SiteLogs.parse";
 
 const FILE_GROUPS = [
   { key: "laravel", title: "Laravel" },
@@ -15,18 +16,6 @@ const FILE_GROUPS = [
 ];
 
 const LEVEL_ORDER = ["emergency", "alert", "critical", "error", "warning", "notice", "info", "debug", "access"];
-
-const LEVEL_COLOR: Record<string, string> = {
-  emergency: "magenta",
-  alert: "magenta",
-  critical: "red",
-  error: "red",
-  warning: "orange",
-  notice: "gold",
-  info: "blue",
-  debug: "default",
-  access: "cyan",
-};
 
 export function fmtSize(n?: number) {
   if (!n) return "0 B";
@@ -50,17 +39,12 @@ export function SiteLogs({ siteId, domain }: { siteId: number; domain: string })
   const [query, setQuery] = useState("");
   const [levels, setLevels] = useState<string[]>([]);
   const [raw, setRaw] = useState(false);
-  const [open, setOpen] = useState<number | null>(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function load(next = id, probe = false) {
     setBusy(true);
     setErr("");
-    setOpen(null);
-    setPage(1);
     try {
       const q = new URLSearchParams();
       if (next) q.set("id", next);
@@ -83,12 +67,6 @@ export function SiteLogs({ siteId, domain }: { siteId: number; domain: string })
   const files = asList(data?.files);
   const entries = asList(data?.entries);
   const visible = useMemo(() => filterEntries(entries, query, levels), [entries, query, levels]);
-  const paged = useMemo(() => pageEntries(visible, page, pageSize), [visible, page, pageSize]);
-
-  useEffect(() => {
-    setPage(1);
-    setOpen(null);
-  }, [query, levels]);
   const counts = data?.counts || {};
   const presentLevels = LEVEL_ORDER.filter((l) => counts[l]);
 
@@ -108,57 +86,38 @@ export function SiteLogs({ siteId, domain }: { siteId: number; domain: string })
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "62vh", border: "1px solid #1e293b", borderRadius: 10, overflow: "hidden", background: "#0b1220", color: "#e2e8f0" }}>
-      <aside style={{ width: 240, flexShrink: 0, borderRight: "1px solid #1e293b", background: "#0f172a", overflow: "auto" }}>
-        <div style={{ padding: "12px 14px 8px", fontSize: 12, color: "#94a3b8" }}>Files · {domain}</div>
+    <div className="log-shell">
+      <div className="log-list">
+        <div style={{ padding: "4px 2px 8px", fontSize: 12, color: "inherit", opacity: 0.65 }}>Files · {domain}</div>
         {FILE_GROUPS.map((g) => {
           const rows = files.filter((f) => f.group === g.key);
           if (!rows.length) return null;
           return (
             <div key={g.key} style={{ marginBottom: 10 }}>
-              <div style={{ padding: "6px 14px", fontSize: 11, letterSpacing: 0.4, textTransform: "uppercase", color: "#64748b" }}>{g.title}</div>
-              {rows.map((f) => {
-                const active = f.id === id;
-                return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => {
-                      setId(f.id);
-                      void load(f.id);
-                    }}
-                    style={{
-                      display: "block",
-                      width: "100%",
-                      textAlign: "left",
-                      border: 0,
-                      background: active ? "#1d4ed8" : "transparent",
-                      color: f.exists ? "#e2e8f0" : "#64748b",
-                      padding: "7px 14px",
-                      cursor: "pointer",
-                      fontSize: 13,
-                    }}
-                  >
-                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fileName(f)}</div>
-                    <div style={{ fontSize: 11, opacity: 0.75 }}>
-                      {f.exists ? (f.size ? fmtSize(f.size) : "no traffic") : "none"}
-                    </div>
-                  </button>
-                );
-              })}
+              <div style={{ padding: "4px 2px", fontSize: 11, letterSpacing: 0.4, textTransform: "uppercase", opacity: 0.55 }}>
+                {g.title}
+              </div>
+              {rows.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={f.id === id ? "is-on" : ""}
+                  onClick={() => {
+                    setId(f.id);
+                    void load(f.id);
+                  }}
+                >
+                  <span>{fileName(f)}</span>
+                  <span style={{ fontSize: 11, opacity: 0.7 }}>{f.exists ? (f.size ? fmtSize(f.size) : "empty") : "none"}</span>
+                </button>
+              ))}
             </div>
           );
         })}
-      </aside>
-      <section style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: 12, borderBottom: "1px solid #1e293b", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <Input
-            allowClear
-            placeholder="Search logs"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            style={{ width: 260 }}
-          />
+      </div>
+      <div>
+        <div style={{ marginBottom: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <Input allowClear placeholder="Search logs" value={query} onChange={(e) => setQuery(e.target.value)} style={{ width: 260 }} />
           {presentLevels.map((l) => (
             <Tag
               key={l}
@@ -171,7 +130,7 @@ export function SiteLogs({ siteId, domain }: { siteId: number; domain: string })
           ))}
           <Space size={6} style={{ marginLeft: "auto" }}>
             <Button size="small" onClick={() => setRaw((v) => !v)}>
-              {raw ? "Entries" : "Raw"}
+              {raw ? "Table" : "Raw"}
             </Button>
             <Button size="small" disabled={!data?.content} onClick={download}>
               Download
@@ -185,85 +144,30 @@ export function SiteLogs({ siteId, domain }: { siteId: number; domain: string })
           </Space>
         </div>
         {data?.truncated ? (
-          <Typography.Text style={{ padding: "6px 12px", color: "#94a3b8", fontSize: 12 }}>Showing the last 256 KB of this file.</Typography.Text>
+          <Typography.Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+            Showing the last 256 KB, newest first.
+          </Typography.Text>
         ) : null}
-        {err ? <Alert type="error" showIcon message={err} style={{ margin: 12 }} /> : null}
-        {data?.hint ? <Alert type="info" showIcon message={data.hint} style={{ margin: 12 }} /> : null}
-        <div style={{ flex: 1, overflow: "auto" }}>
-          {busy && !data ? (
-            <div style={{ padding: 16, color: "#94a3b8" }}>Loading…</div>
-          ) : raw ? (
-            <pre style={{ margin: 0, padding: 14, fontSize: 12, lineHeight: 1.45, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-              {data?.content || (data?.current?.exists ? "File is empty — no traffic has hit this vhost yet." : "No log yet.")}
-            </pre>
-          ) : !visible.length ? (
-            <div style={{ padding: 16, color: "#94a3b8" }}>
-              {data?.current?.exists
+        {err ? <Alert type="error" showIcon message={err} style={{ marginBottom: 12 }} /> : null}
+        {data?.hint ? <Alert type="info" showIcon message={data.hint} style={{ marginBottom: 12 }} /> : null}
+        {raw ? (
+          <pre className="log-view">
+            {data?.content || (data?.current?.exists ? "File is empty — no traffic has hit this vhost yet." : "No log yet.")}
+          </pre>
+        ) : (
+          <LogTable
+            rows={visible}
+            loading={busy && !data}
+            emptyText={
+              data?.current?.exists
                 ? data.current.size
                   ? "No matching entries."
                   : "No traffic yet. Visit the site or click Test request."
-                : "No log yet. Traffic or Laravel errors will appear here."}
-            </div>
-          ) : (
-            paged.map((e, i) => {
-              const expanded = open === i;
-              return (
-                <button
-                  key={`${e.time}-${i}`}
-                  type="button"
-                  onClick={() => setOpen(expanded ? null : i)}
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    textAlign: "left",
-                    border: 0,
-                    borderBottom: "1px solid #1e293b",
-                    background: expanded ? "#111827" : "transparent",
-                    color: "inherit",
-                    padding: "10px 14px",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
-                    <Tag color={LEVEL_COLOR[e.level] || "default"} style={{ marginInlineEnd: 0 }}>
-                      {e.level.toUpperCase()}
-                    </Tag>
-                    {e.env ? <span style={{ color: "#94a3b8", fontSize: 12 }}>{e.env}</span> : null}
-                    {e.time ? <span style={{ color: "#64748b", fontSize: 12 }}>{e.time}</span> : null}
-                    {e.status ? <span style={{ color: "#94a3b8", fontSize: 12 }}>{e.status}</span> : null}
-                  </div>
-                  <div style={{ fontSize: 13, lineHeight: 1.45, wordBreak: "break-word" }}>{e.message}</div>
-                  {expanded && e.context ? (
-                    <pre style={{ margin: "10px 0 0", padding: 10, background: "#020617", borderRadius: 6, fontSize: 11, lineHeight: 1.4, whiteSpace: "pre-wrap", wordBreak: "break-word", color: "#cbd5e1" }}>
-                      {e.context}
-                    </pre>
-                  ) : e.context && !expanded ? (
-                    <div style={{ marginTop: 4, fontSize: 11, color: "#64748b" }}>Stack / context — click to expand</div>
-                  ) : null}
-                </button>
-              );
-            })
-          )}
-        </div>
-        {!raw && visible.length > 0 ? (
-          <div style={{ padding: "8px 12px", borderTop: "1px solid #1e293b", background: "#0f172a" }}>
-            <Pagination
-              size="small"
-              current={page}
-              pageSize={pageSize}
-              total={visible.length}
-              showSizeChanger
-              pageSizeOptions={[10, 20, 50, 100]}
-              showTotal={(t, range) => `${range[0]}-${range[1]} of ${t}`}
-              onChange={(p, ps) => {
-                setPage(p);
-                setPageSize(ps);
-                setOpen(null);
-              }}
-            />
-          </div>
-        ) : null}
-      </section>
+                : "No log yet. Traffic or Laravel errors will appear here."
+            }
+          />
+        )}
+      </div>
     </div>
   );
 }

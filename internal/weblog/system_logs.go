@@ -17,7 +17,7 @@ import (
 
 func SystemLogs(id, group string, max int) *rpc.SystemLogResp {
 	files := listSystemLogs()
-	out := &rpc.SystemLogResp{Files: files}
+	out := &rpc.SystemLogResp{Files: files, Entries: []rpc.SiteLogEntry{}}
 	id = strings.TrimSpace(id)
 	group = strings.TrimSpace(group)
 	if id == "" && group != "" {
@@ -61,6 +61,8 @@ func SystemLogs(id, group string, max int) *rpc.SystemLogResp {
 	}
 	out.Content = content
 	out.Truncated = trunc
+	out.Entries = ParseSystemLogEntries(current.ID, current.Kind, content)
+	out.Counts = CountLevels(out.Entries)
 	return out
 }
 

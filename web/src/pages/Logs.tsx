@@ -4,8 +4,10 @@ import { Alert, App, Button, Card, Input, Select, Space, Tabs, Tag, Typography }
 import { ReloadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
+import { LogTable } from "@/components/LogTable";
 import { SiteLogs } from "@/components/SiteLogs";
 import { ScanLogs } from "@/pages/ScanLogs";
+import { filterEntries, logRows, type SiteLogEntry } from "@/components/SiteLogs.parse";
 
 type LogFile = {
   id: string;
@@ -20,6 +22,7 @@ type LogFile = {
 type LogResp = {
   files?: LogFile[];
   current?: LogFile;
+  entries?: SiteLogEntry[];
   content?: string;
   truncated?: boolean;
   message?: string;
@@ -43,11 +46,13 @@ export function Logs() {
   const tab = admin ? want : "website";
   const [files, setFiles] = useState<LogFile[]>([]);
   const [cur, setCur] = useState<LogFile | null>(null);
+  const [entries, setEntries] = useState<SiteLogEntry[]>([]);
   const [content, setContent] = useState("");
   const [trunc, setTrunc] = useState(false);
   const [hint, setHint] = useState("");
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
+  const [raw, setRaw] = useState(false);
   const [sites, setSites] = useState<SiteOpt[]>([]);
   const [siteId, setSiteId] = useState(0);
 
@@ -63,6 +68,7 @@ export function Logs() {
       const out = await api.get<LogResp>(`/api/system-logs?${qs.toString()}`);
       setFiles(out.files || []);
       setCur(out.current || null);
+      setEntries(logRows(out.entries, out.content));
       setContent(out.content || "");
       setTrunc(!!out.truncated);
       setHint(out.message || "");
@@ -87,7 +93,8 @@ export function Logs() {
     if (admin && tab !== "scan") void load();
   }, [tab, admin]);
 
-  const filtered = useMemo(() => {
+  const filtered = useMemo(() => filterEntries(entries, q, []), [entries, q]);
+  const rawFiltered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return content;
     return content
@@ -121,6 +128,7 @@ export function Logs() {
           next.set("tab", key);
           setSearch(next, { replace: true });
           setQ("");
+          setRaw(false);
         }}
       />
       {tab === "scan" ? (
@@ -174,6 +182,9 @@ export function Logs() {
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                 />
+                <Button size="small" onClick={() => setRaw((v) => !v)}>
+                  {raw ? "Table" : "Raw"}
+                </Button>
                 <Button size="small" icon={<ReloadOutlined />} loading={busy} onClick={() => void load(cur?.id)}>
                   Refresh
                 </Button>
@@ -181,8 +192,16 @@ export function Logs() {
             }
           >
             {hint ? <Alert type="info" showIcon message={hint} style={{ marginBottom: 12 }} /> : null}
-            {trunc ? <Typography.Text type="secondary">Showing the last 256 KB.</Typography.Text> : null}
-            <pre className="log-view">{filtered || (busy ? "Loading…" : "Empty")}</pre>
+            {trunc ? (
+              <Typography.Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+                Showing the last 256 KB, newest first.
+              </Typography.Text>
+            ) : null}
+            {raw ? (
+              <pre className="log-view">{rawFiltered || (busy ? "Loading…" : "Empty")}</pre>
+            ) : (
+              <LogTable rows={filtered} loading={busy && !entries.length} emptyText={busy ? "Loading…" : "Empty"} />
+            )}
             {cur?.path ? (
               <Typography.Text type="secondary" style={{ display: "block", marginTop: 8 }}>
                 {cur.path}

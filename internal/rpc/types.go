@@ -822,6 +822,8 @@ type SystemLogFile struct {
 type SystemLogResp struct {
 	Files     []SystemLogFile `json:"files"`
 	Current   *SystemLogFile  `json:"current,omitempty"`
+	Entries   []SiteLogEntry  `json:"entries"`
+	Counts    map[string]int  `json:"counts,omitempty"`
 	Content   string          `json:"content,omitempty"`
 	Truncated bool            `json:"truncated,omitempty"`
 	Message   string          `json:"message,omitempty"`

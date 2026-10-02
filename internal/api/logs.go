@@ -17,6 +17,9 @@ func (s *Server) systemLogs(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	if st != nil && st.Entries == nil {
+		st.Entries = []rpc.SiteLogEntry{}
+	}
 	writeJSON(w, http.StatusOK, st)
 }
 

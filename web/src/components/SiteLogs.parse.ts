@@ -29,7 +29,39 @@ export type SiteLogsData = {
   hint?: string;
 };
 
-export const DEFAULT_PAGE_SIZE = 10;
+export const DEFAULT_PAGE_SIZE = 20;
+
+export function linesToEntries(content: string): SiteLogEntry[] {
+  const rows = content
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() && !line.startsWith("-- "))
+    .map((line) => {
+      const iso = line.match(/^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?)\s+(.*)$/);
+      if (iso) return { time: iso[1], level: inferLineLevel(iso[2]), message: iso[2] };
+      const syslog = line.match(/^([A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+\S+\s+(\S+?)(?:\[\d+\])?:\s*(.*)$/);
+      if (syslog) return { time: syslog[1], env: syslog[2], level: inferLineLevel(syslog[3] + " " + syslog[2]), message: syslog[3] };
+      return { level: inferLineLevel(line), message: line };
+    });
+  return rows.reverse();
+}
+
+function inferLineLevel(s: string) {
+  const low = s.toLowerCase();
+  if (low.includes("error") || low.includes("fail") || low.includes("denied") || low.includes("fatal")) return "error";
+  if (low.includes("warn")) return "warning";
+  if (low.includes("notice")) return "notice";
+  if (low.includes("debug")) return "debug";
+  return "info";
+}
+
+export function logRows(entries?: SiteLogEntry[], content?: string) {
+  if (entries && entries.length) return entries;
+  if (content && content.trim()) return linesToEntries(content);
+  return [];
+}
 
 export function pageEntries<T>(rows: T[], page: number, pageSize = DEFAULT_PAGE_SIZE): T[] {
   const size = pageSize > 0 ? pageSize : DEFAULT_PAGE_SIZE;
