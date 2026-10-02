@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Alert, App, AutoComplete, Button, Card, Checkbox, Col, Input, Popconfirm, Row, Select, Space, Table, Tag, Typography } from "antd";
+import { Alert, App, AutoComplete, Button, Card, Checkbox, Col, Input, Popconfirm, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { ScanSummary, type ScanResult } from "@/components/ScanSummary";
 import { useNavigate } from "react-router-dom";
@@ -19,8 +19,11 @@ type WAF = {
   audit: string;
   packs?: WAFPack[];
   disabledIds?: number[];
+  uploadScan?: boolean;
   message?: string;
 };
+type Fail2banJail = { name: string; banned?: string[]; failed?: number };
+type Fail2ban = { installed: boolean; active: boolean; jails?: Fail2banJail[]; message?: string };
 type CRSRule = { id: number; msg: string; file: string; pack: string; disabled: boolean };
 type AV = { installed: boolean; version?: string; daemonActive: boolean; freshclamActive: boolean; signatures?: string; lastScan?: string };
 type Scan = { ok: boolean; path: string; infected: number; summary: string };
@@ -44,21 +47,24 @@ export function Security() {
   const [sites, setSites] = useState<SiteOpt[]>([]);
   const [scanTarget, setScanTarget] = useState("http://127.0.0.1:80");
   const [scanOut, setScanOut] = useState<ScanResult | null>(null);
+  const [fail2ban, setFail2ban] = useState<Fail2ban | null>(null);
   const [busy, setBusy] = useState("");
 
   async function load() {
-    const [f, w, a, sc, siteList] = await Promise.all([
+    const [f, w, a, sc, siteList, ops] = await Promise.all([
       api.get<FW>("/api/security/firewall"),
       api.get<WAF>("/api/security/waf"),
       api.get<AV>("/api/security/av"),
       api.get<Scanners>("/api/security/scanners").catch(() => ({ tools: [] })),
       api.get<SiteOpt[]>("/api/sites").catch(() => [] as SiteOpt[]),
+      api.get<{ fail2ban?: Fail2ban }>("/api/sysops").catch(() => ({ fail2ban: undefined })),
     ]);
     setFw(f);
     setWaf(w);
     setAv(a);
     setScanners(sc);
     setSites(siteList);
+    setFail2ban(ops.fail2ban || { installed: false, active: false, jails: [] });
     if (siteList[0] && scanTarget === "http://127.0.0.1:80") {
       setScanTarget(`http://${siteList[0].domain}:8080`);
     }
@@ -86,10 +92,16 @@ export function Security() {
           Security
         </Typography.Title>
         <Typography.Paragraph type="secondary">
-          Install UFW, ModSecurity, ClamAV, Nikto, OWASP ZAP, and OpenVAS from Software first. Enabling the firewall always allows SSH 22, FTP 21, HTTP 80, HTTPS 443, and the Siroc web port. Vulnerability scanners can target a hosted site or any other http(s) URL.
+          Install UFW, ModSecurity, ClamAV, Fail2ban, Nikto, OWASP ZAP, and OpenVAS from Software first. Enabling the firewall always allows SSH 22, FTP 21, HTTP 80, HTTPS 443, and the Siroc web port.
         </Typography.Paragraph>
       </div>
 
+      <Tabs
+        items={[
+          {
+            key: "firewall",
+            label: "Firewall",
+            children: (
       <Card
         title="UFW firewall"
         extra={<Tag color={!fw?.installed ? "default" : fw.active ? "success" : "warning"}>{!fw?.installed ? "Not installed" : fw.active ? "Active" : "Inactive"}</Tag>}
@@ -160,9 +172,17 @@ export function Security() {
           <Typography.Text type="secondary">Install UFW from Software.</Typography.Text>
         )}
       </Card>
-
-      <WAFCard waf={waf} busy={busy} run={run} />
-
+            ),
+          },
+          {
+            key: "waf",
+            label: "WAF",
+            children: <WAFCard waf={waf} busy={busy} run={run} />,
+          },
+          {
+            key: "av",
+            label: "Antivirus",
+            children: (
       <Card
         title="ClamAV antivirus"
         extra={<Tag color={!av?.installed ? "default" : av.daemonActive ? "success" : "warning"}>{!av?.installed ? "Not installed" : av.daemonActive ? "Daemon running" : "Installed"}</Tag>}
@@ -208,7 +228,70 @@ export function Security() {
           <Typography.Text type="secondary">Install ClamAV from Software.</Typography.Text>
         )}
       </Card>
-
+            ),
+          },
+          {
+            key: "fail2ban",
+            label: "Fail2ban",
+            children: (
+              <Card
+                title="Fail2ban"
+                extra={
+                  <Tag color={!fail2ban?.installed ? "default" : fail2ban.active ? "success" : "warning"}>
+                    {!fail2ban?.installed ? "Not installed" : fail2ban.active ? "Active" : "Inactive"}
+                  </Tag>
+                }
+              >
+                {!fail2ban?.installed ? (
+                  <Typography.Text type="secondary">Install Fail2ban from Software. After install it watches SSH and Siroc panel logins.</Typography.Text>
+                ) : (
+                  <Space direction="vertical" style={{ width: "100%" }} size="middle">
+                    <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                      The <Typography.Text code>siroc</Typography.Text> jail bans IPs after repeated panel login failures on this control panel. SSH stays in the <Typography.Text code>sshd</Typography.Text> jail.
+                    </Typography.Paragraph>
+                    <Table
+                      size="small"
+                      rowKey="name"
+                      pagination={false}
+                      dataSource={fail2ban.jails || []}
+                      locale={{ emptyText: "No jails reported yet." }}
+                      columns={[
+                        { title: "Jail", dataIndex: "name" },
+                        { title: "Failed", dataIndex: "failed", width: 90 },
+                        {
+                          title: "Banned",
+                          render: (_, j) =>
+                            (j.banned || []).length ? (
+                              <Space wrap>
+                                {(j.banned || []).map((ip) => (
+                                  <Tag
+                                    key={ip}
+                                    closable
+                                    onClose={() =>
+                                      run("unban", async () => {
+                                        await api.post("/api/sysops", { action: "unban", jail: j.name, ip });
+                                      })
+                                    }
+                                  >
+                                    {ip}
+                                  </Tag>
+                                ))}
+                              </Space>
+                            ) : (
+                              "—"
+                            ),
+                        },
+                      ]}
+                    />
+                  </Space>
+                )}
+              </Card>
+            ),
+          },
+          {
+            key: "scanners",
+            label: "Scanners",
+            children: (
       <Card
         title="Vulnerability scanners"
         extra={
@@ -294,6 +377,10 @@ export function Security() {
           ) : null}
         </Space>
       </Card>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }
@@ -319,6 +406,7 @@ function WAFCard({
   const [ruleQ, setRuleQ] = useState("");
   const [rulePack, setRulePack] = useState("");
   const [newId, setNewId] = useState("");
+  const [uploadScan, setUploadScan] = useState(false);
 
   useEffect(() => {
     if (!waf) return;
@@ -328,6 +416,7 @@ function WAFCard({
     setAudit(waf.audit || "RelevantOnly");
     setPacks((waf.packs || []).filter((p) => p.enabled).map((p) => p.id));
     setDisabledIds(waf.disabledIds || []);
+    setUploadScan(!!waf.uploadScan);
   }, [waf]);
 
   async function loadRules(q = ruleQ, pack = rulePack) {
@@ -341,7 +430,7 @@ function WAFCard({
     loadRules().catch(() => undefined);
   }, [waf?.installed]);
 
-  function save(extra: Partial<{ mode: string; paranoia: number; inboundThreshold: number; outboundThreshold: number; audit: string; packs: string[]; disabledIds: number[] }> = {}) {
+  function save(extra: Partial<{ mode: string; paranoia: number; inboundThreshold: number; outboundThreshold: number; audit: string; packs: string[]; disabledIds: number[]; uploadScan: boolean }> = {}) {
     const ids = extra.disabledIds ?? disabledIds;
     return run("waf", async () => {
       await api.post("/api/security/waf", {
@@ -352,6 +441,7 @@ function WAFCard({
         audit: extra.audit ?? audit,
         packs: extra.packs ?? packs,
         disabledIds: ids,
+        uploadScan: extra.uploadScan ?? uploadScan,
       });
       await loadRules();
     });
@@ -481,6 +571,25 @@ function WAFCard({
               />
             </Col>
           </Row>
+          <div>
+            <Typography.Text type="secondary">Upload virus scan</Typography.Text>
+            <div style={{ marginTop: 8 }}>
+              <Space align="center">
+                <Switch
+                  checked={uploadScan}
+                  disabled={!!busy}
+                  onChange={(v) => {
+                    setUploadScan(v);
+                    save({ uploadScan: v });
+                  }}
+                />
+                <Typography.Text>Scan HTTP and File Manager uploads with ClamAV</Typography.Text>
+              </Space>
+            </div>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+              Infected website uploads are blocked by ModSecurity. Infected files in File Manager are deleted. Install ClamAV from Software first.
+            </Typography.Paragraph>
+          </div>
           <div>
             <Typography.Text type="secondary">OWASP CRS rule packs</Typography.Text>
             {waf.message ? <Alert type="warning" message={waf.message} style={{ margin: "8px 0" }} /> : null}

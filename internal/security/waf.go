@@ -28,6 +28,7 @@ type wafState struct {
 	Audit             string   `json:"audit"`
 	Packs             []string `json:"packs"`
 	DisabledIDs       []int    `json:"disabledIds"`
+	UploadScan        bool     `json:"uploadScan"`
 }
 
 type wafPackSpec struct {
@@ -119,6 +120,15 @@ func (m *Manager) WAFStatus() (*rpc.WAFStatus, error) {
 	if out.DisabledIDs == nil {
 		out.DisabledIDs = []int{}
 	}
+	out.UploadScan = st.UploadScan
+	if st.UploadScan {
+		if ok, _ := dpkgOK("clamav"); !ok {
+			if out.Message != "" {
+				out.Message += " "
+			}
+			out.Message += "Upload virus scan is on, but ClamAV is not installed."
+		}
+	}
 	dir := crsRulesDir()
 	out.CRS = dir != ""
 	if !out.CRS && out.Installed {
@@ -203,6 +213,9 @@ func (m *Manager) WAFApply(req rpc.WAFModeReq) error {
 			return err
 		}
 		st.DisabledIDs = ids
+	}
+	if req.UploadScan != nil {
+		st.UploadScan = *req.UploadScan
 	}
 	return writeWAF(st)
 }
@@ -303,6 +316,11 @@ SecAction "id:900990,phase:1,nolog,pass,t:none,setvar:tx.crs_setup_version=%d"
 				fmt.Fprintf(&b, "SecRuleRemoveById %d\n", id)
 			}
 		}
+	}
+	if st.UploadScan {
+		_ = writeClamScanHelper()
+		b.WriteString("\n# ClamAV scan of HTTP file uploads\n")
+		b.WriteString(uploadScanRule())
 	}
 	if err := os.WriteFile(wafRulesFile, []byte(b.String()), 0644); err != nil {
 		return err

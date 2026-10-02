@@ -1,9 +1,20 @@
 export type ApiError = { error: string };
 
+export type Captcha = { id: string; image: string };
+
+export class RequestError extends Error {
+  captchaRequired?: boolean;
+  captcha?: Captcha;
+}
+
 async function parse<T>(res: Response): Promise<T> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error((data as ApiError).error || res.statusText);
+    const payload = data as ApiError & { captchaRequired?: boolean; captcha?: Captcha };
+    const err = new RequestError(payload.error || res.statusText);
+    err.captchaRequired = payload.captchaRequired;
+    err.captcha = payload.captcha;
+    throw err;
   }
   return data as T;
 }

@@ -411,7 +411,9 @@ func catalog() []spec {
 			Service: "fail2ban",
 			AptPkg:  "fail2ban",
 			PostInstall: func(string) error {
-				_ = os.WriteFile("/etc/fail2ban/jail.local", []byte("[DEFAULT]\nbantime = 1h\nfindtime = 10m\nmaxretry = 5\n\n[sshd]\nenabled = true\n"), 0644)
+				if err := security.EnsureFail2ban(); err != nil {
+					return err
+				}
 				return exec.Command("systemctl", "enable", "--now", "fail2ban").Run()
 			},
 			Installed: func() (bool, string) {

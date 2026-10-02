@@ -58,6 +58,7 @@ func (s *Server) Router() http.Handler {
 	r.Get("/api/setup/status", s.setupStatus)
 	r.Post("/api/setup", s.setup)
 	r.Post("/api/login", s.login)
+	r.Get("/api/login/captcha", s.loginCaptcha)
 	r.Post("/api/logout", s.logout)
 	r.Post("/api/hooks/git/{token}", s.gitWebhook)
 	r.Put("/api/hooks/git/{token}", s.gitWebhook)
@@ -271,29 +272,64 @@ func currentUser(r *http.Request) *store.PanelUser {
 	return u
 }
 
+func (s *Server) loginCaptcha(w http.ResponseWriter, r *http.Request) {
+	ip := auth.ClientIP(r)
+	if !s.Auth.NeedCaptcha(ip) {
+		writeJSON(w, http.StatusOK, map[string]any{"required": false})
+		return
+	}
+	ch, err := s.Auth.IssueCaptcha(ip)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"required": true, "captcha": ch})
+}
+
+func (s *Server) loginFail(w http.ResponseWriter, ip, username string, status int, err error) {
+	s.Auth.Fail(ip)
+	auth.LogFailure(ip, username)
+	s.writeLoginErr(w, ip, status, err)
+}
+
+func (s *Server) writeLoginErr(w http.ResponseWriter, ip string, status int, err error) {
+	body := map[string]any{"error": err.Error(), "captchaRequired": s.Auth.NeedCaptcha(ip)}
+	if s.Auth.NeedCaptcha(ip) {
+		if ch, cerr := s.Auth.IssueCaptcha(ip); cerr == nil {
+			body["captcha"] = ch
+		}
+	}
+	writeJSON(w, status, body)
+}
+
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	ip := r.RemoteAddr
+	ip := auth.ClientIP(r)
 	if !s.Auth.AllowLogin(ip) {
-		writeErr(w, http.StatusTooManyRequests, fmt.Errorf("too many login attempts"))
+		auth.LogFailure(ip, "")
+		s.writeLoginErr(w, ip, http.StatusTooManyRequests, fmt.Errorf("too many login attempts"))
 		return
 	}
 	var body struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username  string `json:"username"`
+		Password  string `json:"password"`
+		CaptchaID string `json:"captchaId"`
+		Captcha   string `json:"captcha"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
+	if s.Auth.NeedCaptcha(ip) && !s.Auth.CheckCaptcha(ip, body.CaptchaID, body.Captcha) {
+		s.writeLoginErr(w, ip, http.StatusBadRequest, fmt.Errorf("captcha required"))
+		return
+	}
 	u, err := s.Store.GetPanelUserByName(body.Username)
 	if err != nil || !auth.Check(u.PasswordHash, body.Password) {
-		s.Auth.Fail(ip)
-		writeErr(w, http.StatusUnauthorized, fmt.Errorf("invalid credentials"))
+		s.loginFail(w, ip, body.Username, http.StatusUnauthorized, fmt.Errorf("invalid credentials"))
 		return
 	}
 	s.Auth.OK(ip)
 	if acc, err := s.Store.GetAccountByName(u.Username); err == nil && acc.Suspended {
-		s.Auth.Fail(ip)
-		writeErr(w, http.StatusUnauthorized, fmt.Errorf("account is suspended"))
+		s.loginFail(w, ip, body.Username, http.StatusUnauthorized, fmt.Errorf("account is suspended"))
 		return
 	}
 	sid, err := s.Store.CreateSession(u.ID, 0, 7*24*time.Hour)

@@ -14,18 +14,19 @@ const CookieName = "cp_session"
 const ReturnCookie = "cp_return"
 
 type Service struct {
-	Store *store.Store
-	mu    sync.Mutex
-	fails map[string]failState
+	Store   *store.Store
+	mu      sync.Mutex
+	fails   map[string]failState
+	captcha map[string]captchaEntry
 }
 
 type failState struct {
-	n    int
+	at    []time.Time
 	until time.Time
 }
 
 func New(st *store.Store) *Service {
-	return &Service{Store: st, fails: map[string]failState{}}
+	return &Service{Store: st, fails: map[string]failState{}, captcha: map[string]captchaEntry{}}
 }
 
 func Hash(password string) (string, error) {
@@ -44,20 +45,32 @@ func (s *Service) AllowLogin(ip string) bool {
 	if !ok {
 		return true
 	}
-	if time.Now().After(st.until) {
+	now := time.Now()
+	st = s.pruneFails(st, now)
+	if !st.until.IsZero() && now.Before(st.until) {
+		s.fails[ip] = st
+		return false
+	}
+	if len(st.at) >= lockoutAfter {
+		s.fails[ip] = st
+		return false
+	}
+	if len(st.at) == 0 {
 		delete(s.fails, ip)
 		return true
 	}
-	return st.n < 8
+	s.fails[ip] = st
+	return true
 }
 
 func (s *Service) Fail(ip string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st := s.fails[ip]
-	st.n++
-	if st.n >= 5 {
-		st.until = time.Now().Add(time.Minute * time.Duration(st.n-4))
+	now := time.Now()
+	st := s.pruneFails(s.fails[ip], now)
+	st.at = append(st.at, now)
+	if len(st.at) >= 5 {
+		st.until = now.Add(time.Minute * time.Duration(len(st.at)-4))
 	}
 	s.fails[ip] = st
 }

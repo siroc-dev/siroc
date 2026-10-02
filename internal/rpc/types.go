@@ -577,6 +577,7 @@ type WAFStatus struct {
 	Audit             string    `json:"audit"`
 	Packs             []WAFPack `json:"packs,omitempty"`
 	DisabledIDs       []int     `json:"disabledIds,omitempty"`
+	UploadScan        bool      `json:"uploadScan,omitempty"`
 	Message           string    `json:"message,omitempty"`
 }
 
@@ -601,6 +602,7 @@ type WAFModeReq struct {
 	Audit             string   `json:"audit"`
 	Packs             []string `json:"packs"`
 	DisabledIDs       []int    `json:"disabledIds"`
+	UploadScan        *bool    `json:"uploadScan,omitempty"`
 }
 
 type AVStatus struct {

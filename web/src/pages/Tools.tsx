@@ -274,7 +274,7 @@ export function Tools() {
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
                 <Card title="Fail2ban">
                   {!st?.fail2ban?.installed ? (
-                    <Alert type="info" showIcon message="Install Fail2ban from Software first." />
+                    <Alert type="info" showIcon message="Install Fail2ban from Software first. Panel login bans are on Security → Fail2ban." />
                   ) : (
                     <Table
                       size="small"

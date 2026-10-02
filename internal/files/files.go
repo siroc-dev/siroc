@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
+	"github.com/siroc-dev/siroc/internal/security"
 	"github.com/siroc-dev/siroc/internal/validate"
 )
 
@@ -40,13 +41,13 @@ type helperReq struct {
 }
 
 type helperResp struct {
-	OK        bool               `json:"ok"`
-	Error     string             `json:"error,omitempty"`
-	Entries   []rpc.FileEntry    `json:"entries,omitempty"`
-	Content   string             `json:"content,omitempty"`
-	Dest      string             `json:"dest,omitempty"`
+	OK        bool                `json:"ok"`
+	Error     string              `json:"error,omitempty"`
+	Entries   []rpc.FileEntry     `json:"entries,omitempty"`
+	Content   string              `json:"content,omitempty"`
+	Dest      string              `json:"dest,omitempty"`
 	Hits      []rpc.FileSearchHit `json:"hits,omitempty"`
-	Truncated bool               `json:"truncated,omitempty"`
+	Truncated bool                `json:"truncated,omitempty"`
 }
 
 func (m *Manager) resolve(username, rel string) (abs, home string, uid, gid int, err error) {
@@ -300,7 +301,7 @@ func (m *Manager) Upload(username, rel string, r io.Reader, root bool) error {
 		_ = os.Chown(abs, uid, gid)
 	}
 	m.ownPath(abs)
-	return nil
+	return security.ScanUpload(abs)
 }
 
 func HelperMain() {

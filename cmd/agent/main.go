@@ -111,8 +111,14 @@ func main() {
 	secMgr := &security.Manager{HomeRoot: cfg.HomeRoot}
 	mon := &monitoring.Collector{}
 	weblog.Ensure()
+	if err := update.InstallCheckTimer(); err != nil {
+		log.Printf("update check timer: %v", err)
+	}
 	if err := security.EnsureWAF(); err != nil {
 		log.Printf("waf config: %v", err)
+	}
+	if err := security.EnsureFail2ban(); err != nil {
+		log.Printf("fail2ban: %v", err)
 	}
 	hostMgr.FixAllWebPerms()
 	hostMgr.LockOpenBasedir()

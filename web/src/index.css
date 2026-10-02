@@ -590,6 +590,33 @@ html[data-theme="dark"] .cp-header {
   margin-bottom: 12px;
 }
 
+.login-captcha {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.login-captcha-img {
+  padding: 0;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.login-captcha-img img {
+  display: block;
+  width: 168px;
+  height: 52px;
+}
+
+html[data-theme="dark"] .login-captcha-img {
+  background: #1f1f1f;
+  border-color: #434343;
+}
+
 .settings-row {
   display: grid;
   grid-template-columns: 180px 1fr;

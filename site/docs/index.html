@@ -105,7 +105,7 @@ sudo siroc upgrade --path /var/lib/siroc/updates/siroc-linux-amd64.tar.gz</pre>
           <code>siroc upgrade</code> runs <code>siroc-agent upgrade</code>, replaces
           <code>siroc-panel</code> and <code>siroc-agent</code>, then restarts the services.
         </p>
-        <p>You can also check and apply updates in the panel under <strong>System tools → Updates</strong>.</p>
+        <p>You can also check and apply updates in the panel under <strong>System tools → Updates</strong>. The agent checks the public channel every day at 04:00 (server timezone) and only installs when you apply the update.</p>
         <p>Print the installed version:</p>
         <div class="cmd">
           <div class="cmd-top"><span>Version</span><button class="copy" type="button" data-copy>Copy</button></div>

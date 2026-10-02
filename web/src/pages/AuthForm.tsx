@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Button, Card, Form, Input, Typography } from "antd";
-import { api } from "@/lib/api";
+import { api, RequestError, type Captcha } from "@/lib/api";
 import { useBrand } from "@/components/ThemeProvider";
 
 export type SetupStackPkg = { name: string; title: string; version: string };
@@ -26,16 +26,48 @@ export function AuthForm({
 }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [captcha, setCaptcha] = useState<Captcha | null>(null);
+  const [form] = Form.useForm();
   const { brand } = useBrand();
 
-  async function onFinish(values: { username: string; password: string; leEmail?: string }) {
+  function applyCaptcha(next?: Captcha | null) {
+    setCaptcha(next || null);
+    form.setFieldValue("captcha", "");
+  }
+
+  async function loadCaptcha() {
+    if (setup) return;
+    try {
+      const st = await api.get<{ required: boolean; captcha?: Captcha }>("/api/login/captcha");
+      applyCaptcha(st.required ? st.captcha || null : null);
+    } catch {
+      /* keep current */
+    }
+  }
+
+  useEffect(() => {
+    loadCaptcha().catch(() => undefined);
+  }, [setup]);
+
+  async function onFinish(values: { username: string; password: string; leEmail?: string; captcha?: string }) {
     setBusy(true);
     setError("");
     try {
-      await api.post(endpoint, { ...values, ...extra });
+      await api.post(endpoint, {
+        ...values,
+        ...extra,
+        captchaId: captcha?.id,
+        captcha: values.captcha,
+      });
       onDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
+      if (err instanceof RequestError && (err.captchaRequired || err.captcha)) {
+        applyCaptcha(err.captcha || null);
+        if (!err.captcha) loadCaptcha().catch(() => undefined);
+      } else if (!setup) {
+        loadCaptcha().catch(() => undefined);
+      }
     } finally {
       setBusy(false);
     }
@@ -51,7 +83,7 @@ export function AuthForm({
           {title}
         </Typography.Title>
         <Typography.Paragraph type="secondary">{subtitle}</Typography.Paragraph>
-        <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
+        <Form form={form} layout="vertical" onFinish={onFinish} requiredMark={false}>
           <Form.Item name="username" label="Username" rules={[{ required: true }]}>
             <Input autoComplete="username" />
           </Form.Item>
@@ -82,6 +114,24 @@ export function AuthForm({
                   : "After setup, Siroc installs Nginx, Apache, PHP-FPM 8.4, and MariaDB 11."
               }
             />
+          ) : null}
+          {captcha ? (
+            <>
+              <div className="login-captcha">
+                <button type="button" className="login-captcha-img" onClick={() => void loadCaptcha()} title="Refresh captcha">
+                  <img src={captcha.image} alt="Captcha" />
+                </button>
+                <Form.Item
+                  name="captcha"
+                  label="Captcha"
+                  extra="Shown after 2 failed logins in 30 minutes. Click the image to refresh."
+                  rules={[{ required: true, message: "Enter the captcha" }]}
+                  style={{ flex: 1, marginBottom: 0 }}
+                >
+                  <Input autoComplete="off" placeholder="Letters and numbers" />
+                </Form.Item>
+              </div>
+            </>
           ) : null}
           {error ? <Alert type="error" message={error} style={{ marginBottom: 16 }} /> : null}
           <Button type="primary" htmlType="submit" loading={busy} block>
