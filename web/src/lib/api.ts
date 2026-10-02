@@ -21,4 +21,9 @@ export const api = {
   put: <T>(url: string, body?: unknown) => api.send<T>(url, "PUT", body),
   patch: <T>(url: string, body?: unknown) => api.send<T>(url, "PATCH", body),
   delete: <T>(url: string) => api.send<T>(url, "DELETE"),
+  upload: <T>(url: string, file: File, field = "file") => {
+    const body = new FormData();
+    body.append(field, file);
+    return fetch(url, { method: "POST", credentials: "include", body }).then(parse<T>);
+  },
 };

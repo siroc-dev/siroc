@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Alert, Button, Card, Form, Input, Typography } from "antd";
 import { api } from "@/lib/api";
+import { useBrand } from "@/components/ThemeProvider";
 
 export type SetupStackPkg = { name: string; title: string; version: string };
 
@@ -25,6 +26,7 @@ export function AuthForm({
 }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const { brand } = useBrand();
 
   async function onFinish(values: { username: string; password: string; leEmail?: string }) {
     setBusy(true);
@@ -42,6 +44,9 @@ export function AuthForm({
   return (
     <div style={{ display: "grid", placeItems: "center", minHeight: "100vh", padding: 24 }}>
       <Card style={{ width: "100%", maxWidth: 420 }}>
+        {brand.hasLogo && brand.logoUrl ? (
+          <img src={brand.logoUrl} alt="Siroc" className="brand-logo brand-logo-login" />
+        ) : null}
         <Typography.Title level={3} style={{ marginTop: 0 }}>
           {title}
         </Typography.Title>

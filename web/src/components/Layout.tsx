@@ -16,12 +16,14 @@ import {
   LogoutOutlined,
   MonitorOutlined,
   SafetyOutlined,
+  SettingOutlined,
   ToolOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { elapsed, jobLabel, type InstallQueue } from "@/lib/jobs";
 import { canUsePath } from "@/lib/nav";
+import { useBrand } from "@/components/ThemeProvider";
 
 const { Sider, Content, Header } = AntLayout;
 
@@ -38,6 +40,7 @@ const items = [
   { key: "/databases", label: "Databases", icon: <DatabaseOutlined /> },
   { key: "/backup", label: "Backup", icon: <CloudDownloadOutlined /> },
   { key: "/tools", label: "System tools", icon: <ToolOutlined /> },
+  { key: "/settings", label: "Settings", icon: <SettingOutlined /> },
   { key: "/monitoring", label: "Monitoring", icon: <MonitorOutlined /> },
   { key: "/apache", label: "Status", icon: <CloudServerOutlined /> },
 ];
@@ -46,6 +49,7 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
   const nav = useNavigate();
   const loc = useLocation();
   const { message } = App.useApp();
+  const { brand } = useBrand();
   const [queue, setQueue] = useState<InstallQueue | null>(null);
   const [tick, setTick] = useState(0);
   const [collapsed, setCollapsed] = useState(false);
@@ -142,15 +146,24 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
           }}
         >
           {collapsed ? (
-            <Typography.Title level={5} style={{ color: "#fff", margin: 0 }}>
-              S
-            </Typography.Title>
+            brand.hasLogo && brand.logoUrl ? (
+              <img src={brand.logoUrl} alt="Siroc" className="brand-logo brand-logo-sm" />
+            ) : (
+              <Typography.Title level={5} style={{ color: "#fff", margin: 0 }}>
+                S
+              </Typography.Title>
+            )
           ) : (
             <>
-              <div style={{ fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", opacity: 0.75 }}>Control Panel</div>
-              <Typography.Title level={4} style={{ color: "#fff", margin: "4px 0 0" }}>
-                Siroc
-              </Typography.Title>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {brand.hasLogo && brand.logoUrl ? <img src={brand.logoUrl} alt="Siroc" className="brand-logo" /> : null}
+                <div>
+                  <div style={{ fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", opacity: 0.75 }}>Control Panel</div>
+                  <Typography.Title level={4} style={{ color: "#fff", margin: "4px 0 0" }}>
+                    Siroc
+                  </Typography.Title>
+                </div>
+              </div>
               {version ? (
                 <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>v{version}</div>
               ) : null}
@@ -168,7 +181,7 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
         />
       </Sider>
       <AntLayout>
-        <Header style={{ padding: "0 20px", borderBottom: "1px solid #f0f0f0" }}>
+        <Header className="cp-header" style={{ padding: "0 20px" }}>
           <Flex align="center" justify="space-between" style={{ height: "100%" }}>
             <Typography.Text type="secondary">
               {({
@@ -179,6 +192,7 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
                 "/mysql": "MySQL status",
                 "/mariadb": "MariaDB status",
                 "/scan-logs": "Scan logs",
+                "/settings": "Settings",
               } as Record<string, string>)[loc.pathname] || loc.pathname.slice(1)}
             </Typography.Text>
             <Flex align="center" gap={8}>

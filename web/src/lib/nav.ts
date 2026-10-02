@@ -4,6 +4,7 @@ export const ADMIN_ONLY_PATHS = new Set([
   "/security",
   "/scan-logs",
   "/tools",
+  "/settings",
   "/monitoring",
   "/apache",
   "/nginx",

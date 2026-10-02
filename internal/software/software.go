@@ -468,6 +468,10 @@ func (m *Manager) List() []rpc.PackageInfo {
 		if s.Name == "php" && inst {
 			info.Active = phpAnyActive()
 			info.Service = "php-fpm"
+			info.VersionActive = map[string]bool{}
+			for _, v := range phpInstalledVersions() {
+				info.VersionActive[v] = serviceActive("php" + v + "-fpm")
+			}
 		}
 		if s.Name == "ufw" && inst {
 			info.Active = ufwActive()
@@ -697,6 +701,13 @@ func (m *Manager) Service(name, action string) error {
 		return fmt.Errorf("invalid service action")
 	}
 	svc := ""
+	if ver, ok := phpFPMServiceVersion(name); ok {
+		out, err := exec.Command("systemctl", action, "php"+ver+"-fpm").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("php%s-fpm %s: %s: %w", ver, action, strings.TrimSpace(string(out)), err)
+		}
+		return nil
+	}
 	if name == "php" || name == "php-fpm" {
 		for _, v := range m.PHPInstalled() {
 			if err := exec.Command("systemctl", action, "php"+v+"-fpm").Run(); err != nil {
@@ -948,6 +959,32 @@ func installWPCLI() error {
 		return fmt.Errorf("download wp-cli: %s: %w", tail(out), err)
 	}
 	return os.Chmod("/usr/local/bin/wp", 0755)
+}
+
+func phpFPMServiceVersion(name string) (string, bool) {
+	name = strings.TrimSpace(strings.ToLower(name))
+	name = strings.TrimSuffix(name, "-fpm")
+	if !strings.HasPrefix(name, "php") {
+		return "", false
+	}
+	ver := strings.TrimPrefix(name, "php")
+	if ver == "" {
+		return "", false
+	}
+	dots := 0
+	for _, c := range ver {
+		if c == '.' {
+			dots++
+			continue
+		}
+		if c < '0' || c > '9' {
+			return "", false
+		}
+	}
+	if dots != 1 || strings.HasPrefix(ver, ".") || strings.HasSuffix(ver, ".") {
+		return "", false
+	}
+	return ver, true
 }
 
 func serviceActive(name string) bool {

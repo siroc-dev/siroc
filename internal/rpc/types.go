@@ -110,17 +110,18 @@ type PkgInstallReq struct {
 }
 
 type PackageInfo struct {
-	Name              string   `json:"name"`
-	Title             string   `json:"title"`
-	Description       string   `json:"description,omitempty"`
-	Installed         bool     `json:"installed"`
-	Version           string   `json:"version"`
-	Service           string   `json:"service"`
-	Active            bool     `json:"active"`
-	Versions          []string `json:"versions"`
-	InstalledVersions []string `json:"installedVersions,omitempty"`
-	CLIVersion        string   `json:"cliVersion,omitempty"`
-	ExclusiveOf       string   `json:"exclusiveOf,omitempty"`
+	Name              string          `json:"name"`
+	Title             string          `json:"title"`
+	Description       string          `json:"description,omitempty"`
+	Installed         bool            `json:"installed"`
+	Version           string          `json:"version"`
+	Service           string          `json:"service"`
+	Active            bool            `json:"active"`
+	Versions          []string        `json:"versions"`
+	InstalledVersions []string        `json:"installedVersions,omitempty"`
+	CLIVersion        string          `json:"cliVersion,omitempty"`
+	ExclusiveOf       string          `json:"exclusiveOf,omitempty"`
+	VersionActive     map[string]bool `json:"versionActive,omitempty"`
 }
 
 type CLISetReq struct {

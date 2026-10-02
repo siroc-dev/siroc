@@ -18,6 +18,7 @@ import { Security } from "@/pages/Security";
 import { ScanLogs } from "@/pages/ScanLogs";
 import { PHP } from "@/pages/PHP";
 import { Monitoring } from "@/pages/Monitoring";
+import { Settings } from "@/pages/Settings";
 import { Apache } from "@/pages/Apache";
 import { Nginx } from "@/pages/Nginx";
 import { PHPFPM } from "@/pages/PHPFPM";
@@ -142,6 +143,7 @@ export function App() {
         <Route path="/databases" element={<Databases />} />
         <Route path="/backup" element={<Backup />} />
         <Route path="/tools" element={<AdminOnly admin={admin}><Tools /></AdminOnly>} />
+        <Route path="/settings" element={<AdminOnly admin={admin}><Settings /></AdminOnly>} />
         <Route path="/monitoring" element={<AdminOnly admin={admin}><Monitoring /></AdminOnly>} />
         <Route path="/apache" element={<AdminOnly admin={admin}><Apache /></AdminOnly>} />
         <Route path="/nginx" element={<AdminOnly admin={admin}><Nginx /></AdminOnly>} />

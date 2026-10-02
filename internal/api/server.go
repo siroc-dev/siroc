@@ -61,6 +61,9 @@ func (s *Server) Router() http.Handler {
 	r.Post("/api/logout", s.logout)
 	r.Post("/api/hooks/git/{token}", s.gitWebhook)
 	r.Put("/api/hooks/git/{token}", s.gitWebhook)
+	r.Get("/api/brand", s.getBrand)
+	r.Get("/brand/logo", s.serveBrandFile("logo"))
+	r.Get("/brand/favicon", s.serveBrandFile("favicon"))
 
 	r.Group(func(r chi.Router) {
 		r.Use(s.requireAuth)
@@ -206,6 +209,11 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/sysops", s.sysopsStatus)
 		r.Post("/api/sysops", s.sysopsApply)
 		r.Get("/api/sysops/disk", s.sysopsDisk)
+		r.Put("/api/settings/panel", s.putPanelSettings)
+		r.Post("/api/settings/brand/{kind}", s.uploadBrand)
+		r.Delete("/api/settings/brand/{kind}", s.deleteBrand)
+		r.Get("/api/settings/services", s.listPanelServices)
+		r.Put("/api/settings/services/monitor", s.putServiceMonitor)
 	})
 
 	if s.Static != nil {
