@@ -722,6 +722,134 @@ html[data-theme="dark"] .settings-preview {
   border-color: #434343;
 }
 
+.rt-card .ant-card-head {
+  border-bottom: 0;
+}
+
+.rt-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rt-stat {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.rt-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.rt-stat-label {
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.rt-stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-chart {
+  display: block;
+  width: 100%;
+  height: 196px;
+}
+
+.live-chart-grid {
+  stroke: #f0f0f0;
+  stroke-width: 1;
+}
+
+.live-chart-label {
+  fill: #bfbfbf;
+  font-size: 11px;
+}
+
+html[data-theme="dark"] .live-chart-grid {
+  stroke: #303030;
+}
+
+html[data-theme="dark"] .live-chart-label {
+  fill: #8c8c8c;
+}
+
+@media (max-width: 800px) {
+  .rt-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.log-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.log-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.log-list button.is-on {
+  border-color: #1677ff;
+  background: #e6f4ff;
+}
+
+.log-view {
+  margin: 8px 0 0;
+  max-height: 62vh;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+html[data-theme="dark"] .log-list button {
+  background: #141414;
+  color: inherit;
+}
+
+html[data-theme="dark"] .log-list button.is-on {
+  background: #111b26;
+  border-color: #1668dc;
+}
+
+@media (max-width: 800px) {
+  .log-shell {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 720px) {
   .settings-row {
     grid-template-columns: 1fr;

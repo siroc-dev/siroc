@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, App, Button, Card, Col, InputNumber, Progress, Row, Space, Switch, Table, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { formatBytes, type UserUsage } from "@/lib/usage";
+import { RealtimeIO, snapshotIO, type DiskIORow, type IOPoint } from "@/components/RealtimeIO";
 
 type CPU = { cores: number; model?: string; percent: number };
 type Mem = { total: number; used: number; free: number; available?: number; percent: number };
@@ -34,6 +35,7 @@ type Stats = {
   load: { one: number; five: number; fifteen: number };
   disks: Disk[];
   network: Net[];
+  diskIO?: DiskIORow[];
   processes: number;
   top: Proc[];
   services: Svc[];
@@ -89,6 +91,7 @@ export function Monitoring() {
   const [live, setLive] = useState(true);
   const [cpuHist, setCpuHist] = useState<number[]>([]);
   const [memHist, setMemHist] = useState<number[]>([]);
+  const [ioHist, setIOHist] = useState<IOPoint[]>([]);
   const [logs, setLogs] = useState<Logs | null>(null);
   const [days, setDays] = useState(90);
   const [logBusy, setLogBusy] = useState("");
@@ -103,6 +106,7 @@ export function Monitoring() {
         setError("");
         setCpuHist((h) => [...h, st.cpu.percent].slice(-30));
         setMemHist((h) => [...h, st.memory.percent].slice(-30));
+        setIOHist((h) => [...h, snapshotIO(st.network || [], st.diskIO || [])].slice(-48));
       } catch (e) {
         if (!stop) setError(e instanceof Error ? e.message : "Failed");
       }
@@ -216,6 +220,8 @@ export function Monitoring() {
           </Card>
         </Col>
       </Row>
+
+      <RealtimeIO network={data.network || []} diskIO={data.diskIO || []} hist={ioHist} />
 
       <Card title="Disks">
         <Table

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Alert, Card, Col, Progress, Row, Statistic, Table, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { formatBytes, type UserUsage } from "@/lib/usage";
+import { RealtimeIO, snapshotIO, type DiskIORow, type IOPoint, type NetRow } from "@/components/RealtimeIO";
 
 type Dash = {
   accounts: number;
@@ -21,6 +22,8 @@ type Dash = {
   load5?: number;
   load15?: number;
   uptimeSec?: number;
+  network?: NetRow[];
+  diskIO?: DiskIORow[];
 };
 
 function uptime(sec: number) {
@@ -52,6 +55,7 @@ function Gauge({ title, percent, detail }: { title: string; percent: number; det
 export function Dashboard() {
   const [data, setData] = useState<Dash | null>(null);
   const [usage, setUsage] = useState<UserUsage[]>([]);
+  const [hist, setHist] = useState<IOPoint[]>([]);
   const [error, setError] = useState("");
   useEffect(() => {
     let stop = false;
@@ -61,13 +65,16 @@ export function Dashboard() {
         if (!stop) {
           setData(row);
           setError("");
+          if (row.network || row.diskIO) {
+            setHist((h) => [...h, snapshotIO(row.network || [], row.diskIO || [])].slice(-48));
+          }
         }
       } catch (e) {
         if (!stop) setError(e instanceof Error ? e.message : "Failed");
       }
     }
     load();
-    const t = setInterval(load, 4000);
+    const t = setInterval(load, 2000);
     return () => {
       stop = true;
       clearInterval(t);
@@ -129,6 +136,7 @@ export function Dashboard() {
           ) : null}
         </Card>
       ) : null}
+      {data.network || data.diskIO ? <RealtimeIO network={data.network || []} diskIO={data.diskIO || []} hist={hist} /> : null}
       <Row gutter={16}>
         <Col xs={24} md={8}>
           <Card>

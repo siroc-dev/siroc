@@ -23,21 +23,23 @@ import (
 )
 
 type Collector struct {
-	mu       sync.Mutex
-	cpu      cpuSnap
-	net      map[string]netSnap
-	procs    map[int]procSnap
-	users    map[string]string
-	sampled  bool
-	diskMu   sync.Mutex
-	diskAt   time.Time
-	diskBy   map[string]uint64
+	mu      sync.Mutex
+	cpu     cpuSnap
+	net     map[string]netSnap
+	diskIO  map[string]diskSnap
+	procs   map[int]procSnap
+	users   map[string]string
+	sampled bool
+	diskMu  sync.Mutex
+	diskAt  time.Time
+	diskBy  map[string]uint64
 }
 
 type cpuSnap struct {
-	idle  uint64
-	total uint64
-	at    time.Time
+	idle   uint64
+	iowait uint64
+	total  uint64
+	at     time.Time
 }
 
 type netSnap struct {
@@ -62,18 +64,19 @@ type procRow struct {
 func (c *Collector) Stats() *rpc.SystemStats {
 	now := time.Now()
 	st := &rpc.SystemStats{
-		Hostname: hostname(),
-		OS:       prettyOS(),
-		Kernel:   readTrim("/proc/sys/kernel/osrelease"),
-		Arch:     runtime.GOARCH,
+		Hostname:  hostname(),
+		OS:        prettyOS(),
+		Kernel:    readTrim("/proc/sys/kernel/osrelease"),
+		Arch:      runtime.GOARCH,
 		UptimeSec: uptimeSec(),
-		Time:     now.UTC().Format(time.RFC3339),
-		Disks:    []rpc.SystemDisk{},
-		Network:  []rpc.SystemNet{},
-		Top:      []rpc.SystemProc{},
-		Services: []rpc.SystemService{},
-		Users:    []rpc.UserUsage{},
-		Listen:   []rpc.SystemListen{},
+		Time:      now.UTC().Format(time.RFC3339),
+		Disks:     []rpc.SystemDisk{},
+		Network:   []rpc.SystemNet{},
+		DiskIO:    []rpc.SystemDiskIO{},
+		Top:       []rpc.SystemProc{},
+		Services:  []rpc.SystemService{},
+		Users:     []rpc.UserUsage{},
+		Listen:    []rpc.SystemListen{},
 	}
 	st.CPU = readCPU()
 	st.Memory, st.Swap = readMemory()
@@ -85,6 +88,9 @@ func (c *Collector) Stats() *rpc.SystemStats {
 	if c.net == nil {
 		c.net = map[string]netSnap{}
 	}
+	if c.diskIO == nil {
+		c.diskIO = map[string]diskSnap{}
+	}
 	if c.procs == nil {
 		c.procs = map[int]procSnap{}
 	}
@@ -95,6 +101,7 @@ func (c *Collector) Stats() *rpc.SystemStats {
 	if !c.sampled {
 		c.cpu = readCPUSnap()
 		c.net = readNetSnaps()
+		c.diskIO = readDiskSnaps()
 		time.Sleep(150 * time.Millisecond)
 		c.sampled = true
 	}
@@ -110,10 +117,14 @@ func (c *Collector) Stats() *rpc.SystemStats {
 			pct = 100
 		}
 		st.CPU.Percent = round1(pct)
+		if wait := cpuNow.iowait - c.cpu.iowait; cpuNow.iowait >= c.cpu.iowait {
+			st.IOWaitPct = round1(float64(wait) / float64(d) * 100)
+		}
 	}
 	c.cpu = cpuNow
 
 	st.Network = c.readNetwork(now)
+	st.DiskIO = c.readDiskIO(now)
 	st.Processes, st.Top, st.Users = c.readProcesses(st.Memory.Total, now)
 	st.Services = readServices()
 	st.Listen = c.readListen()
@@ -206,10 +217,12 @@ func readCPUSnap() cpuSnap {
 		total += n
 	}
 	idle := nums[3]
+	var iowait uint64
 	if len(nums) > 4 {
-		idle += nums[4] // iowait
+		iowait = nums[4]
+		idle += iowait
 	}
-	return cpuSnap{idle: idle, total: total, at: time.Now()}
+	return cpuSnap{idle: idle, iowait: iowait, total: total, at: time.Now()}
 }
 
 func readMemory() (rpc.SystemMemory, rpc.SystemMemory) {
@@ -384,6 +397,60 @@ func (c *Collector) readNetwork(now time.Time) []rpc.SystemNet {
 		out = append(out, row)
 	}
 	c.net = cur
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+func readDiskSnaps() map[string]diskSnap {
+	out := map[string]diskSnap{}
+	raw, err := os.ReadFile("/proc/diskstats")
+	if err != nil {
+		return out
+	}
+	now := time.Now()
+	for _, row := range parseDiskstats(string(raw)) {
+		row.at = now
+		out[row.name] = row
+	}
+	return out
+}
+
+func (c *Collector) readDiskIO(now time.Time) []rpc.SystemDiskIO {
+	cur := readDiskSnaps()
+	var out []rpc.SystemDiskIO
+	for name, snap := range cur {
+		row := rpc.SystemDiskIO{
+			Name:       name,
+			ReadBytes:  snap.rsect * 512,
+			WriteBytes: snap.wsect * 512,
+			Reads:      snap.reads,
+			Writes:     snap.writes,
+		}
+		if prev, ok := c.diskIO[name]; ok && now.After(prev.at) {
+			sec := now.Sub(prev.at).Seconds()
+			if sec > 0.05 {
+				if snap.rsect >= prev.rsect {
+					row.ReadRate = uint64(float64((snap.rsect-prev.rsect)*512) / sec)
+				}
+				if snap.wsect >= prev.wsect {
+					row.WriteRate = uint64(float64((snap.wsect-prev.wsect)*512) / sec)
+				}
+				var ops uint64
+				if snap.reads >= prev.reads {
+					ops += snap.reads - prev.reads
+				}
+				if snap.writes >= prev.writes {
+					ops += snap.writes - prev.writes
+				}
+				row.TPS = round1(float64(ops) / sec)
+				if snap.ioms >= prev.ioms {
+					row.IOWaitMs = snap.ioms - prev.ioms
+				}
+			}
+		}
+		out = append(out, row)
+	}
+	c.diskIO = cur
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }

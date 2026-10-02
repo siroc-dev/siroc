@@ -36,7 +36,7 @@ const items = [
   { key: "/terminal", label: "Terminal", icon: <LaptopOutlined /> },
   { key: "/software", label: "Software", icon: <AppstoreOutlined /> },
   { key: "/security", label: "Security", icon: <SafetyOutlined /> },
-  { key: "/scan-logs", label: "Scan logs", icon: <FileSearchOutlined /> },
+  { key: "/logs", label: "Logs", icon: <FileSearchOutlined /> },
   { key: "/databases", label: "Databases", icon: <DatabaseOutlined /> },
   { key: "/backup", label: "Backup", icon: <CloudDownloadOutlined /> },
   { key: "/tools", label: "System tools", icon: <ToolOutlined /> },
@@ -107,6 +107,7 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
   const selected = useMemo(() => {
     const status = ["/apache", "/nginx", "/php-fpm", "/mysql", "/mariadb", "/redis"];
     if (status.includes(loc.pathname)) return ["/apache"];
+    if (loc.pathname === "/scan-logs" || loc.pathname === "/logs") return ["/logs"];
     if (loc.pathname.startsWith("/sites")) return ["/sites"];
     return [loc.pathname === "/" ? "/" : loc.pathname];
   }, [loc.pathname]);
@@ -192,7 +193,8 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
                 "/mysql": "MySQL status",
                 "/mariadb": "MariaDB status",
                 "/redis": "Redis status",
-                "/scan-logs": "Scan logs",
+                "/logs": "Logs",
+                "/scan-logs": "Logs",
                 "/settings": "Settings",
               } as Record<string, string>)[loc.pathname] || loc.pathname.slice(1)}
             </Typography.Text>

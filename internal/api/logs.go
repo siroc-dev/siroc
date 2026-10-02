@@ -11,6 +11,15 @@ import (
 	"github.com/siroc-dev/siroc/internal/store"
 )
 
+func (s *Server) systemLogs(w http.ResponseWriter, r *http.Request) {
+	st, err := s.Agent.SystemLogs(r.URL.Query().Get("id"), r.URL.Query().Get("group"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
 func (s *Server) logStatus(w http.ResponseWriter, _ *http.Request) {
 	st, err := s.Agent.LogStatus()
 	if err != nil {

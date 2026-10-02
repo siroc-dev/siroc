@@ -803,6 +803,9 @@ func main() {
 	r.Get("/logs/status", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, weblog.Status())
 	})
+	r.Get("/logs/system", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, weblog.SystemLogs(r.URL.Query().Get("id"), r.URL.Query().Get("group"), 0))
+	})
 	r.Post("/logs/retention", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.LogRetentionReq
 		if !decode(w, r, &req) {

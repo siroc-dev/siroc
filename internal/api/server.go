@@ -160,6 +160,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/api/logs", s.logStatus)
 			r.Put("/api/logs", s.setLogRetention)
 			r.Post("/api/logs/cloudflare", s.refreshCloudflare)
+			r.Get("/api/system-logs", s.systemLogs)
 			r.Get("/api/panel/update", s.panelUpdateStatus)
 			r.Post("/api/panel/update", s.panelUpdate)
 		})
@@ -451,6 +452,9 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 			resp["load5"] = st.Load.Five
 			resp["load15"] = st.Load.Fifteen
 			resp["uptimeSec"] = st.UptimeSec
+			resp["network"] = st.Network
+			resp["diskIO"] = st.DiskIO
+			resp["ioWaitPct"] = st.IOWaitPct
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)

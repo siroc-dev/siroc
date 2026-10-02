@@ -20,6 +20,18 @@ export function formatBytes(n: number) {
   return `${v >= 10 || i === 0 ? v.toFixed(0) : v.toFixed(1)} ${u[i]}`;
 }
 
+export function formatRate(n: number) {
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
+  const u = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < u.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(2)} ${u[i]}`;
+}
+
 export function editorWorkspace(absPath: string, listingAbs?: string) {
   if (!absPath) return listingAbs || "";
   const pub = absPath.match(/^(.*\/(?:public_html|private_html))/);

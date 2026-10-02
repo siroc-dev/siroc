@@ -295,7 +295,7 @@ export function Security() {
       <Card
         title="Vulnerability scanners"
         extra={
-          <Button type="link" onClick={() => nav("/scan-logs")}>
+          <Button type="link" onClick={() => nav("/logs?tab=scan")}>
             Scan logs
           </Button>
         }
@@ -367,7 +367,7 @@ export function Security() {
                     </Typography.Link>
                   ) : null}
                   {scanOut.id ? (
-                    <Typography.Link onClick={() => nav(`/scan-logs?id=${encodeURIComponent(scanOut.id)}`)}>
+                    <Typography.Link onClick={() => nav(`/logs?tab=scan&id=${encodeURIComponent(scanOut.id)}`)}>
                       View in Scan logs
                     </Typography.Link>
                   ) : null}

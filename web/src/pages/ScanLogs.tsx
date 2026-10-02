@@ -4,7 +4,7 @@ import { App, Button, Card, Collapse, Select, Space, Table, Tag, Typography } fr
 import { ScanSummary, toolLabel, type ScanResult } from "@/components/ScanSummary";
 import { api } from "@/lib/api";
 
-export function ScanLogs() {
+export function ScanLogs({ embedded }: { embedded?: boolean }) {
   const { message } = App.useApp();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -35,16 +35,8 @@ export function ScanLogs() {
 
   const rows = useMemo(() => (tool ? logs.filter((l) => l.tool === tool) : logs), [logs, tool]);
 
-  return (
-    <div className="cp-page">
-      <div>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          Scan logs
-        </Typography.Title>
-        <Typography.Paragraph type="secondary">
-          History of Nikto, OWASP ZAP, and OpenVAS runs. New scans from Security are saved here automatically.
-        </Typography.Paragraph>
-      </div>
+  const body = (
+    <>
       <Card
         title="Past scans"
         extra={
@@ -73,7 +65,12 @@ export function ScanLogs() {
           onRow={(row) => ({
             onClick: () => {
               setDetail(row);
-              setParams({ id: row.id });
+              setParams((p) => {
+                const next = new URLSearchParams(p);
+                next.set("id", row.id);
+                if (embedded) next.set("tab", "scan");
+                return next;
+              });
             },
             style: { cursor: "pointer" },
           })}
@@ -129,6 +126,21 @@ export function ScanLogs() {
           ) : null}
         </Card>
       ) : null}
+    </>
+  );
+
+  if (embedded) return body;
+  return (
+    <div className="cp-page">
+      <div>
+        <Typography.Title level={3} style={{ margin: 0 }}>
+          Scan logs
+        </Typography.Title>
+        <Typography.Paragraph type="secondary">
+          History of Nikto, OWASP ZAP, and OpenVAS runs. New scans from Security are saved here automatically.
+        </Typography.Paragraph>
+      </div>
+      {body}
     </div>
   );
 }

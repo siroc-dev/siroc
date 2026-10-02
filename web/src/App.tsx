@@ -15,7 +15,7 @@ import { Backup } from "@/pages/Backup";
 import { Tools } from "@/pages/Tools";
 import { Databases } from "@/pages/Databases";
 import { Security } from "@/pages/Security";
-import { ScanLogs } from "@/pages/ScanLogs";
+import { Logs } from "@/pages/Logs";
 import { PHP } from "@/pages/PHP";
 import { Monitoring } from "@/pages/Monitoring";
 import { Settings } from "@/pages/Settings";
@@ -137,7 +137,8 @@ export function App() {
         <Route path="/terminal" element={<TerminalPage />} />
         <Route path="/software" element={<AdminOnly admin={admin}><Software /></AdminOnly>} />
         <Route path="/security" element={<AdminOnly admin={admin}><Security /></AdminOnly>} />
-        <Route path="/scan-logs" element={<AdminOnly admin={admin}><ScanLogs /></AdminOnly>} />
+        <Route path="/logs" element={<Logs />} />
+        <Route path="/scan-logs" element={<Navigate to="/logs?tab=scan" replace />} />
         <Route path="/sites" element={<Sites />} />
         <Route path="/sites/:id" element={<Sites />} />
         <Route path="/php" element={<PHP />} />

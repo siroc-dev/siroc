@@ -745,6 +745,18 @@ type SystemNet struct {
 	TxRate  uint64 `json:"txRate"`
 }
 
+type SystemDiskIO struct {
+	Name       string  `json:"name"`
+	ReadBytes  uint64  `json:"readBytes"`
+	WriteBytes uint64  `json:"writeBytes"`
+	ReadRate   uint64  `json:"readRate"`
+	WriteRate  uint64  `json:"writeRate"`
+	Reads      uint64  `json:"reads"`
+	Writes     uint64  `json:"writes"`
+	TPS        float64 `json:"tps"`
+	IOWaitMs   uint64  `json:"ioWaitMs"`
+}
+
 type SystemProc struct {
 	PID    int     `json:"pid"`
 	User   string  `json:"user"`
@@ -794,6 +806,25 @@ type LogStatus struct {
 
 type LogRetentionReq struct {
 	Days int `json:"days"`
+}
+
+type SystemLogFile struct {
+	ID      string `json:"id"`
+	Group   string `json:"group"`
+	Title   string `json:"title"`
+	Path    string `json:"path,omitempty"`
+	Kind    string `json:"kind,omitempty"`
+	Exists  bool   `json:"exists"`
+	Size    int64  `json:"size,omitempty"`
+	ModTime string `json:"modTime,omitempty"`
+}
+
+type SystemLogResp struct {
+	Files     []SystemLogFile `json:"files"`
+	Current   *SystemLogFile  `json:"current,omitempty"`
+	Content   string          `json:"content,omitempty"`
+	Truncated bool            `json:"truncated,omitempty"`
+	Message   string          `json:"message,omitempty"`
 }
 
 type GoAccessReq struct {
@@ -864,6 +895,8 @@ type SystemStats struct {
 	Load      SystemLoad      `json:"load"`
 	Disks     []SystemDisk    `json:"disks"`
 	Network   []SystemNet     `json:"network"`
+	DiskIO    []SystemDiskIO  `json:"diskIO,omitempty"`
+	IOWaitPct float64         `json:"ioWaitPct,omitempty"`
 	Processes int             `json:"processes"`
 	Top       []SystemProc    `json:"top"`
 	Services  []SystemService `json:"services"`

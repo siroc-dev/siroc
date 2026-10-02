@@ -649,6 +649,23 @@ func (c *Client) SiteLogs(in SiteLogReq) (*SiteLogsResp, error) {
 	return &out, err
 }
 
+func (c *Client) SystemLogs(id, group string) (*SystemLogResp, error) {
+	var out SystemLogResp
+	q := url.Values{}
+	if id != "" {
+		q.Set("id", id)
+	}
+	if group != "" {
+		q.Set("group", group)
+	}
+	path := "/logs/system"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	err := c.do(http.MethodGet, path, nil, &out)
+	return &out, err
+}
+
 func (c *Client) GoAccessHTML(domain string, refresh bool) ([]byte, error) {
 	q := "/logs/goaccess.html?domain=" + url.QueryEscape(domain)
 	if refresh {
