@@ -9,7 +9,7 @@ import (
 // popcnt and AVX2 are included only when the CPU flags say the server can run them.
 func vodCompilerOpt(cpu string) string {
 	cpu = " " + strings.ToLower(cpu) + " "
-	parts := []string{"-O3", "-DNGX_VOD_MAX_TRACK_COUNT=256"}
+	parts := []string{"-O3", "-DNGX_VOD_MAX_TRACK_COUNT=256", "-Wno-error=deprecated-declarations"}
 	if strings.Contains(cpu, " popcnt ") {
 		parts = append(parts, "-mpopcnt")
 	}
@@ -48,4 +48,18 @@ func patchVodSource(src string) (string, error) {
 		src = src[:at] + "\n    (void)cycle;" + src[at:]
 	}
 	return src, nil
+}
+
+// patchVodDFXP drops libxml2 2.14's deprecated ctxt->recovery check.
+// Nginx builds with -Werror, so that warning stops the VOD module compile.
+func patchVodDFXP(src string) (string, error) {
+	const old = "(!ctxt->wellFormed && !ctxt->recovery))"
+	const next = "!ctxt->wellFormed)"
+	if !strings.Contains(src, "ctxt->recovery") {
+		return src, nil
+	}
+	if !strings.Contains(src, old) {
+		return "", fmt.Errorf("nginx-vod-module dfxp recovery check changed")
+	}
+	return strings.ReplaceAll(src, old, next), nil
 }

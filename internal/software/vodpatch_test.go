@@ -13,8 +13,23 @@ func TestVodCompilerOpt(t *testing.T) {
 	if contains(plain, "avx2") || contains(plain, "popcnt") {
 		t.Fatalf("arm flags leaked into %s", plain)
 	}
-	if !contains(plain, "-O3") || !contains(plain, "-DNGX_VOD_MAX_TRACK_COUNT=256") {
+	if !contains(plain, "-O3") || !contains(plain, "-DNGX_VOD_MAX_TRACK_COUNT=256") || !contains(plain, "-Wno-error=deprecated-declarations") {
 		t.Fatalf("base flags missing: %s", plain)
+	}
+}
+
+func TestPatchVodDFXP(t *testing.T) {
+	src := "if (rc != XML_ERR_OK &&\n\t\t(!ctxt->wellFormed && !ctxt->recovery))\n\t\t{"
+	got, err := patchVodDFXP(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(got, "recovery") || !contains(got, "!ctxt->wellFormed)") {
+		t.Fatalf("patch failed: %s", got)
+	}
+	again, err := patchVodDFXP(got)
+	if err != nil || again != got {
+		t.Fatalf("second pass: %v %s", err, again)
 	}
 }
 

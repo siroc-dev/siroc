@@ -268,6 +268,18 @@ func buildNginxModules(ver string) error {
 	if err := os.WriteFile(vodSrc, []byte(patched), 0644); err != nil {
 		return err
 	}
+	dfxp := filepath.Join(nginxBuildDir, "vod", "subtitle", "dfxp_format.c")
+	dfxpBody, err := os.ReadFile(dfxp)
+	if err != nil {
+		return err
+	}
+	dfxpPatched, err := patchVodDFXP(string(dfxpBody))
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(dfxp, []byte(dfxpPatched), 0644); err != nil {
+		return err
+	}
 	cc := vodCompilerOpt(cpuFlags())
 	noteInstall("vod cc-opt: " + cc)
 	cmd := exec.Command("./configure", "--with-compat",
