@@ -2023,6 +2023,11 @@ func (s *Server) listDatabases(w http.ResponseWriter, r *http.Request) {
 			list = []store.Database{}
 		}
 	}
+	if sizes, err := s.Agent.DBSizes(); err == nil {
+		for i := range list {
+			list[i].Size = sizes[list[i].DBName]
+		}
+	}
 	writeJSON(w, http.StatusOK, list)
 }
 

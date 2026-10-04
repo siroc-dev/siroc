@@ -323,12 +323,32 @@ export function Files() {
         const rel = relOf(f);
         if (rel) fd.append("relpath", rel);
         fd.append("file", f, f.name);
-        const res = await fetch("/api/files/upload", { method: "POST", body: fd, credentials: "include" });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error((data as { error?: string }).error || `Upload failed: ${f.name}`);
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", "/api/files/upload");
+          xhr.withCredentials = true;
+          xhr.upload.onprogress = (ev) => {
+            const filePct = ev.lengthComputable && ev.total > 0 ? ev.loaded / ev.total : 0;
+            const pct = Math.round(((i + filePct) / list.length) * 100);
+            setUpPct(pct);
+            setUpLabel(`${f.name} · ${pct}%`);
+          };
+          xhr.onload = () => {
+            let data: { error?: string } = {};
+            try {
+              data = JSON.parse(xhr.responseText || "{}");
+            } catch {
+              data = {};
+            }
+            if (xhr.status >= 200 && xhr.status < 300) resolve();
+            else reject(new Error(data.error || `Upload failed: ${f.name}`));
+          };
+          xhr.onerror = () => reject(new Error(`Upload failed: ${f.name}`));
+          xhr.send(fd);
+        });
         ok++;
         setUpPct(Math.round(((i + 1) / list.length) * 100));
-        setUpLabel(`Uploading ${i + 1}/${list.length}`);
+        setUpLabel(`${f.name} · ${Math.round(((i + 1) / list.length) * 100)}%`);
       }
       message.success(ok === 1 ? "Uploaded" : `Uploaded ${ok} files`);
       setUpOpen(false);

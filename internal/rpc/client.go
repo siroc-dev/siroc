@@ -726,6 +726,15 @@ func (c *Client) PMAEnsure() error {
 	return c.do(http.MethodPost, "/pma/ensure", map[string]any{}, nil)
 }
 
+func (c *Client) DBSizes() (map[string]int64, error) {
+	var out map[string]int64
+	err := c.do(http.MethodGet, "/db/sizes", nil, &out)
+	if out == nil {
+		out = map[string]int64{}
+	}
+	return out, err
+}
+
 func (c *Client) DBExport(name, format string) (*http.Response, error) {
 	q := url.Values{}
 	q.Set("name", name)

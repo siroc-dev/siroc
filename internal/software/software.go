@@ -868,6 +868,9 @@ func configureNginxFrontend(string) error {
 	if err := os.Symlink("/etc/nginx/sites-available/siroc-default.conf", "/etc/nginx/sites-enabled/siroc-default.conf"); err != nil && !os.IsExist(err) {
 		return err
 	}
+	if err := EnsureNginxModules(); err != nil {
+		return err
+	}
 	if err := exec.Command("systemctl", "enable", "--now", "nginx").Run(); err != nil {
 		return err
 	}

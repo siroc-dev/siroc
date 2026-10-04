@@ -98,6 +98,7 @@ type Database struct {
 	DBUser      string    `json:"dbUser"`
 	Engine      string    `json:"engine"`
 	HasPassword bool      `json:"hasPassword"`
+	Size        int64     `json:"size"`
 	PasswordEnc string    `json:"-"`
 	CreatedAt   time.Time `json:"createdAt"`
 }

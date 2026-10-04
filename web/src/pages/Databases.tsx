@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router-dom";
-import { Alert, App, AutoComplete, Button, Card, Dropdown, Form, Input, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, App, AutoComplete, Button, Card, Dropdown, Form, Input, Modal, Popconfirm, Progress, Select, Space, Table, Tabs, Tag, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
@@ -9,7 +9,7 @@ import { RedisConfigPanel } from "@/pages/RedisConfig";
 import { RedisStatusPanel, type RedisStatusData } from "@/pages/RedisStatus";
 
 type Account = { username: string };
-type DB = { id: number; username: string; dbName: string; dbUser: string; engine: string; hasPassword?: boolean };
+type DB = { id: number; username: string; dbName: string; dbUser: string; engine: string; hasPassword?: boolean; size?: number };
 type CfgItem = { name: string; label: string; value: string; live?: string; recommend?: string };
 type DBConfig = {
   engine: string;
@@ -53,6 +53,8 @@ export function Databases() {
   const [redis, setRedis] = useState<RedisStatusData | null>(null);
   const [redisErr, setRedisErr] = useState("");
   const [ioBusy, setIoBusy] = useState("");
+  const [importPct, setImportPct] = useState(0);
+  const [importName, setImportName] = useState("");
 
   async function load() {
     const [a, d, e] = await Promise.all([
@@ -246,10 +248,16 @@ export function Databases() {
           const file = input.files?.[0];
           if (!file) return;
           setIoBusy(`import:${d.id}`);
-          api.upload(`/api/databases/${d.id}/import`, file)
+          setImportName(file.name);
+          setImportPct(0);
+          api.uploadProgress(`/api/databases/${d.id}/import`, file, setImportPct)
             .then(() => message.success(`Imported into ${d.dbName}`))
             .catch((err) => message.error(err instanceof Error ? err.message : "Import failed"))
-            .finally(() => setIoBusy(""));
+            .finally(() => {
+              setIoBusy("");
+              setImportName("");
+              setImportPct(0);
+            });
         };
         input.click();
       },
@@ -297,6 +305,7 @@ export function Databases() {
           locale={{ emptyText: "No databases yet." }}
           columns={[
             { title: "Database", dataIndex: "dbName" },
+            { title: "Size", dataIndex: "size", width: 110, render: (n: number) => formatBytes(n || 0) },
             { title: "User", dataIndex: "dbUser" },
             { title: "Account", dataIndex: "username" },
             {
@@ -616,6 +625,10 @@ export function Databases() {
             Empty suffix or password is filled with a random value. Final names look like alice_k7m2nq.
           </Typography.Paragraph>
         </Form>
+      </Modal>
+      <Modal title="Importing database" open={!!importName} footer={null} closable={false} maskClosable={false}>
+        <Typography.Paragraph style={{ marginTop: 0 }}>{importName}</Typography.Paragraph>
+        <Progress percent={importPct} status="active" />
       </Modal>
     </div>
   );

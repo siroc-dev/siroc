@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, App, Button, Input, Modal, Select, Space, Switch, Table, Typography } from "antd";
 import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/lib/nginxRewrites";
+import { ProxySettings, type ProxySettingsValue } from "@/components/ProxySettings";
 
 export type SiteOptions = {
   index?: string[];
@@ -9,6 +10,7 @@ export type SiteOptions = {
   hotlink?: boolean;
   maintenance?: boolean;
   redirects?: { from: string; to: string; code: number }[];
+  proxy?: ProxySettingsValue;
 };
 
 export type SiteSettingsSite = {
@@ -105,6 +107,7 @@ function baseOpts(site: SiteSettingsSite): SiteOptions {
     hotlink: !!o.hotlink,
     maintenance: !!o.maintenance,
     redirects: o.redirects || [],
+    proxy: o.proxy,
   };
 }
 
@@ -377,11 +380,11 @@ export function SiteSettings({
                 spellCheck={false}
                 value={rewrite}
                 style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}
-                placeholder={"rewrite ^/old$ /new permanent;\ntry_files $uri $uri/ /index.php?$args;"}
+                placeholder={"location /vod/ {\n    vod hls;\n    alias /home/user/videos/;\n}\ntry_files $uri $uri/ /index.php?$args;"}
                 onChange={(e) => setRewrite(e.target.value)}
               />
               <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-                Inserted in location / before the site is proxied. include, proxy_pass, and listen are rejected.
+                Location blocks are added in the server. Write location / yourself when you want to replace the default proxy location. Directives without a location stay inside that default location. include, proxy_pass, and listen are rejected.
               </Typography.Paragraph>
               <Button type="primary" loading={busy} onClick={() => onPatch({ rewrite }, "Rewrite saved")}>
                 Save
@@ -570,7 +573,23 @@ ${site.ssl ? "listen 443 ssl;\n" : ""}${phpSite ? `php ${site.phpVersion};\n` : 
                 }}
               />
               {kind === "proxy" ? (
-                <Input placeholder="http://127.0.0.1:3000/" value={proxyPass} onChange={(e) => setProxyPass(e.target.value)} />
+                <ProxySettings
+                  busy={busy}
+                  target={proxyPass}
+                  value={site.options?.proxy}
+                  onSave={(proxy, target) =>
+                    onPatch(
+                      {
+                        kind: "proxy",
+                        proxyPass: target,
+                        appCmd: "",
+                        appPort: 0,
+                        options: { ...baseOpts(site), proxy: { ...proxy, target } },
+                      },
+                      "Proxy saved",
+                    )
+                  }
+                />
               ) : null}
               {APP.has(kind) ? (
                 <Space direction="vertical" style={{ width: "100%" }}>
@@ -578,6 +597,7 @@ ${site.ssl ? "listen 443 ssl;\n" : ""}${phpSite ? `php ${site.phpVersion};\n` : 
                   <Input placeholder="port, empty = auto" value={appPort} onChange={(e) => setAppPort(e.target.value)} />
                 </Space>
               ) : null}
+              {kind !== "proxy" ? (
               <div>
                 <Button
                   style={{ marginTop: 12 }}
@@ -587,7 +607,7 @@ ${site.ssl ? "listen 443 ssl;\n" : ""}${phpSite ? `php ${site.phpVersion};\n` : 
                     onPatch(
                       {
                         kind,
-                        proxyPass: kind === "proxy" ? proxyPass : "",
+                        proxyPass: "",
                         appCmd: APP.has(kind) ? appCmd : "",
                         appPort: APP.has(kind) && appPort ? Number(appPort) : 0,
                       },
@@ -598,6 +618,7 @@ ${site.ssl ? "listen 443 ssl;\n" : ""}${phpSite ? `php ${site.phpVersion};\n` : 
                   Save
                 </Button>
               </div>
+              ) : null}
             </>
           ) : null}
 

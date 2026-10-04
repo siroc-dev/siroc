@@ -282,13 +282,57 @@ func RelUploadPath(rel string) (string, error) {
 }
 
 func NginxSnippet(raw string) (string, error) {
+	server, inner, _, err := SplitNginxRewrite(raw)
+	if err != nil {
+		return "", err
+	}
+	return server + inner, nil
+}
+
+// SplitNginxRewrite places location blocks in the server context.
+// Directives that are not inside a location stay inside the default location /
+// unless the snippet already defines location /, in which case skipRoot is true.
+func SplitNginxRewrite(raw string) (server, inner string, skipRoot bool, err error) {
+	lines, err := nginxRewriteLines(raw)
+	if err != nil || len(lines) == 0 {
+		return "", "", false, err
+	}
+	skipRoot = rewriteSkipsRoot(lines)
+	var serverLines, innerLines []string
+	depth := 0
+	inLoc := false
+	locDepth := 0
+	for _, line := range lines {
+		comment := strings.HasPrefix(line, "#")
+		startLoc := !comment && depth == 0 && strings.HasPrefix(strings.ToLower(line), "location")
+		if startLoc {
+			inLoc = true
+			locDepth = depth
+		}
+		if inLoc || skipRoot {
+			serverLines = append(serverLines, line)
+		} else {
+			innerLines = append(innerLines, line)
+		}
+		if comment {
+			continue
+		}
+		depth += strings.Count(line, "{") - strings.Count(line, "}")
+		if inLoc && depth <= locDepth {
+			inLoc = false
+		}
+	}
+	return indentNginx(serverLines, "    "), indentNginx(innerLines, "        "), skipRoot, nil
+}
+
+func nginxRewriteLines(raw string) ([]string, error) {
 	raw = strings.ReplaceAll(raw, "\r\n", "\n")
 	raw = strings.ReplaceAll(raw, "\r", "\n")
 	if strings.ContainsRune(raw, 0) {
-		return "", fmt.Errorf("invalid nginx rewrite")
+		return nil, fmt.Errorf("invalid nginx rewrite")
 	}
 	if len(raw) > 16384 {
-		return "", fmt.Errorf("nginx rewrite is too long")
+		return nil, fmt.Errorf("nginx rewrite is too long")
 	}
 	var out []string
 	depth := 0
@@ -300,7 +344,7 @@ func NginxSnippet(raw string) (string, error) {
 		}
 		n++
 		if n > 200 {
-			return "", fmt.Errorf("at most 200 nginx rewrite lines")
+			return nil, fmt.Errorf("at most 200 nginx rewrite lines")
 		}
 		if strings.HasPrefix(line, "#") {
 			out = append(out, line)
@@ -309,36 +353,74 @@ func NginxSnippet(raw string) (string, error) {
 		low := strings.ToLower(line)
 		for _, bad := range []string{
 			"include ", "proxy_pass", "fastcgi_", "uwsgi_", "scgi_", "grpc_",
-			"memcached_", "mirror ", "dav_", "perl", "lua", "js_", "load_module",
-			"ssl_certificate", "listen ", "server_name", "root ", "alias ",
+			"memcached_", "mirror ", "dav_", "perl", "js_", "load_module",
+			"ssl_certificate", "listen ", "server_name",
 			"access_log", "error_log", "client_body", "stub_status", "auth_basic",
-			"location ", "http ", "server ", "upstream ", "map ",
+			"http ", "server ", "upstream ", "map ",
 		} {
 			if strings.Contains(low, bad) {
-				return "", fmt.Errorf("nginx rewrite cannot use %s", strings.TrimSpace(bad))
+				return nil, fmt.Errorf("nginx rewrite cannot use %s", strings.TrimSpace(bad))
+			}
+		}
+		if strings.HasPrefix(low, "root ") || strings.HasPrefix(low, "alias ") {
+			if strings.Contains(line, "..") {
+				return nil, fmt.Errorf("nginx rewrite path cannot contain ..")
 			}
 		}
 		open := strings.Count(line, "{")
 		close := strings.Count(line, "}")
 		depth += open - close
 		if depth < 0 {
-			return "", fmt.Errorf("unbalanced braces in nginx rewrite")
+			return nil, fmt.Errorf("unbalanced braces in nginx rewrite")
 		}
 		out = append(out, line)
 	}
 	if depth != 0 {
-		return "", fmt.Errorf("unbalanced braces in nginx rewrite")
+		return nil, fmt.Errorf("unbalanced braces in nginx rewrite")
 	}
-	if len(out) == 0 {
-		return "", nil
+	return out, nil
+}
+
+func rewriteSkipsRoot(lines []string) bool {
+	depth := 0
+	for _, line := range lines {
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		if depth == 0 && ownsRootLocation(line) {
+			return true
+		}
+		depth += strings.Count(line, "{") - strings.Count(line, "}")
+	}
+	return false
+}
+
+func ownsRootLocation(line string) bool {
+	low := strings.ToLower(strings.TrimSpace(line))
+	if !strings.HasPrefix(low, "location") {
+		return false
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(low, "location"))
+	rest = strings.TrimSpace(strings.TrimSuffix(rest, "{"))
+	if strings.HasPrefix(rest, "=") {
+		rest = strings.TrimSpace(rest[1:])
+	} else if strings.HasPrefix(rest, "^~") {
+		rest = strings.TrimSpace(rest[2:])
+	}
+	return rest == "/"
+}
+
+func indentNginx(lines []string, pad string) string {
+	if len(lines) == 0 {
+		return ""
 	}
 	var b strings.Builder
-	for _, line := range out {
-		b.WriteString("        ")
+	for _, line := range lines {
+		b.WriteString(pad)
 		b.WriteString(line)
 		b.WriteByte('\n')
 	}
-	return b.String(), nil
+	return b.String()
 }
 
 func DBIdent(name string) error {

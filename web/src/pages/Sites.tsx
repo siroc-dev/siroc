@@ -258,7 +258,7 @@ function RewriteBlock({ form }: { form: FormInstance }) {
         return (
           <Form.Item
             label="Nginx rewrite"
-            extra="Inserted in location / before proxy_pass. Pick a common template or edit the rules."
+            extra="Location blocks go in the server. A location / you write replaces the default one. Other directives stay inside the default location /."
           >
             <Select
               showSearch

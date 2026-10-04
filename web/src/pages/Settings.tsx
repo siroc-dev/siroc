@@ -99,9 +99,10 @@ export function Settings() {
   async function saveTimezone(values: { timezone: string; ntp: boolean }) {
     setBusy("tz");
     try {
-      const data = await api.post<Sys>("/api/sysops", { action: "timezone", ...values });
+      const data = await api.post<Sys>("/api/sysops", { action: "timezone", timezone: values.timezone, ntp: !!values.ntp });
       setSys(data);
-      message.success("Timezone saved");
+      tzForm.setFieldsValue({ timezone: data.timezone, ntp: data.ntp });
+      message.success(`Timezone is ${data.timezone} · ${data.time}`);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
     } finally {

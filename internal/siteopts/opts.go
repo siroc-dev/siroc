@@ -16,6 +16,7 @@ type Options struct {
 	Hotlink     bool       `json:"hotlink,omitempty"`
 	Maintenance bool       `json:"maintenance,omitempty"`
 	Redirects   []Redirect `json:"redirects,omitempty"`
+	Proxy       *Proxy     `json:"proxy,omitempty"`
 }
 
 type Redirect struct {
@@ -53,7 +54,7 @@ func Marshal(o Options) (string, error) {
 }
 
 func IsZero(o Options) bool {
-	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && !o.Maintenance && len(o.Redirects) == 0
+	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && !o.Maintenance && len(o.Redirects) == 0 && o.Proxy == nil
 }
 
 func Normalize(in Options) (Options, error) {
@@ -139,6 +140,11 @@ func Normalize(in Options) (Options, error) {
 			return Options{}, fmt.Errorf("at most 20 redirects")
 		}
 	}
+	p, err := normalizeProxy(in.Proxy)
+	if err != nil {
+		return Options{}, err
+	}
+	out.Proxy = p
 	return out, nil
 }
 

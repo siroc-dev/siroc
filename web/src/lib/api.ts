@@ -32,9 +32,33 @@ export const api = {
   put: <T>(url: string, body?: unknown) => api.send<T>(url, "PUT", body),
   patch: <T>(url: string, body?: unknown) => api.send<T>(url, "PATCH", body),
   delete: <T>(url: string) => api.send<T>(url, "DELETE"),
-  upload: <T>(url: string, file: File, field = "file") => {
+  upload: <T>(url: string, file: File, field = "file") => api.uploadProgress<T>(url, file, undefined, field),
+  uploadProgress: <T>(url: string, file: File, onProgress?: (pct: number) => void, field = "file") => {
     const body = new FormData();
     body.append(field, file);
-    return fetch(url, { method: "POST", credentials: "include", body }).then(parse<T>);
+    return new Promise<T>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+      xhr.withCredentials = true;
+      xhr.upload.onprogress = (ev) => {
+        if (!onProgress || !ev.lengthComputable || ev.total <= 0) return;
+        onProgress(Math.min(100, Math.round((ev.loaded / ev.total) * 100)));
+      };
+      xhr.onload = () => {
+        let data: ApiError = { error: "" };
+        try {
+          data = JSON.parse(xhr.responseText || "{}") as ApiError;
+        } catch {
+          data = { error: xhr.statusText };
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(data as T);
+          return;
+        }
+        reject(new RequestError(data.error || xhr.statusText || "Upload failed"));
+      };
+      xhr.onerror = () => reject(new RequestError("Upload failed"));
+      xhr.send(body);
+    });
   },
 };

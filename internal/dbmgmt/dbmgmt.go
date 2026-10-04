@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
@@ -221,10 +222,51 @@ func (m *Manager) Import(name, user, password, filename string, r io.Reader) err
 	return nil
 }
 
+func (m *Manager) Sizes() (map[string]int64, error) {
+	out := map[string]int64{}
+	if m.Engine() == "" {
+		return out, nil
+	}
+	sql := "SELECT table_schema, CAST(IFNULL(SUM(data_length + index_length), 0) AS UNSIGNED) FROM information_schema.tables WHERE table_schema NOT IN ('information_schema','mysql','performance_schema','sys') GROUP BY table_schema"
+	raw, err := mysqlQuery(sql)
+	if err != nil {
+		return nil, err
+	}
+	for _, line := range strings.Split(strings.TrimSpace(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		n, _ := strconv.ParseInt(fields[1], 10, 64)
+		out[fields[0]] = n
+	}
+	return out, nil
+}
+
 func optionValue(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
 	return `"` + s + `"`
+}
+
+func mysqlQuery(sql string) (string, error) {
+	bin := mysqlBin()
+	flagSets := [][]string{
+		{"--batch", "--raw", "--skip-column-names", "--skip-ssl"},
+		{"--batch", "--raw", "--skip-column-names", "--ssl-mode=DISABLED"},
+		{"--batch", "--raw", "--skip-column-names"},
+	}
+	var last error
+	for _, flags := range flagSets {
+		cmd := exec.Command(bin, append(flags, "-e", sql)...)
+		cmd.Env = os.Environ()
+		out, err := cmd.Output()
+		if err == nil {
+			return string(out), nil
+		}
+		last = err
+	}
+	return "", fmt.Errorf("mysql: %w", last)
 }
 
 func mysqlExec(sql string) error {

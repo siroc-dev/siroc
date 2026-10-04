@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/software"
@@ -22,7 +23,7 @@ import (
 func Status() (*rpc.SysopsStatus, error) {
 	st := &rpc.SysopsStatus{
 		Hostname:  hostname(),
-		Time:      time.Now().In(localLoc()).Format(time.RFC3339),
+		Time:      time.Now().In(localLoc()).Format("2006-01-02 15:04:05 -07:00"),
 		Timezone:  timezone(),
 		NTP:       ntpOn(),
 		DNS:       nameservers(),
@@ -389,12 +390,10 @@ func zoneinfoPath(tz string) (string, error) {
 }
 
 func applyTimezone(tz string) error {
+	ensureTzdata()
 	src, err := zoneinfoPath(tz)
 	if err != nil {
 		return err
-	}
-	if exec.Command("timedatectl", "set-timezone", tz).Run() == nil {
-		return nil
 	}
 	if err := os.WriteFile("/etc/timezone", []byte(tz+"\n"), 0644); err != nil {
 		return fmt.Errorf("timezone: %w", err)
@@ -409,7 +408,17 @@ func applyTimezone(tz string) error {
 			return fmt.Errorf("timezone: %w", werr)
 		}
 	}
+	_ = exec.Command("timedatectl", "set-timezone", tz).Run()
 	return nil
+}
+
+func ensureTzdata() {
+	if _, err := os.Stat("/usr/share/zoneinfo/UTC"); err == nil {
+		return
+	}
+	cmd := exec.Command("apt-get", "install", "-y", "tzdata")
+	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
+	_ = cmd.Run()
 }
 
 func setNTP(on bool) {

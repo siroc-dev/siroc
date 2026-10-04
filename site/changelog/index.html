@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.18">0.2.18</a>
           <a href="#v0.2.17">0.2.17</a>
           <a href="#v0.2.16">0.2.16</a>
           <a href="#v0.2.15">0.2.15</a>
@@ -46,6 +47,21 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.18">
+          <h2><a href="#v0.2.18">0.2.18</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Nginx enables a thread pool and builds the Kaltura VOD module and Lua module for the installed Nginx.</li>
+            <li>URL rewrite accepts location blocks in the server. A <code>location /</code> you write replaces the default proxy location. Directives without a location stay inside that default location.</li>
+            <li>Reverse proxy sites open an aaPanel-style dialog for the path, target, host, rewrites, websocket, timeouts, extra config, content replacement, cache, compression, and IP lists.</li>
+            <li>The database list shows each database size. File uploads and database import show progress while bytes are sent.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Saving a timezone writes <code>/etc/timezone</code> and <code>/etc/localtime</code>, and the clock shows the local offset.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.17">
           <h2><a href="#v0.2.17">0.2.17</a></h2>

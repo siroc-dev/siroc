@@ -108,7 +108,23 @@ export function Tools() {
                   <Typography.Paragraph>
                     Host <Typography.Text code>{st?.hostname}</Typography.Text> · {st?.time}
                   </Typography.Paragraph>
-                  <Form form={tzForm} layout="inline" onFinish={(v) => apply({ action: "timezone", ...v })}>
+                  <Form
+                    form={tzForm}
+                    layout="inline"
+                    onFinish={async (v) => {
+                      setBusy(true);
+                      try {
+                        const data = await api.post<Status>("/api/sysops", { action: "timezone", timezone: v.timezone, ntp: !!v.ntp });
+                        setSt(data);
+                        tzForm.setFieldsValue({ timezone: data.timezone, ntp: data.ntp });
+                        message.success(`Timezone is ${data.timezone} · ${data.time}`);
+                      } catch (err) {
+                        message.error(err instanceof Error ? err.message : "Failed");
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
                     <Form.Item name="timezone" label="Timezone">
                       <Select
                         showSearch

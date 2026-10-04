@@ -56,7 +56,10 @@ type siteData struct {
 	SSLCert           string
 	SSLKey            string
 	Rewrite           string
+	RewriteServer     string
+	SkipRoot          bool
 	ProxyPass         string
+	ProxyLoc          string
 	WAF               bool
 	WAFRemove         []int
 	Extra             string
@@ -87,27 +90,21 @@ const nginxTmpl = `server {
         return 301 https://$host$request_uri;
     }
 {{- else}}
-{{.Extra}}{{.Access}}    location / {
-{{- if .ProxyPass}}
-        proxy_pass {{.ProxyPass}};
-        proxy_http_version 1.1;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 300s;
+{{.Extra}}{{.Access}}
+{{- if .ProxyLoc}}
+{{.ProxyLoc}}
 {{- else}}
+{{.RewriteServer}}
+{{- if not .SkipRoot}}
+    location / {
 {{.Rewrite}}        proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-{{- end}}
     }
-{{- if not .ProxyPass}}
+{{- end}}
     location ~ \.php$ {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
@@ -141,27 +138,20 @@ server {
     include /etc/nginx/snippets/siroc-xmlrpc-{{.Domain}}.conf;
     include /etc/nginx/snippets/siroc-uploads-php-{{.Domain}}.conf;
 {{.Extra}}{{.Access}}
-    location / {
-{{- if .ProxyPass}}
-        proxy_pass {{.ProxyPass}};
-        proxy_http_version 1.1;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 300s;
+{{- if .ProxyLoc}}
+{{.ProxyLoc}}
 {{- else}}
+{{.RewriteServer}}
+{{- if not .SkipRoot}}
+    location / {
 {{.Rewrite}}        proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
-{{- end}}
     }
-{{- if not .ProxyPass}}
+{{- end}}
     location ~ \.php$ {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
@@ -306,7 +296,7 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 	_ = m.FixWebPerms(req.Username, doc)
 
 	sock := fmt.Sprintf("/run/php/php%s-%s-%s.sock", req.PHPVersion, req.Username, slug(req.Domain))
-	snippet, err := validate.NginxSnippet(req.Rewrite)
+	serverRewrite, innerRewrite, skipRoot, err := validate.SplitNginxRewrite(req.Rewrite)
 	if err != nil {
 		return err
 	}
@@ -319,22 +309,24 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 	kind, cert, key := resolveCerts(req.Domain, req.SSLKind)
 	ssl := req.SSL && cert != ""
 	data := siteData{
-		Username:    req.Username,
-		Domain:      req.Domain,
-		DocRoot:     doc,
-		PHPVersion:  req.PHPVersion,
-		PHPSocket:   sock,
-		Enabled:     req.Enabled,
-		AllNames:    strings.Join(append([]string{req.Domain}, aliases...), " "),
-		AliasLine:   strings.Join(aliases, " "),
-		SSL:         ssl,
-		SSLRedirect: ssl && kind == "letsencrypt",
-		SSLCert:     cert,
-		SSLKey:      key,
-		Rewrite:     snippet,
-		ProxyPass:   "",
-		WAF:         req.WAF,
-		WAFRemove:   req.WAFRemove,
+		Username:      req.Username,
+		Domain:        req.Domain,
+		DocRoot:       doc,
+		PHPVersion:    req.PHPVersion,
+		PHPSocket:     sock,
+		Enabled:       req.Enabled,
+		AllNames:      strings.Join(append([]string{req.Domain}, aliases...), " "),
+		AliasLine:     strings.Join(aliases, " "),
+		SSL:           ssl,
+		SSLRedirect:   ssl && kind == "letsencrypt",
+		SSLCert:       cert,
+		SSLKey:        key,
+		Rewrite:       innerRewrite,
+		RewriteServer: serverRewrite,
+		SkipRoot:      skipRoot,
+		ProxyPass:     "",
+		WAF:           req.WAF,
+		WAFRemove:     req.WAFRemove,
 	}
 	if err := applyGuards(&data, req.Options, ""); err != nil {
 		return err
@@ -421,6 +413,41 @@ func applyGuards(data *siteData, opt siteopts.Options, proxy string) error {
 	data.Extra = extra
 	data.Access = access
 	data.Index = index
+	if strings.TrimSpace(proxy) != "" {
+		loc, err := siteopts.NginxProxyLocation(opt, proxy)
+		if err != nil {
+			return err
+		}
+		data.ProxyLoc = loc
+		if err := ensureProxySupport(loc); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureProxySupport(loc string) error {
+	if strings.Contains(loc, "$connection_upgrade") {
+		body := "map $http_upgrade $connection_upgrade {\n    default upgrade;\n    ''      close;\n}\n"
+		if err := os.MkdirAll("/etc/nginx/conf.d", 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile("/etc/nginx/conf.d/siroc-upgrade.conf", []byte(body), 0644); err != nil {
+			return err
+		}
+	}
+	if strings.Contains(loc, "proxy_cache siroc_cache") {
+		if err := os.MkdirAll("/var/cache/nginx/siroc", 0755); err != nil {
+			return err
+		}
+		body := "proxy_cache_path /var/cache/nginx/siroc levels=1:2 keys_zone=siroc_cache:10m max_size=1g inactive=1d use_temp_path=off;\n"
+		if err := os.MkdirAll("/etc/nginx/conf.d", 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile("/etc/nginx/conf.d/siroc-proxy-cache.conf", []byte(body), 0644); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

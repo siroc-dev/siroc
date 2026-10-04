@@ -98,6 +98,11 @@ func main() {
 	_ = os.Remove(cfg.SocketPath)
 
 	software.PrepareRuntime()
+	go func() {
+		if err := software.EnsureNginxModules(); err != nil {
+			log.Printf("nginx modules: %v", err)
+		}
+	}()
 
 	usersMgr := &users.Manager{HomeRoot: cfg.HomeRoot}
 	if n := usersMgr.RepairHomes(); n > 0 {
@@ -867,6 +872,17 @@ func main() {
 		_, _ = w.Write(b)
 	})
 
+	r.Get("/db/sizes", func(w http.ResponseWriter, _ *http.Request) {
+		out, err := dbMgr.Sizes()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		if out == nil {
+			out = map[string]int64{}
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Post("/db/drop", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.DBDropReq
 		if !decode(w, r, &req) {
