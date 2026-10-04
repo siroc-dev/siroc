@@ -450,6 +450,20 @@ html[data-theme="dark"] body {
   border-bottom: 1px solid #f0f0f0;
 }
 
+.fm-path {
+  flex: 1 1 280px;
+  min-width: 180px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.fm-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 0 auto;
+  object-fit: contain;
+}
+
 .fm-crumb-btn {
   border: 0;
   background: none;

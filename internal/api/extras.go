@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,10 +16,11 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/siroc-dev/siroc/internal/auth"
+	"github.com/siroc-dev/siroc/internal/backup"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/secret"
-	"github.com/siroc-dev/siroc/internal/sqlpack"
 	"github.com/siroc-dev/siroc/internal/siteopts"
+	"github.com/siroc-dev/siroc/internal/sqlpack"
 	"github.com/siroc-dev/siroc/internal/store"
 	"github.com/siroc-dev/siroc/internal/validate"
 )
@@ -522,6 +524,15 @@ func (s *Server) deleteBackupDest(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
 		return
 	}
+	n, err := s.Store.CountBackupCronsByDest(id)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if n > 0 {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("a backup schedule still uses this destination"))
+		return
+	}
 	if err := s.Store.DeleteBackupDest(id); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -551,9 +562,18 @@ func (s *Server) runBackup(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	jobs, err := s.executeBackup(names, dest, includeDB, 0)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+}
+
+func (s *Server) executeBackup(names []string, dest *store.BackupDest, includeDB bool, retain int) ([]*store.BackupJob, error) {
 	var jobs []*store.BackupJob
-	var last *rpc.BackupResp
 	var firstErr error
+	okN := 0
 	for _, name := range names {
 		acc, err := s.Store.GetAccountByName(name)
 		if err != nil {
@@ -567,6 +587,7 @@ func (s *Server) runBackup(w http.ResponseWriter, r *http.Request) {
 		req := s.backupDestReq(dest)
 		req.Username = acc.Username
 		req.IncludeDB = includeDB
+		req.Retain = retain
 		req.Manifest = s.userBackupManifest(acc)
 		for _, d := range req.Manifest.Databases {
 			req.Databases = append(req.Databases, d.DBName)
@@ -581,16 +602,217 @@ func (s *Server) runBackup(w http.ResponseWriter, r *http.Request) {
 			jobs = append(jobs, job)
 			continue
 		}
+		okN++
 		_ = s.Store.FinishBackupJob(job.ID, "ok", out.Message, out.Path, out.Remote, out.Size)
 		job, _ = s.Store.GetBackupJob(job.ID)
 		jobs = append(jobs, job)
-		last = out
 	}
-	if firstErr != nil && last == nil {
-		writeErr(w, http.StatusBadRequest, firstErr)
+	if okN == 0 && firstErr != nil {
+		return jobs, firstErr
+	}
+	return jobs, nil
+}
+
+func (s *Server) listBackupCrons(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(currentUser(r)) {
+		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs, "result": last})
+	list, err := s.Store.ListBackupCrons()
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) createBackupCron(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(currentUser(r)) {
+		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
+		return
+	}
+	var body struct {
+		Name      string `json:"name"`
+		Username  string `json:"username"`
+		DestID    int64  `json:"destId"`
+		IncludeDB *bool  `json:"includeDB"`
+		Cycle     string `json:"cycle"`
+		Minute    int    `json:"minute"`
+		Hour      int    `json:"hour"`
+		Weekday   int    `json:"weekday"`
+		Monthday  int    `json:"monthday"`
+		Retain    int    `json:"retain"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	account := strings.TrimSpace(body.Username)
+	if account == "" {
+		account = "*"
+	}
+	if account != "*" {
+		if err := validate.LinuxUser(account); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		if _, err := s.Store.GetAccountByName(account); err != nil {
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("account not found"))
+			return
+		}
+	}
+	if _, err := s.Store.GetBackupDest(body.DestID); err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("destination not found"))
+		return
+	}
+	cycle := strings.ToLower(strings.TrimSpace(body.Cycle))
+	if cycle == "" {
+		cycle = "daily"
+	}
+	retain := body.Retain
+	if retain == 0 {
+		retain = 3
+	}
+	if retain < 1 || retain > 30 {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("retain must be 1-30"))
+		return
+	}
+	monthday := body.Monthday
+	if monthday == 0 {
+		monthday = 1
+	}
+	task := backup.CronTask{ID: 1, Cycle: cycle, Minute: body.Minute, Hour: body.Hour, Weekday: body.Weekday, Monthday: monthday, Enabled: true}
+	if _, err := backup.RenderCronFile("/usr/local/bin/siroc-panel", []backup.CronTask{task}); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		if account == "*" {
+			name = "Backup all accounts"
+		} else {
+			name = "Backup " + account
+		}
+	}
+	if len(name) > 80 || strings.ContainsAny(name, "\r\n") {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("task name is invalid"))
+		return
+	}
+	includeDB := true
+	if body.IncludeDB != nil {
+		includeDB = *body.IncludeDB
+	}
+	created, err := s.Store.CreateBackupCron(store.BackupCron{
+		Name: name, Account: account, DestID: body.DestID, IncludeDB: includeDB,
+		Cycle: cycle, Minute: body.Minute, Hour: body.Hour, Weekday: body.Weekday, Monthday: monthday,
+		Retain: retain, Enabled: true,
+	})
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.SyncBackupCron(); err != nil {
+		_ = s.Store.DeleteBackupCron(created.ID)
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("saved schedule could not be installed in cron: %w", err))
+		return
+	}
+	writeJSON(w, http.StatusOK, created)
+}
+
+func (s *Server) deleteBackupCron(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(currentUser(r)) {
+		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
+		return
+	}
+	if err := s.Store.DeleteBackupCron(id); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.SyncBackupCron(); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) SyncBackupCron() error {
+	list, err := s.Store.ListBackupCrons()
+	if err != nil {
+		return err
+	}
+	bin, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	tasks := make([]backup.CronTask, 0, len(list))
+	for _, c := range list {
+		tasks = append(tasks, backup.CronTask{
+			ID: c.ID, Cycle: c.Cycle, Minute: c.Minute, Hour: c.Hour,
+			Weekday: c.Weekday, Monthday: c.Monthday, Enabled: c.Enabled,
+		})
+	}
+	body, err := backup.RenderCronFile(bin, tasks)
+	if err != nil {
+		return err
+	}
+	return s.Agent.BackupCronInstall(body)
+}
+
+func (s *Server) RunScheduledBackup(id int64) error {
+	c, err := s.Store.GetBackupCron(id)
+	if err != nil {
+		return err
+	}
+	if !c.Enabled {
+		return nil
+	}
+	dest, err := s.Store.GetBackupDest(c.DestID)
+	if err != nil {
+		_ = s.Store.TouchBackupCron(id, "error", "destination not found")
+		return fmt.Errorf("destination not found")
+	}
+	var names []string
+	if c.Account == "" || c.Account == "*" {
+		list, err := s.Store.ListAccounts()
+		if err != nil {
+			return err
+		}
+		for _, a := range list {
+			names = append(names, a.Username)
+		}
+	} else {
+		names = []string{c.Account}
+	}
+	if len(names) == 0 {
+		_ = s.Store.TouchBackupCron(id, "error", "no hosting accounts")
+		return fmt.Errorf("no hosting accounts to back up")
+	}
+	jobs, err := s.executeBackup(names, dest, c.IncludeDB, c.Retain)
+	status, msg := "ok", ""
+	if err != nil {
+		status = "error"
+		msg = err.Error()
+	} else {
+		for _, j := range jobs {
+			if j != nil && j.Status == "error" {
+				status = "error"
+				msg = j.Message
+				break
+			}
+		}
+	}
+	_ = s.Store.TouchBackupCron(id, status, msg)
+	if status == "error" {
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("%s", msg)
+	}
+	return nil
 }
 
 func (s *Server) backupUsernames(w http.ResponseWriter, r *http.Request, raw string) ([]string, bool) {

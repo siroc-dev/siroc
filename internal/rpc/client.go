@@ -730,6 +730,10 @@ func (c *Client) BackupRun(in BackupReq) (*BackupResp, error) {
 	return &out, err
 }
 
+func (c *Client) BackupCronInstall(body string) error {
+	return c.do(http.MethodPost, "/backup/cron", BackupCronFile{Body: body}, nil)
+}
+
 func (c *Client) PMASignon(in PMASignonReq) (*PMASignonResp, error) {
 	var out PMASignonResp
 	err := c.do(http.MethodPost, "/pma/signon", in, &out)

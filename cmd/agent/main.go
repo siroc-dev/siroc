@@ -1042,6 +1042,17 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Post("/backup/cron", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.BackupCronFile
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := backup.InstallCron(req.Body); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
 	r.Post("/backup/run", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.BackupReq
 		if !decode(w, r, &req) {

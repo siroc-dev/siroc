@@ -122,6 +122,25 @@ type BackupDest struct {
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
+type BackupCron struct {
+	ID         int64     `json:"id"`
+	Name       string    `json:"name"`
+	Account    string    `json:"account"`
+	DestID     int64     `json:"destId"`
+	DestName   string    `json:"destName,omitempty"`
+	IncludeDB  bool      `json:"includeDB"`
+	Cycle      string    `json:"cycle"`
+	Minute     int       `json:"minute"`
+	Hour       int       `json:"hour"`
+	Weekday    int       `json:"weekday"`
+	Monthday   int       `json:"monthday"`
+	Retain     int       `json:"retain"`
+	Enabled    bool      `json:"enabled"`
+	LastRun    string    `json:"lastRun,omitempty"`
+	LastStatus string    `json:"lastStatus,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
 type BackupJob struct {
 	ID         int64     `json:"id"`
 	Account    string    `json:"account"`
@@ -276,6 +295,23 @@ CREATE TABLE IF NOT EXISTS backup_jobs (
   remote TEXT NOT NULL DEFAULT '',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   finished_at TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS backup_crons (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  account TEXT NOT NULL,
+  dest_id INTEGER NOT NULL,
+  include_db INTEGER NOT NULL DEFAULT 1,
+  cycle TEXT NOT NULL,
+  minute INTEGER NOT NULL,
+  hour INTEGER NOT NULL,
+  weekday INTEGER NOT NULL DEFAULT 0,
+  monthday INTEGER NOT NULL DEFAULT 1,
+  retain INTEGER NOT NULL DEFAULT 3,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_run TEXT NOT NULL DEFAULT '',
+  last_status TEXT NOT NULL DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );`)
 	s.ensureSiteGitTable()
 	return s.ensureSecret()

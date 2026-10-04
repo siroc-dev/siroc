@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"time"
 )
 
@@ -56,6 +57,12 @@ func (s *Store) ListBackupDests() ([]BackupDest, error) {
 		out = []BackupDest{}
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) CountBackupCronsByDest(destID int64) (int, error) {
+	var n int
+	err := s.DB.QueryRow(`SELECT COUNT(*) FROM backup_crons WHERE dest_id = ?`, destID).Scan(&n)
+	return n, err
 }
 
 func (s *Store) DeleteBackupDest(id int64) error {
@@ -120,4 +127,76 @@ func (s *Store) ListBackupJobs(account string, limit int) ([]BackupJob, error) {
 		out = []BackupJob{}
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) CreateBackupCron(c BackupCron) (*BackupCron, error) {
+	inc, en := 0, 0
+	if c.IncludeDB {
+		inc = 1
+	}
+	if c.Enabled {
+		en = 1
+	}
+	res, err := s.DB.Exec(`INSERT INTO backup_crons (name, account, dest_id, include_db, cycle, minute, hour, weekday, monthday, retain, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.Name, c.Account, c.DestID, inc, c.Cycle, c.Minute, c.Hour, c.Weekday, c.Monthday, c.Retain, en)
+	if err != nil {
+		return nil, err
+	}
+	id, _ := res.LastInsertId()
+	return s.GetBackupCron(id)
+}
+
+func (s *Store) GetBackupCron(id int64) (*BackupCron, error) {
+	list, err := s.ListBackupCrons()
+	if err != nil {
+		return nil, err
+	}
+	for i := range list {
+		if list[i].ID == id {
+			return &list[i], nil
+		}
+	}
+	return nil, sql.ErrNoRows
+}
+
+func (s *Store) ListBackupCrons() ([]BackupCron, error) {
+	rows, err := s.DB.Query(`SELECT c.id, c.name, c.account, c.dest_id, COALESCE(d.name, ''), c.include_db, c.cycle, c.minute, c.hour, c.weekday, c.monthday, c.retain, c.enabled, c.last_run, c.last_status, c.created_at FROM backup_crons c LEFT JOIN backup_dests d ON d.id = c.dest_id ORDER BY c.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BackupCron
+	for rows.Next() {
+		var c BackupCron
+		var inc, en int
+		var created string
+		if err := rows.Scan(&c.ID, &c.Name, &c.Account, &c.DestID, &c.DestName, &inc, &c.Cycle, &c.Minute, &c.Hour, &c.Weekday, &c.Monthday, &c.Retain, &en, &c.LastRun, &c.LastStatus, &created); err != nil {
+			return nil, err
+		}
+		c.IncludeDB = inc == 1
+		c.Enabled = en == 1
+		c.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+		out = append(out, c)
+	}
+	if out == nil {
+		out = []BackupCron{}
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeleteBackupCron(id int64) error {
+	_, err := s.DB.Exec(`DELETE FROM backup_crons WHERE id = ?`, id)
+	return err
+}
+
+func (s *Store) TouchBackupCron(id int64, status, message string) error {
+	if len(message) > 400 {
+		message = message[:400]
+	}
+	text := status
+	if message != "" {
+		text = status + ": " + message
+	}
+	_, err := s.DB.Exec(`UPDATE backup_crons SET last_run = CURRENT_TIMESTAMP, last_status = ? WHERE id = ?`, text, id)
+	return err
 }

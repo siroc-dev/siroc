@@ -160,7 +160,7 @@ func zipTo(src, dest string) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -353,7 +353,7 @@ func extractArchive(src, dest string) error {
 	if archiveKind(src) == "" {
 		return fmt.Errorf("unsupported archive type")
 	}
-	if err := os.MkdirAll(dest, 0750); err != nil {
+	if err := os.MkdirAll(dest, 0755); err != nil {
 		return err
 	}
 	var err error
@@ -396,19 +396,19 @@ func unzipFile(src, dest string) error {
 			return err
 		}
 		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(out, 0750); err != nil {
+			if err := os.MkdirAll(out, 0755); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(out), 0750); err != nil {
+		if err := os.MkdirAll(filepath.Dir(out), 0755); err != nil {
 			return err
 		}
 		rc, err := f.Open()
 		if err != nil {
 			return err
 		}
-		w, err := os.OpenFile(out, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
+		w, err := os.OpenFile(out, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 		if err != nil {
 			_ = rc.Close()
 			return err
@@ -488,7 +488,7 @@ func decompressOne(src, dest, kind string) error {
 		defer gr.Close()
 		r = gr
 	}
-	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
+	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -502,7 +502,7 @@ func cmdExtractFile(bin, flag, src, dest string) error {
 		return fmt.Errorf("%s is not installed", bin)
 	}
 	cmd := exec.Command(bin, flag, src)
-	outf, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
+	outf, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -586,7 +586,7 @@ func scrubExtract(dest string) error {
 }
 
 func copyPath(src, dest string) error {
-	if err := os.MkdirAll(filepath.Dir(dest), 0750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return err
 	}
 	dest = uniquePath(dest)

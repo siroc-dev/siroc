@@ -692,17 +692,7 @@ func (m *Manager) FixWebPerms(username, doc string) error {
 		}
 	}
 	_ = os.Chmod(home, 0711)
-	_ = filepath.WalkDir(abs, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			_ = os.Chmod(path, 0755)
-		} else {
-			_ = os.Chmod(path, 0644)
-		}
-		return nil
-	})
+	chmodWebTree(home, abs)
 	return nil
 }
 
@@ -811,17 +801,6 @@ func (m *Manager) FixAllWebPerms() {
 		}
 		home := filepath.Join(m.HomeRoot, name)
 		_ = os.Chmod(home, 0711)
-		domains := filepath.Join(home, "domains")
-		_ = filepath.WalkDir(domains, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if d.IsDir() {
-				_ = os.Chmod(path, 0755)
-			} else {
-				_ = os.Chmod(path, 0644)
-			}
-			return nil
-		})
+		chmodWebTree(home, filepath.Join(home, "domains"))
 	}
 }

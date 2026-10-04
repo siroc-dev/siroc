@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.26">0.2.26</a>
           <a href="#v0.2.25">0.2.25</a>
           <a href="#v0.2.24">0.2.24</a>
           <a href="#v0.2.23">0.2.23</a>
@@ -54,6 +55,20 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.26">
+          <h2><a href="#v0.2.26">0.2.26</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>The File Manager lists 50 files per page. Type a path and press Enter to open it. An admin can jump to a system path such as <code>/etc/ssh</code>.</li>
+            <li>Click an image to preview it, and rename one selected file or folder in the same directory.</li>
+            <li>Backup schedules install <code>/etc/cron.d/siroc-backup</code>. A task covers one account or all accounts, runs hourly, daily, weekly, or monthly, and keeps the latest local archives (default 3). The log is <code>/var/log/siroc/backup-cron.log</code>.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Apache can read <code>.htaccess</code> again when a directory is a symlink, such as Laravel <code>public/storage</code>. Web directories are 0755 and files are 0644. The agent repairs existing trees the next time it starts.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.25">
           <h2><a href="#v0.2.25">0.2.25</a></h2>

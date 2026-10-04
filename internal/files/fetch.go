@@ -92,7 +92,7 @@ func (m *Manager) Search(username, dir, query string, root bool) (*rpc.FileSearc
 }
 
 func curlFetch(dest, rawURL string) error {
-	if err := os.MkdirAll(filepath.Dir(dest), 0750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 		return err
 	}
 	cmd := exec.Command("curl", "-fL", "--retry", "2", "--max-filesize", "536870912", "--max-time", "300", "-o", dest, rawURL)

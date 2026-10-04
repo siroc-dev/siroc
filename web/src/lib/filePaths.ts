@@ -1,3 +1,25 @@
+const systemRoots = ["/etc", "/usr", "/var", "/opt", "/root", "/bin", "/sbin", "/lib", "/lib64", "/boot", "/tmp", "/run", "/home"];
+
+export function normalizeFileJump(raw: string) {
+  let path = raw.trim().replace(/\\/g, "/");
+  if (!path || path === "/") return "/";
+  if (!path.startsWith("/")) path = "/" + path;
+  const parts: string[] = [];
+  for (const part of path.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+  return parts.length ? "/" + parts.join("/") : "/";
+}
+
+export function isSystemPath(path: string) {
+  return systemRoots.some((root) => path === root || path.startsWith(root + "/"));
+}
+
 export function joinPath(dir: string, name: string) {
   const base = dir.replace(/\/+$/, "");
   const leaf = name.replace(/^\/+/, "");

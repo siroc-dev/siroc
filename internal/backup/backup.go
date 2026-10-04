@@ -124,7 +124,27 @@ func Run(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	default:
 		return nil, fmt.Errorf("unknown backup kind %q", kind)
 	}
+	if req.Retain > 0 {
+		pruneDir(dir, req.Username, req.Retain)
+		if kind == "local" && req.LocalDir != "" && filepath.Clean(req.LocalDir) != filepath.Clean(dir) {
+			pruneDir(req.LocalDir, req.Username, req.Retain)
+		}
+	}
 	return resp, nil
+}
+
+func pruneDir(dir, username string, keep int) {
+	matches, err := filepath.Glob(filepath.Join(dir, username+"-*.tar.gz"))
+	if err != nil || len(matches) == 0 {
+		return
+	}
+	names := make([]string, 0, len(matches))
+	for _, p := range matches {
+		names = append(names, filepath.Base(p))
+	}
+	for _, name := range PruneNames(names, keep) {
+		_ = os.Remove(filepath.Join(dir, name))
+	}
 }
 
 func inspect(req rpc.BackupReq) (*rpc.BackupResp, error) {

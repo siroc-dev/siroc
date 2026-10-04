@@ -1,6 +1,6 @@
 /** @vitest-environment node */
 import { describe, expect, it } from "vitest";
-import { joinPath, moveDestinations } from "./filePaths";
+import { isSystemPath, joinPath, moveDestinations, normalizeFileJump } from "./filePaths";
 
 describe("moveDestinations", () => {
   it("keeps folder + name for one item", () => {
@@ -20,6 +20,23 @@ describe("moveDestinations", () => {
       { path: "/composer/templates", dest: "/domains/shop/public_html/templates" },
       { path: "/composer/composer.json", dest: "/domains/shop/public_html/composer.json" },
     ]);
+  });
+});
+
+describe("normalizeFileJump", () => {
+  it("keeps an absolute path", () => {
+    expect(normalizeFileJump(" /etc/ssh/ ")).toBe("/etc/ssh");
+    expect(normalizeFileJump("etc/ssh")).toBe("/etc/ssh");
+    expect(normalizeFileJump("/etc/../etc/ssh/")).toBe("/etc/ssh");
+    expect(normalizeFileJump("/")).toBe("/");
+  });
+});
+
+describe("isSystemPath", () => {
+  it("matches filesystem roots and not an account folder", () => {
+    expect(isSystemPath("/etc/ssh")).toBe(true);
+    expect(isSystemPath("/home/user")).toBe(true);
+    expect(isSystemPath("/domains/example/public_html")).toBe(false);
   });
 });
 

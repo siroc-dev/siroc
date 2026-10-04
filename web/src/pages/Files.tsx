@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useOutletContext, useSearchParams } from "react-router-dom";
 import {
   App,
@@ -26,6 +26,8 @@ import {
   CopyOutlined,
   DeleteOutlined,
   DownloadOutlined,
+  EditOutlined,
+  EyeOutlined,
   FileAddOutlined,
   FileOutlined,
   FileZipOutlined,
@@ -44,7 +46,7 @@ import {
 } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { languageFromPath } from "@/lib/fileLang";
-import { joinPath, moveDestinations } from "@/lib/filePaths";
+import { isSystemPath, joinPath, moveDestinations, normalizeFileJump } from "@/lib/filePaths";
 import { editorWorkspace, formatBytes } from "@/lib/usage";
 import { SSHTerminal } from "@/components/SSHTerminal";
 
@@ -60,6 +62,28 @@ const rootShortcuts = ["/", "/etc", "/home", "/opt/siroc", "/var/log", "/etc/ngi
 function isArchive(name: string) {
   const n = name.toLowerCase();
   return [".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".gz", ".bz2", ".xz"].some((ext) => n.endsWith(ext));
+}
+
+const imageTypes: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+  ico: "image/x-icon",
+  avif: "image/avif",
+  svg: "image/svg+xml",
+};
+
+function imageExt(name: string) {
+  const n = name.toLowerCase();
+  const dot = n.lastIndexOf(".");
+  return dot >= 0 ? n.slice(dot + 1) : "";
+}
+
+function isImage(name: string) {
+  return imageExt(name) in imageTypes;
 }
 
 function parseMode(mode: string) {
@@ -131,10 +155,16 @@ export function Files() {
   const [ctxItems, setCtxItems] = useState<Entry[]>([]);
   const [ctxPoint, setCtxPoint] = useState({ x: 0, y: 0 });
   const [filter, setFilter] = useState("");
+  const [filePage, setFilePage] = useState(1);
+  const [pathDraft, setPathDraft] = useState("/");
+  const pendingJump = useRef<string | null>(null);
   const [treeKids, setTreeKids] = useState<Record<string, Entry[]>>({});
   const [expanded, setExpanded] = useState<string[]>(["/"]);
   const [fileOpen, setFileOpen] = useState(false);
   const [folderOpen, setFolderOpen] = useState(false);
+  const [renameItem, setRenameItem] = useState<Entry | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [preview, setPreview] = useState<{ name: string; url: string } | null>(null);
   const [newFile, setNewFile] = useState("");
   const [newFolder, setNewFolder] = useState("");
 
@@ -197,9 +227,29 @@ export function Files() {
     if (!user) return;
     setTreeKids({});
     setExpanded(["/"]);
-    const start = wantUser && user === wantUser ? wantPath : "/";
+    const start = pendingJump.current ?? (wantUser && user === wantUser ? wantPath : "/");
+    pendingJump.current = null;
     load(start).catch((e) => message.error(e.message));
   }, [user, wantUser, wantPath]);
+
+  useEffect(() => {
+    setPathDraft(listing.path || "/");
+  }, [listing.path]);
+
+  async function goPath() {
+    const path = normalizeFileJump(pathDraft);
+    setPathDraft(path);
+    if (admin && user !== "root" && isSystemPath(path)) {
+      pendingJump.current = path;
+      setUser("root");
+      return;
+    }
+    try {
+      await load(path);
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "Could not open that path");
+    }
+  }
 
   function parent() {
     const parts = listing.path.split("/").filter(Boolean);
@@ -207,9 +257,45 @@ export function Files() {
     return "/" + parts.join("/");
   }
 
+  function closePreview() {
+    setPreview((cur) => {
+      if (cur?.url) URL.revokeObjectURL(cur.url);
+      return null;
+    });
+  }
+
+  async function previewImage(e: Entry) {
+    if (e.size > 25 * 1024 * 1024) {
+      message.error("Image is larger than 25MB. Download it instead.");
+      return;
+    }
+    try {
+      const q = new URLSearchParams({ user, path: e.path });
+      const res = await fetch(`/api/files/download?${q}`, { credentials: "include" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || "Preview failed");
+      }
+      const raw = await res.blob();
+      const type = imageTypes[imageExt(e.name)] || raw.type || "application/octet-stream";
+      const blob = raw.type === type ? raw : new Blob([raw], { type });
+      const url = URL.createObjectURL(blob);
+      setPreview((cur) => {
+        if (cur?.url) URL.revokeObjectURL(cur.url);
+        return { name: e.name, url };
+      });
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Preview failed");
+    }
+  }
+
   async function open(e: Entry) {
     if (e.isDir) {
       await load(e.path);
+      return;
+    }
+    if (isImage(e.name)) {
+      await previewImage(e);
       return;
     }
     if (isArchive(e.name)) {
@@ -527,6 +613,37 @@ export function Files() {
     }
   }
 
+  function openRename(e: Entry) {
+    setRenameItem(e);
+    setRenameName(e.name);
+  }
+
+  async function applyRename() {
+    if (!renameItem) return;
+    const name = renameName.trim();
+    if (!isSafeName(name)) {
+      message.error("Use a file name without / or ..");
+      return;
+    }
+    if (name === renameItem.name) {
+      setRenameItem(null);
+      return;
+    }
+    const parent = renameItem.path.replace(/\/[^/]+$/, "") || "/";
+    setBusy(true);
+    try {
+      await api.post("/api/files/rename", { user, path: renameItem.path, dest: joinPath(parent, name) });
+      message.success("Renamed");
+      setRenameItem(null);
+      setSelected([]);
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Rename failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function openMove(items: Entry[]) {
     if (!items.length) return;
     setMoveItems(items);
@@ -589,6 +706,10 @@ export function Files() {
   ];
 
   const workspace = editorWorkspace(absPath, listing.absPath);
+  useEffect(() => {
+    setFilePage(1);
+  }, [listing.path, filter]);
+
   const rows = useMemo(() => {
     const q = filter.trim().toLowerCase();
     return [...listing.entries]
@@ -655,6 +776,14 @@ export function Files() {
     openMove(picked);
   }
 
+  function toolbarRename() {
+    if (picked.length !== 1) {
+      message.info("Select one file or folder to rename");
+      return;
+    }
+    openRename(picked[0]);
+  }
+
   function toolbarExtract() {
     const e = picked.find((x) => !x.isDir && isArchive(x.name));
     if (!e) {
@@ -692,6 +821,8 @@ export function Files() {
     const out: MenuProps["items"] = [];
     if (one) {
       out.push({ key: "open", icon: one.isDir ? <FolderOutlined /> : <FileOutlined />, label: "Open" });
+      if (!one.isDir && isImage(one.name)) out.push({ key: "preview", icon: <EyeOutlined />, label: "Preview" });
+      out.push({ key: "rename", icon: <EditOutlined />, label: "Rename" });
       out.push({ key: "download", icon: <DownloadOutlined />, label: "Download" });
       if (one.isDir) out.push({ key: "terminal", icon: <LaptopOutlined />, label: "Terminal" });
       if (!one.isDir && isArchive(one.name)) {
@@ -733,6 +864,8 @@ export function Files() {
   function onFileAction(items: Entry[], key: string) {
     const one = items.length === 1 ? items[0] : null;
     if (key === "open" && one) void open(one);
+    if (key === "preview" && one) void previewImage(one);
+    if (key === "rename" && one) openRename(one);
     if (key === "download") {
       for (const e of items.filter((x) => !x.isDir)) void download(e);
     }
@@ -830,6 +963,9 @@ export function Files() {
             <Button icon={<ScissorOutlined />} disabled={!user} onClick={toolbarMove}>
               Move
             </Button>
+            <Button icon={<EditOutlined />} disabled={!user || picked.length !== 1} onClick={toolbarRename}>
+              Rename
+            </Button>
             <Tooltip title="Paste here">
               <Button icon={<SnippetsOutlined />} disabled={!clip || busy} onClick={() => void pasteInto(listing.path)}>
                 Paste
@@ -867,6 +1003,18 @@ export function Files() {
             />
           </div>
           <div className="fm-crumb">
+            <Input
+              className="fm-path"
+              value={pathDraft}
+              spellCheck={false}
+              disabled={!user}
+              placeholder={root ? "/etc/ssh" : "/domains/example/public_html"}
+              onChange={(e) => setPathDraft(e.target.value)}
+              onPressEnter={() => void goPath()}
+            />
+            <Button disabled={!user} onClick={() => void goPath()}>
+              Open
+            </Button>
             <Breadcrumb
               items={crumbParts(listing.path).map((c) => ({
                 title: (
@@ -904,7 +1052,14 @@ export function Files() {
             <Table
               size="small"
               rowKey="path"
-              pagination={false}
+              pagination={{
+                current: filePage,
+                pageSize: 50,
+                showSizeChanger: false,
+                hideOnSinglePage: true,
+                showTotal: (total) => `${total} items`,
+                onChange: (page) => setFilePage(page),
+              }}
               dataSource={rows}
               tableLayout="auto"
               rowSelection={{
@@ -1080,6 +1235,22 @@ export function Files() {
           <p className="ant-upload-text">Drop files or folders here</p>
           <p className="ant-upload-hint">Keeps folder structure. Current folder: {listing.path}</p>
         </Upload.Dragger>
+      </Modal>
+
+      <Modal
+        title={renameItem ? `Rename ${renameItem.name}` : "Rename"}
+        open={!!renameItem}
+        onCancel={() => setRenameItem(null)}
+        onOk={() => void applyRename()}
+        confirmLoading={busy}
+        okText="Rename"
+        destroyOnHidden
+      >
+        <Input value={renameName} autoFocus onChange={(e) => setRenameName(e.target.value)} onPressEnter={() => void applyRename()} />
+      </Modal>
+
+      <Modal title={preview?.name || "Preview"} open={!!preview} onCancel={closePreview} footer={null} width={880} destroyOnHidden>
+        {preview ? <img className="fm-preview" src={preview.url} alt={preview.name} /> : null}
       </Modal>
 
       <Modal

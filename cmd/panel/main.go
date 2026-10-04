@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/siroc-dev/siroc/internal/admincli"
 	"github.com/siroc-dev/siroc/internal/api"
@@ -24,6 +25,11 @@ func main() {
 			return
 		case "passwd-admin", "reset-admin":
 			if err := runPasswdAdmin(os.Args[2:]); err != nil {
+				log.Fatal(err)
+			}
+			return
+		case "backup-cron":
+			if err := runBackupCron(os.Args[2:]); err != nil {
 				log.Fatal(err)
 			}
 			return
@@ -56,9 +62,30 @@ func main() {
 		Agent:  rpc.NewClient(cfg.SocketPath),
 		Static: static,
 	}
+	if err := srv.SyncBackupCron(); err != nil {
+		log.Printf("backup cron: %v", err)
+	}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func runBackupCron(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: siroc-panel backup-cron <id>")
+	}
+	id, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil || id <= 0 {
+		return fmt.Errorf("usage: siroc-panel backup-cron <id>")
+	}
+	cfg := config.Load()
+	st, err := store.Open(cfg.DBPath)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	srv := &api.Server{Cfg: cfg, Store: st, Agent: rpc.NewClient(cfg.SocketPath)}
+	return srv.RunScheduledBackup(id)
 }
 
 func runPasswdAdmin(args []string) error {

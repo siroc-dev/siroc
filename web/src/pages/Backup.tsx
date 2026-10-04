@@ -24,28 +24,59 @@ type Job = {
   remote?: string;
   createdAt: string;
 };
+type Cron = {
+  id: number;
+  name: string;
+  account: string;
+  destName?: string;
+  includeDB: boolean;
+  cycle: string;
+  minute: number;
+  hour: number;
+  weekday: number;
+  monthday: number;
+  retain: number;
+  lastRun?: string;
+  lastStatus?: string;
+};
+
+const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function cronWhen(c: Cron) {
+  const hm = `${String(c.hour).padStart(2, "0")}:${String(c.minute).padStart(2, "0")}`;
+  if (c.cycle === "hourly") return `Hourly at :${String(c.minute).padStart(2, "0")}`;
+  if (c.cycle === "weekly") return `Weekly on ${weekdays[c.weekday] || "Sunday"} at ${hm}`;
+  if (c.cycle === "monthly") return `Monthly on day ${c.monthday} at ${hm}`;
+  return `Daily at ${hm}`;
+}
 
 export function Backup() {
   const { message } = App.useApp();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [dests, setDests] = useState<Dest[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [crons, setCrons] = useState<Cron[]>([]);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [runOpen, setRunOpen] = useState(false);
+  const [cronOpen, setCronOpen] = useState(false);
   const [form] = Form.useForm();
   const [runForm] = Form.useForm();
+  const [cronForm] = Form.useForm();
   const kind = Form.useWatch("kind", form);
+  const cronCycle = Form.useWatch("cycle", cronForm);
 
   async function load() {
-    const [a, d, j] = await Promise.all([
+    const [a, d, j, crons] = await Promise.all([
       api.get<Account[]>("/api/accounts"),
       api.get<Dest[]>("/api/backup/dests").catch(() => [] as Dest[]),
       api.get<Job[]>("/api/backup/jobs"),
+      api.get<Cron[]>("/api/backup/crons").catch(() => [] as Cron[]),
     ]);
     setAccounts(a);
     setDests(d);
     setJobs(j);
+    setCrons(crons);
   }
   useEffect(() => {
     load().catch((e) => message.error(e.message));
@@ -116,6 +147,9 @@ export function Backup() {
         <Space>
           <Button onClick={() => setOpen(true)}>Add destination</Button>
           <Button onClick={() => setRestoreOpen(true)}>Restore archive</Button>
+          <Button onClick={() => setCronOpen(true)} disabled={!dests.length}>
+            Add schedule
+          </Button>
           <Button type="primary" onClick={() => setRunOpen(true)} disabled={!dests.length}>
             Run backup
           </Button>
@@ -136,6 +170,34 @@ export function Backup() {
               align: "right",
               render: (_, d) => (
                 <Popconfirm title="Delete destination?" onConfirm={() => api.delete(`/api/backup/dests/${d.id}`).then(load)}>
+                  <Button size="small" danger>
+                    Delete
+                  </Button>
+                </Popconfirm>
+              ),
+            },
+          ]}
+        />
+      </Card>
+      <Card title="Schedules">
+        <Table
+          rowKey="id"
+          dataSource={crons}
+          pagination={false}
+          locale={{ emptyText: "No backup schedule yet. Add one to install a cron job." }}
+          columns={[
+            { title: "Name", dataIndex: "name" },
+            { title: "Account", dataIndex: "account", width: 120, render: (v) => (v === "*" ? "All" : v) },
+            { title: "When", render: (_, c) => cronWhen(c) },
+            { title: "Destination", dataIndex: "destName" },
+            { title: "Keep", dataIndex: "retain", width: 70 },
+            { title: "Last run", dataIndex: "lastStatus", ellipsis: true, render: (v) => v || "—" },
+            {
+              title: "",
+              width: 90,
+              align: "right",
+              render: (_, c) => (
+                <Popconfirm title="Delete this schedule?" onConfirm={() => api.delete(`/api/backup/crons/${c.id}`).then(load)}>
                   <Button size="small" danger>
                     Delete
                   </Button>
@@ -249,6 +311,79 @@ export function Backup() {
         </Form>
       </Modal>
 
+      <Modal title="Backup schedule" open={cronOpen} onCancel={() => setCronOpen(false)} onOk={() => cronForm.submit()} confirmLoading={busy} destroyOnHidden>
+        <Form
+          form={cronForm}
+          layout="vertical"
+          initialValues={{ username: "*", cycle: "daily", hour: 1, minute: 30, weekday: 0, monthday: 1, retain: 3, includeDB: true }}
+          onFinish={async (values) => {
+            setBusy(true);
+            try {
+              await api.post("/api/backup/crons", values);
+              setCronOpen(false);
+              cronForm.resetFields();
+              message.success("Cron installed");
+              await load();
+            } catch (err) {
+              message.error(err instanceof Error ? err.message : "Failed");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <Form.Item name="name" label="Task name">
+            <Input placeholder="Backup all accounts" />
+          </Form.Item>
+          <Form.Item name="username" label="Account" rules={[{ required: true }]}>
+            <Select
+              options={[
+                { value: "*", label: "All accounts" },
+                ...accounts.map((a) => ({ value: a.username, label: a.username })),
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="destId" label="Destination" rules={[{ required: true }]}>
+            <Select options={dests.map((d) => ({ value: d.id, label: `${d.name} (${d.kind})` }))} />
+          </Form.Item>
+          <Form.Item name="cycle" label="Execute cycle">
+            <Select
+              options={[
+                { value: "hourly", label: "Hourly" },
+                { value: "daily", label: "Daily" },
+                { value: "weekly", label: "Weekly" },
+                { value: "monthly", label: "Monthly" },
+              ]}
+            />
+          </Form.Item>
+          <Space wrap>
+            {cronCycle !== "hourly" ? (
+              <Form.Item name="hour" label="Hour">
+                <InputNumber min={0} max={23} />
+              </Form.Item>
+            ) : null}
+            <Form.Item name="minute" label="Minute">
+              <InputNumber min={0} max={59} />
+            </Form.Item>
+            {cronCycle === "weekly" ? (
+              <Form.Item name="weekday" label="Weekday">
+                <Select style={{ width: 140 }} options={weekdays.map((label, value) => ({ value, label }))} />
+              </Form.Item>
+            ) : null}
+            {cronCycle === "monthly" ? (
+              <Form.Item name="monthday" label="Day">
+                <InputNumber min={1} max={28} />
+              </Form.Item>
+            ) : null}
+          </Space>
+          <Form.Item name="retain" label="Retain the latest" extra="Older local archives for each account are deleted.">
+            <InputNumber min={1} max={30} />
+          </Form.Item>
+          <Form.Item name="includeDB" label="Include MySQL dumps" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          <Alert type="info" showIcon message="Installs /etc/cron.d/siroc-backup. The job runs siroc-panel backup-cron and writes /var/log/siroc/backup-cron.log." />
+        </Form>
+      </Modal>
       <Modal title="Run backup" open={runOpen} onCancel={() => setRunOpen(false)} onOk={() => runForm.submit()} confirmLoading={busy} destroyOnHidden>
         <Form form={runForm} layout="vertical" onFinish={run} initialValues={{ includeDB: true, username: accounts[0]?.username, destId: dests[0]?.id }}>
           <Form.Item name="username" label="Account" rules={[{ required: true }]}>

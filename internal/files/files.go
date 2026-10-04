@@ -266,12 +266,12 @@ func (m *Manager) Upload(username, rel string, r io.Reader, root bool) error {
 		}
 		abs, uid, gid = p, u, g
 	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(abs), 0755); err != nil {
 		return err
 	}
 	tmp := abs + ".cp-uploading"
 	_ = os.Remove(tmp)
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -392,15 +392,15 @@ func runHelper(req helperReq) (helperResp, error) {
 			}
 			payload = decoded
 		}
-		if err := os.MkdirAll(filepath.Dir(req.Path), 0750); err != nil {
+		if err := os.MkdirAll(filepath.Dir(req.Path), 0755); err != nil {
 			return helperResp{}, err
 		}
-		if err := os.WriteFile(req.Path, payload, 0640); err != nil {
+		if err := os.WriteFile(req.Path, payload, 0644); err != nil {
 			return helperResp{}, err
 		}
 		return helperResp{OK: true}, nil
 	case "mkdir":
-		if err := os.MkdirAll(req.Path, 0750); err != nil {
+		if err := os.MkdirAll(req.Path, 0755); err != nil {
 			return helperResp{}, err
 		}
 		return helperResp{OK: true}, nil
@@ -410,7 +410,7 @@ func runHelper(req helperReq) (helperResp, error) {
 		}
 		return helperResp{OK: true}, nil
 	case "rename":
-		if err := os.MkdirAll(filepath.Dir(req.Dest), 0750); err != nil {
+		if err := os.MkdirAll(filepath.Dir(req.Dest), 0755); err != nil {
 			return helperResp{}, err
 		}
 		dest := uniquePath(req.Dest)
