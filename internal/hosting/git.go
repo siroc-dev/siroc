@@ -93,7 +93,7 @@ func (m *Manager) GitDeploy(req rpc.GitDeployReq) (*rpc.GitDeployResp, error) {
 	}
 	head := readGitCommit(req.Username, abs, sshCmd)
 	if strings.TrimSpace(command) != "" {
-		if err := runUser(req.Username, abs, sshCmd, 10*time.Minute, &log, "bash", "-lc", command); err != nil {
+		if err := runUser(req.Username, abs, sshCmd, 10*time.Minute, &log, "bash", "-lc", wrapNpmBins(command)); err != nil {
 			resp, fail := gitFail(&log, err)
 			if resp != nil {
 				resp.Commit = head
