@@ -119,6 +119,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/api/software", s.listSoftware)
 			r.Post("/api/software/install", s.installSoftware)
 			r.Get("/api/software/jobs", s.listInstallJobs)
+			r.Get("/api/software/logs/{name}", s.installLog)
 			r.Delete("/api/software/jobs/{id}", s.cancelInstallJob)
 			r.Post("/api/software/clean-temp", s.cleanInstallTemp)
 			r.Post("/api/software/clean-log", s.cleanInstallLog)

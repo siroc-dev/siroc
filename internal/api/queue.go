@@ -253,6 +253,18 @@ func (s *Server) cancelInstallJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+func (s *Server) installLog(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	var offset int64
+	fmt.Sscan(r.URL.Query().Get("offset"), &offset)
+	out, err := s.Agent.InstallLog(name, offset)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) cleanInstallTemp(w http.ResponseWriter, _ *http.Request) {
 	out, err := s.Agent.CleanTemp()
 	if err != nil {

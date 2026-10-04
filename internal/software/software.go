@@ -5,6 +5,7 @@ package software
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -525,10 +526,15 @@ func (m *Manager) PHPInstalled() []string {
 }
 
 func (m *Manager) Install(name, version string) error {
+	done := beginInstallLog(name, version)
+	var err error
 	if up, ver := splitUpgrade(version); up {
-		return m.upgrade(name, ver)
+		err = m.upgrade(name, ver)
+	} else {
+		err = m.install(name, version)
 	}
-	return m.install(name, version)
+	done(err)
+	return err
 }
 
 func splitUpgrade(version string) (bool, string) {
@@ -1008,20 +1014,39 @@ func phpAnyActive() bool {
 func combinedTimeout(cmd *exec.Cmd, d time.Duration) (string, error) {
 	ensureCmdHome(cmd)
 	var buf strings.Builder
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
+	noteInstall("$ " + strings.Join(cmd.Args, " "))
+	pr, pw := io.Pipe()
+	cmd.Stdout = io.MultiWriter(&buf, pw)
+	cmd.Stderr = cmd.Stdout
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		sc := bufio.NewScanner(pr)
+		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for sc.Scan() {
+			noteInstall(sc.Text())
+		}
+	}()
 	if err := cmd.Start(); err != nil {
+		_ = pw.Close()
+		<-readDone
 		return "", err
 	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+	wait := make(chan error, 1)
+	go func() { wait <- cmd.Wait() }()
+	var err error
 	select {
-	case err := <-done:
-		return buf.String(), err
+	case err = <-wait:
 	case <-time.After(d):
-		_ = cmd.Process.Kill()
-		return buf.String(), fmt.Errorf("timed out after %s", d)
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		err = fmt.Errorf("timed out after %s", d)
+		<-wait
 	}
+	_ = pw.Close()
+	<-readDone
+	return buf.String(), err
 }
 
 func ensureCmdHome(cmd *exec.Cmd) {

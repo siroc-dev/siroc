@@ -367,6 +367,17 @@ func main() {
 	r.Get("/software/php-versions", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, softMgr.PHPInstalled())
 	})
+	r.Get("/software/log", func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("name")
+		var offset int64
+		fmt.Sscan(r.URL.Query().Get("offset"), &offset)
+		text, next, err := software.ReadInstallLog(name, offset)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.InstallLogResp{Name: name, Text: text, Offset: next})
+	})
 	r.Post("/software/install", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.PkgInstallReq
 		if !decode(w, r, &req) {

@@ -111,6 +111,12 @@ type PkgInstallReq struct {
 	Version string `json:"version"`
 }
 
+type InstallLogResp struct {
+	Name   string `json:"name"`
+	Text   string `json:"text"`
+	Offset int64  `json:"offset"`
+}
+
 type PackageInfo struct {
 	Name              string          `json:"name"`
 	Title             string          `json:"title"`

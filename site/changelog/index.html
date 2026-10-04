@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.19">0.2.19</a>
           <a href="#v0.2.18">0.2.18</a>
           <a href="#v0.2.17">0.2.17</a>
           <a href="#v0.2.16">0.2.16</a>
@@ -47,6 +48,19 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.19">
+          <h2><a href="#v0.2.19">0.2.19</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>The software page shows a live install terminal. Each package keeps its log at <code>/var/lib/siroc/install-logs/</code>, and the Log button opens it again after the install finishes.</li>
+            <li>The Nginx VOD module is built with file AIO, the thread pool, <code>-O3</code>, and a 256-track limit. Popcnt and AVX2 are used when the CPU has them. Nginx sets <code>aio on</code> and <code>vod_open_file_thread_pool</code>.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Updating Nginx 1.31 no longer fails while compiling the VOD module on GCC 15. <code>ngx_http_vod_exit_process</code> now takes the cycle argument Nginx expects.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.18">
           <h2><a href="#v0.2.18">0.2.18</a></h2>

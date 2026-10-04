@@ -41,7 +41,7 @@ func EnsureNginxModules() error {
 	if err != nil {
 		return err
 	}
-	stamp := ver + " vod=" + vodVersion + " lua=" + luaVersion + " ndk=" + ndkVersion
+	stamp := ver + " vod=" + vodVersion + " lua=" + luaVersion + " ndk=" + ndkVersion + " cc=" + vodCompilerOpt(cpuFlags())
 	if !nginxModulesReady(stamp) {
 		if err := buildNginxModules(ver); err != nil {
 			return err
@@ -52,13 +52,17 @@ func EnsureNginxModules() error {
 	if err != nil {
 		return err
 	}
+	vodConf, err := ensureVodRuntime()
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(nginxModStamp), 0750); err != nil {
 		return err
 	}
 	if err := os.WriteFile(nginxModStamp, []byte(stamp+"\n"), 0644); err != nil {
 		return err
 	}
-	if changed || loaded {
+	if changed || loaded || vodConf {
 		if exec.Command("systemctl", "is-active", "--quiet", "nginx").Run() == nil {
 			if out, err := exec.Command("systemctl", "restart", "nginx").CombinedOutput(); err != nil {
 				return fmt.Errorf("restart nginx: %s: %w", strings.TrimSpace(string(out)), err)
@@ -156,6 +160,70 @@ func ensureLoadModules() (bool, error) {
 	return true, nil
 }
 
+func cpuFlags() string {
+	b, err := os.ReadFile("/proc/cpuinfo")
+	if err != nil {
+		return ""
+	}
+	var parts []string
+	for _, line := range strings.Split(string(b), "\n") {
+		lower := strings.ToLower(line)
+		if strings.HasPrefix(lower, "flags") || strings.HasPrefix(lower, "features") {
+			if i := strings.Index(line, ":"); i >= 0 {
+				parts = append(parts, line[i+1:])
+			}
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func nginxBuiltWith(opt string) bool {
+	out, _ := exec.Command("nginx", "-V").CombinedOutput()
+	return strings.Contains(string(out), opt)
+}
+
+func ensureVodRuntime() (bool, error) {
+	path := "/etc/nginx/conf.d/siroc-vod.conf"
+	if _, err := os.Stat(filepath.Join(nginxModDir, "ngx_http_vod_module.so")); err != nil {
+		if _, statErr := os.Stat(path); statErr == nil {
+			_ = os.Remove(path)
+			return true, nil
+		}
+		return false, nil
+	}
+	var lines []string
+	if nginxBuiltWith("--with-file-aio") {
+		lines = append(lines, "aio on;")
+	}
+	if nginxBuiltWith("--with-threads") {
+		lines = append(lines, "vod_open_file_thread_pool default;")
+	}
+	if len(lines) == 0 {
+		return false, nil
+	}
+	body := "# Siroc nginx-vod-module\n" + strings.Join(lines, "\n") + "\n"
+	prev, _ := os.ReadFile(path)
+	if string(prev) == body {
+		return false, nil
+	}
+	if err := os.MkdirAll("/etc/nginx/conf.d", 0755); err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+		return false, err
+	}
+	if err := nginxConfigTest(); err != nil {
+		if len(prev) == 0 {
+			_ = os.Remove(path)
+		} else {
+			_ = os.WriteFile(path, prev, 0644)
+		}
+		noteInstall("vod runtime config skipped: " + err.Error())
+		return false, nil
+	}
+	return true, nil
+}
+
 func nginxConfigTest() error {
 	out, err := exec.Command("nginx", "-t").CombinedOutput()
 	if err != nil {
@@ -188,7 +256,24 @@ func buildNginxModules(ver string) error {
 			return err
 		}
 	}
+	vodSrc := filepath.Join(nginxBuildDir, "vod", "ngx_http_vod_module.c")
+	body, err := os.ReadFile(vodSrc)
+	if err != nil {
+		return err
+	}
+	patched, err := patchVodSource(string(body))
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(vodSrc, []byte(patched), 0644); err != nil {
+		return err
+	}
+	cc := vodCompilerOpt(cpuFlags())
+	noteInstall("vod cc-opt: " + cc)
 	cmd := exec.Command("./configure", "--with-compat",
+		"--with-file-aio",
+		"--with-threads",
+		"--with-cc-opt="+cc,
 		"--add-dynamic-module="+filepath.Join(nginxBuildDir, "ndk"),
 		"--add-dynamic-module="+filepath.Join(nginxBuildDir, "lua"),
 		"--add-dynamic-module="+filepath.Join(nginxBuildDir, "vod"),

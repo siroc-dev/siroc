@@ -281,6 +281,13 @@ func (c *Client) Install(name, version string) (*OKResp, error) {
 	return &out, err
 }
 
+func (c *Client) InstallLog(name string, offset int64) (*InstallLogResp, error) {
+	var out InstallLogResp
+	path := "/software/log?name=" + url.QueryEscape(name) + "&offset=" + fmt.Sprint(offset)
+	err := c.do(http.MethodGet, path, nil, &out)
+	return &out, err
+}
+
 func (c *Client) CleanTemp() (*CleanupResult, error) {
 	var out CleanupResult
 	err := c.do(http.MethodPost, "/cleanup/temp", nil, &out)

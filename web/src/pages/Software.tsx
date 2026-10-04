@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Alert, App, Button, Card, Flex, Input, Modal, Popconfirm, Progress, Select, Space, Table, Tag, Typography } from "antd";
+import { InstallLog } from "@/components/InstallLog";
 import { api } from "@/lib/api";
 import { elapsed, jobLabel, type InstallJob, type InstallQueue } from "@/lib/jobs";
 import { spaClick } from "@/lib/nav";
@@ -35,6 +36,7 @@ export function Software() {
   const [q, setQ] = useState("");
   const [modal, setModal] = useState<{ pkg: Pkg; kind: InstallKind } | null>(null);
   const [modalVer, setModalVer] = useState("");
+  const [pinnedLog, setPinnedLog] = useState("");
 
   const titles = Object.fromEntries(list.map((p) => [p.name, p.title]));
   const label = (job: InstallJob) => (job.name === "php-ext" ? jobLabel(job) : `${titles[job.name] || job.name}${job.version ? ` ${job.version}` : ""}`);
@@ -86,6 +88,10 @@ export function Software() {
     if (!current) return;
     const t = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(t);
+  }, [current?.id]);
+
+  useEffect(() => {
+    if (current?.name) setPinnedLog("");
   }, [current?.id]);
 
   function jobKey(name: string, version = "") {
@@ -187,6 +193,7 @@ export function Software() {
 
   const recent = jobs.filter((j) => j.status !== "queued" && j.status !== "running").slice(0, 8);
   const active = !!current || queue.length > 0;
+  const logName = pinnedLog || current?.name || "";
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return list;
@@ -226,6 +233,17 @@ export function Software() {
             />
           ) : null}
           {current ? <Progress percent={35} status="active" showInfo={false} /> : null}
+          <div>
+            <Flex justify="space-between" align="center" style={{ marginBottom: 8 }}>
+              <Typography.Text strong>{logName ? `Install log · ${titles[logName] || logName}` : "Install log"}</Typography.Text>
+              {current && pinnedLog && pinnedLog !== current.name ? (
+                <Button size="small" type="link" onClick={() => setPinnedLog("")}>
+                  Follow {titles[current.name] || current.name}
+                </Button>
+              ) : null}
+            </Flex>
+            <InstallLog name={logName} live={!!current && current.name === logName} />
+          </div>
           {queue.map((j, i) => (
             <Flex key={j.id} justify="space-between" align="center">
               <Space>
@@ -240,10 +258,15 @@ export function Software() {
           ))}
           {!active ? <Typography.Text type="secondary">Nothing installing. Queue a package from the table.</Typography.Text> : null}
           {recent.map((j) => (
-            <Typography.Text key={j.id} type={j.status === "error" ? "danger" : "secondary"} style={{ display: "block" }}>
-              {jobLabel(j)} — {j.status}
-              {j.message && j.status === "error" ? `: ${j.message}` : ""}
-            </Typography.Text>
+            <Flex key={j.id} justify="space-between" align="center" gap={8}>
+              <Typography.Text type={j.status === "error" ? "danger" : "secondary"} ellipsis style={{ flex: 1 }}>
+                {jobLabel(j)} — {j.status}
+                {j.message && j.status === "error" ? `: ${j.message.split("\n")[0].slice(0, 180)}` : ""}
+              </Typography.Text>
+              <Button size="small" type="link" onClick={() => setPinnedLog(j.name)}>
+                Log
+              </Button>
+            </Flex>
           ))}
         </Space>
       </Card>
@@ -343,6 +366,9 @@ export function Software() {
                         </Button>
                       </>
                     ) : null}
+                    <Button size="small" onClick={() => setPinnedLog(p.name)}>
+                      Log
+                    </Button>
                     {p.name === "redis" && p.installed ? (
                       <>
                         <Button size="small" href="/databases?tab=redis" onClick={spaClick("/databases?tab=redis", nav)}>
