@@ -205,6 +205,11 @@ func installNginx(version string) error {
 	if err := aptUpdate(); err != nil {
 		return err
 	}
+	// The package postinst starts Nginx. Drop module lines and the VOD snippet
+	// first so a half-rebuilt Lua module cannot make that start fail.
+	if err := suspendSirocNginxHooks(); err != nil {
+		return err
+	}
 	aptRemove("nginx", "nginx-common", "nginx-core", "nginx-full")
 	if err := aptInstall("nginx"); err != nil {
 		restoreNginxSites(bak)

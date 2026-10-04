@@ -33,6 +33,9 @@ func EnsureNginxModules() error {
 	if _, err := exec.LookPath("nginx"); err != nil {
 		return nil
 	}
+	if err := installLuaResty(); err != nil {
+		return err
+	}
 	changed, err := ensureThreadPool()
 	if err != nil {
 		return err
@@ -142,7 +145,7 @@ func ensureLoadModules() (bool, error) {
 	conf := string(b)
 	var missing []string
 	for _, line := range lines {
-		if !strings.Contains(conf, line) {
+		if !nginxHasDirective(conf, line) {
 			missing = append(missing, line)
 		}
 	}
@@ -338,6 +341,73 @@ func fetchTar(url, dest string) error {
 		return fmt.Errorf("extract %s: %s: %w", url, strings.TrimSpace(string(out)), err)
 	}
 	return nil
+}
+
+func suspendSirocNginxHooks() error {
+	path := "/etc/nginx/nginx.conf"
+	if b, err := os.ReadFile(path); err == nil {
+		next, changed := stripSirocLoadModules(string(b))
+		if changed {
+			if err := os.WriteFile(path, []byte(next), 0644); err != nil {
+				return err
+			}
+		}
+	}
+	vod := "/etc/nginx/conf.d/siroc-vod.conf"
+	if _, err := os.Stat(vod); err == nil {
+		_ = os.Rename(vod, vod+".off")
+	}
+	return nil
+}
+
+func installLuaResty() error {
+	// lua-nginx-module v0.10.26 only accepts lua-resty-core v0.1.28.
+	// Newer resty.core releases require ngx_lua 0.10.28 and refuse to load.
+	const root = "/usr/local/share/lua/5.1/resty"
+	const stamp = "core=v0.1.28 lrucache=v0.15\n"
+	stampPath := filepath.Join(root, ".siroc-version")
+	if b, err := os.ReadFile(stampPath); err == nil && string(b) == stamp {
+		return nil
+	}
+	dir, err := os.MkdirTemp(ensureDiskTmp(), "lua-resty-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	pkgs := []struct{ url, name string }{
+		{"https://github.com/openresty/lua-resty-lrucache/archive/refs/tags/v0.15.tar.gz", "lrucache"},
+		{"https://github.com/openresty/lua-resty-core/archive/refs/tags/v0.1.28.tar.gz", "core"},
+	}
+	for _, pkg := range pkgs {
+		src := filepath.Join(dir, pkg.name)
+		if err := fetchTar(pkg.url, src); err != nil {
+			return err
+		}
+		if err := copyLuaTree(filepath.Join(src, "lib", "resty"), root); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(stampPath, []byte(stamp), 0644)
+}
+
+func copyLuaTree(src, dest string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dest, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0755)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return err
+		}
+		return copyFile(path, target)
+	})
 }
 
 func luaJITEnv() ([]string, error) {
