@@ -1,12 +1,15 @@
 import { Card, Typography } from "antd";
+import { Mark } from "@/components/Mark";
 
 export function SetupLocked({ invalidToken }: { invalidToken: boolean }) {
   return (
-    <div style={{ display: "grid", placeItems: "center", minHeight: "100vh", padding: 24 }}>
-      <Card style={{ width: "100%", maxWidth: 480 }}>
-        <Typography.Title level={3} style={{ marginTop: 0 }}>
-          First-run setup
-        </Typography.Title>
+    <div className="siroc-login">
+      <Card className="siroc-login-card" style={{ maxWidth: 480 }}>
+        <div className="siroc-login-brand">
+          <Mark />
+          <Typography.Title level={2}>Siroc</Typography.Title>
+        </div>
+        <p className="siroc-login-note">First-run setup</p>
         {invalidToken ? (
           <Typography.Paragraph type="danger">
             This setup link is invalid or has already been used.

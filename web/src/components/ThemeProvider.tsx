@@ -72,19 +72,43 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       algorithm: resolvedDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
       token: {
         colorPrimary: preset.primary,
-        borderRadius: 8,
-        fontFamily: "Inter, system-ui, -apple-system, Segoe UI, sans-serif",
+        colorInfo: preset.primary,
+        borderRadius: 6,
+        fontFamily: '"Outfit", system-ui, -apple-system, "Segoe UI", sans-serif',
+        ...(resolvedDark
+          ? {
+              colorBgBase: "#0c0b0a",
+              colorBgContainer: "#171512",
+              colorBgElevated: "#1c1916",
+              colorBgLayout: "#0c0b0a",
+              colorBorder: "#2c2824",
+              colorBorderSecondary: "#2c2824",
+              colorText: "#f4eadc",
+              colorTextSecondary: "#a89884",
+              colorTextTertiary: "#8a7b6a",
+            }
+          : {
+              colorBgLayout: "#f6f1ea",
+            }),
       },
       components: {
         Layout: {
-          siderBg: preset.sider,
-          headerBg: resolvedDark ? "#141414" : "#fff",
+          siderBg: resolvedDark ? "#0c0b0a" : preset.sider,
+          headerBg: resolvedDark ? "#0c0b0a" : "#fff",
+          bodyBg: resolvedDark ? "#0c0b0a" : "#f6f1ea",
+          triggerBg: resolvedDark ? "#141210" : preset.sider,
         },
         Menu: {
-          darkItemBg: preset.sider,
+          darkItemBg: "transparent",
           darkSubMenuItemBg: preset.sider,
-          darkItemSelectedBg: preset.selected,
-          darkItemHoverBg: preset.hover,
+          darkItemSelectedBg: resolvedDark ? "rgba(226, 120, 58, 0.12)" : preset.selected,
+          darkItemHoverBg: resolvedDark ? "rgba(244, 234, 220, 0.04)" : preset.hover,
+          darkItemColor: "#a89884",
+          darkItemSelectedColor: "#f4eadc",
+          itemBorderRadius: 6,
+        },
+        Button: {
+          primaryColor: "#1a100a",
         },
       },
     }),

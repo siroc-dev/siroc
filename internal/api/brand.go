@@ -159,7 +159,7 @@ func (s *Server) brandFile(kind string) (abs, ctype string, ok bool) {
 }
 
 func (s *Server) publicBrand() brandPublic {
-	style, _ := normalizeThemeStyle(s.settingOr(settingThemeStyle, "auto"))
+	style, _ := normalizeThemeStyle(s.settingOr(settingThemeStyle, "dark"))
 	color, _ := normalizeThemeColor(s.settingOr(settingThemeColor, "default"))
 	custom, _ := normalizeThemeCustom(s.settingOr(settingThemeCustom, ""))
 	out := brandPublic{ThemeStyle: style, ThemeColor: color, ThemeCustom: custom}

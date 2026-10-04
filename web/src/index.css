@@ -1,11 +1,13 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #f5f5f5;
+  background: #f6f1ea;
+  font-family: Outfit, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 html[data-theme="dark"] body {
-  background: #141414;
+  background: #0c0b0a;
+  color: #f4eadc;
 }
 
 #root {
@@ -631,11 +633,207 @@ html[data-theme="dark"] .status-nav-links a.is-on {
 }
 
 .cp-header {
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid rgba(20, 17, 15, 0.08);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
 }
 
 html[data-theme="dark"] .cp-header {
-  border-bottom-color: #303030;
+  border-bottom-color: rgba(244, 234, 220, 0.1);
+  background: rgba(12, 11, 10, 0.9);
+}
+
+.siroc-shell .ant-layout-sider {
+  border-right: 1px solid rgba(244, 234, 220, 0.1);
+  background: linear-gradient(180deg, #141210, #0c0b0a 40%) !important;
+}
+
+.siroc-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 16px 16px;
+  color: #f4eadc;
+}
+
+.siroc-brand.is-collapsed {
+  justify-content: center;
+  padding-inline: 8px;
+}
+
+.siroc-brand small {
+  display: block;
+  color: #a89884;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.siroc-brand strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.siroc-brand em {
+  font-style: normal;
+  color: #e2783a;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.siroc-mark {
+  flex: none;
+  display: block;
+}
+
+.siroc-nav-no {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: #e2783a;
+}
+
+.siroc-shell .ant-menu-dark.ant-menu-inline .ant-menu-item {
+  margin-inline: 8px;
+  width: calc(100% - 16px);
+}
+
+.siroc-shell .ant-menu-dark .ant-menu-item-selected {
+  box-shadow: inset 2px 0 0 #e2783a;
+}
+
+.siroc-head-copy {
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.siroc-head-copy h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.siroc-head-copy p {
+  margin: 2px 0 0;
+  color: #a89884;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.siroc-who {
+  color: #a89884;
+  font-size: 13px;
+}
+
+.siroc-ghost.ant-btn {
+  border-radius: 6px;
+  background: transparent;
+  border-color: rgba(244, 234, 220, 0.14);
+  color: inherit;
+}
+
+html[data-theme="light"] .siroc-ghost.ant-btn,
+html:not([data-theme="dark"]) .siroc-ghost.ant-btn {
+  border-color: rgba(20, 17, 15, 0.12);
+}
+
+.siroc-ghost.ant-btn:hover {
+  border-color: #e2783a !important;
+  color: #f4eadc !important;
+}
+
+html:not([data-theme="dark"]) .siroc-ghost.ant-btn:hover {
+  color: #1a100a !important;
+}
+
+.siroc-stage {
+  animation: siroc-rise 0.35s ease;
+}
+
+@keyframes siroc-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+html[data-theme="dark"] .ant-card {
+  transition: border-color 0.2s ease;
+}
+
+html[data-theme="dark"] .ant-card:hover {
+  border-color: rgba(226, 120, 58, 0.45);
+}
+
+html[data-theme="dark"] .ant-table-thead > tr > th {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.siroc-login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(600px 280px at 70% 20%, rgba(226, 120, 58, 0.16), transparent 60%),
+    #0c0b0a;
+}
+
+.siroc-login-card.ant-card {
+  width: min(420px, 100%);
+  background: #171512;
+  border-color: rgba(244, 234, 220, 0.1);
+  border-radius: 12px;
+  color: #f4eadc;
+}
+
+.siroc-login-card .ant-card-body {
+  padding: 28px;
+}
+
+.siroc-login-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.siroc-login-brand h2.ant-typography {
+  margin: 0;
+  color: #f4eadc;
+  font-weight: 600;
+}
+
+.siroc-login-note {
+  margin: 10px 0 0;
+  text-align: center;
+  color: #a89884;
+  font-size: 12px;
+}
+
+.siroc-login .ant-form-item-label > label {
+  color: #a89884;
+}
+
+.siroc-login-card .ant-typography:not(.ant-typography-danger) {
+  color: #f4eadc;
+}
+
+.siroc-login .ant-input,
+.siroc-login .ant-input-affix-wrapper,
+.siroc-login .ant-input-password {
+  background: #0e0d0c;
+  border-color: rgba(244, 234, 220, 0.1);
+  color: #f4eadc;
 }
 
 .brand-logo {

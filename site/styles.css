@@ -195,6 +195,17 @@ a.brand { text-decoration: none; color: inherit; }
   padding-bottom: 16px;
 }
 
+.shots {
+  display: grid;
+  gap: 18px;
+}
+
+.screen img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .screen {
   margin: 0 0 56px;
   border-radius: 18px;

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 248 64" fill="none" role="img" aria-label="Siroc">
+  <rect width="64" height="64" rx="16" fill="#14110f"/>
+  <path d="M12 40c8-16 16-20 24-12s12 4 16-8" stroke="#e2783a" stroke-width="4.4" stroke-linecap="round"/>
+  <path d="M14 48c10-12 18-14 24-6s10 2 14-6" stroke="#f4eadc" stroke-width="3.2" stroke-linecap="round" opacity="0.85"/>
+  <text x="84" y="44" fill="#f4eadc" font-family="Segoe UI, IBM Plex Sans, Arial, sans-serif" font-size="36" font-weight="600" letter-spacing="0.5">Siroc</text>
+</svg>

@@ -1,48 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Alert, App, Badge, Button, Flex, Form, Input, Layout as AntLayout, Menu, Modal, Typography } from "antd";
-import {
-  AppstoreOutlined,
-  CloudDownloadOutlined,
-  CloudServerOutlined,
-  CodeOutlined,
-  DashboardOutlined,
-  DatabaseOutlined,
-  FileSearchOutlined,
-  FolderOutlined,
-  GlobalOutlined,
-  KeyOutlined,
-  LaptopOutlined,
-  LogoutOutlined,
-  MonitorOutlined,
-  SafetyOutlined,
-  SettingOutlined,
-  ToolOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
+import { Alert, App, Badge, Button, Flex, Form, Input, Layout as AntLayout, Menu, Modal } from "antd";
 import { api } from "@/lib/api";
 import { elapsed, jobLabel, type InstallQueue } from "@/lib/jobs";
 import { canUsePath, spaClick } from "@/lib/nav";
+import { Mark } from "@/components/Mark";
 import { useBrand } from "@/components/ThemeProvider";
 
 const { Sider, Content, Header } = AntLayout;
 
 const items = [
-  { key: "/", label: "Dashboard", icon: <DashboardOutlined /> },
-  { key: "/accounts", label: "Accounts", icon: <UserOutlined /> },
-  { key: "/sites", label: "Websites", icon: <GlobalOutlined /> },
-  { key: "/php", label: "PHP", icon: <CodeOutlined /> },
-  { key: "/files", label: "Files", icon: <FolderOutlined /> },
-  { key: "/terminal", label: "Terminal", icon: <LaptopOutlined /> },
-  { key: "/software", label: "Software", icon: <AppstoreOutlined /> },
-  { key: "/security", label: "Security", icon: <SafetyOutlined /> },
-  { key: "/logs", label: "Logs", icon: <FileSearchOutlined /> },
-  { key: "/databases", label: "Databases", icon: <DatabaseOutlined /> },
-  { key: "/backup", label: "Backup", icon: <CloudDownloadOutlined /> },
-  { key: "/tools", label: "System tools", icon: <ToolOutlined /> },
-  { key: "/settings", label: "Settings", icon: <SettingOutlined /> },
-  { key: "/monitoring", label: "Monitoring", icon: <MonitorOutlined /> },
-  { key: "/apache", label: "Status", icon: <CloudServerOutlined /> },
+  { key: "/", label: "Dashboard", blurb: "Host load, accounts, and the stack on this machine." },
+  { key: "/accounts", label: "Accounts", blurb: "Linux users, home, and quota." },
+  { key: "/sites", label: "Websites", blurb: "Domains, PHP, and Git deploy." },
+  { key: "/php", label: "PHP", blurb: "FPM pool and php.ini for one account." },
+  { key: "/files", label: "Files", blurb: "Fifty files a page, path jump, preview, rename." },
+  { key: "/terminal", label: "Terminal", blurb: "Shell as the selected account." },
+  { key: "/software", label: "Software", blurb: "Install and the live job log." },
+  { key: "/security", label: "Security", blurb: "Firewall, WAF, and Fail2ban whitelist." },
+  { key: "/logs", label: "Logs", blurb: "Clear one file or every log for a site." },
+  { key: "/databases", label: "Databases", blurb: "MySQL users, import, and Redis." },
+  { key: "/backup", label: "Backup", blurb: "Destinations and cron schedules." },
+  { key: "/tools", label: "System tools", blurb: "DNS, time, disk, and network." },
+  { key: "/settings", label: "Settings", blurb: "Theme, logo, and services." },
+  { key: "/monitoring", label: "Monitoring", blurb: "Load history and alerts." },
+  { key: "/apache", label: "Status", blurb: "Nginx, Apache, PHP-FPM, and the database." },
 ];
 
 export function Layout({ user, admin, version }: { user: string; admin?: boolean; version?: string }) {
@@ -112,9 +94,11 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
     return [loc.pathname === "/" ? "/" : loc.pathname];
   }, [loc.pathname]);
 
+  const page = items.find((i) => selected[0] === i.key) || { label: loc.pathname.slice(1) || "Dashboard", blurb: "" };
   const menuItems = items
     .filter((i) => canUsePath(admin, i.key))
     .map((i) => {
+      const n = String(items.indexOf(i) + 1).padStart(2, "0");
       const text =
         i.key === "/software" && installing ? (
           <Badge count={queue?.active || 0} size="small" offset={[8, 0]}>
@@ -125,11 +109,7 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
         );
       return {
         key: i.key,
-        icon: (
-          <Link to={i.key} className="cp-nav-link" tabIndex={-1} aria-hidden>
-            {i.icon}
-          </Link>
-        ),
+        icon: <span className="siroc-nav-no">{n}</span>,
         label: (
           <Link to={i.key} className="cp-nav-link">
             {text}
@@ -139,7 +119,7 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
     });
 
   return (
-    <AntLayout style={{ minHeight: "100vh" }}>
+    <AntLayout className="siroc-shell" style={{ minHeight: "100vh" }}>
       <Sider
         collapsible
         collapsed={collapsed}
@@ -149,38 +129,18 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
         width={232}
         theme="dark"
       >
-        <div
-          style={{
-            padding: collapsed ? "16px 8px" : "20px 20px 12px",
-            color: "#e0e7ff",
-            textAlign: collapsed ? "center" : "left",
-            overflow: "hidden",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {collapsed ? (
-            brand.hasLogo && brand.logoUrl ? (
-              <img src={brand.logoUrl} alt="Siroc" className="brand-logo brand-logo-sm" />
-            ) : (
-              <Typography.Title level={5} style={{ color: "#fff", margin: 0 }}>
-                S
-              </Typography.Title>
-            )
+        <div className={collapsed ? "siroc-brand is-collapsed" : "siroc-brand"}>
+          {brand.hasLogo && brand.logoUrl ? (
+            <img src={brand.logoUrl} alt="" className="brand-logo" />
           ) : (
-            <>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {brand.hasLogo && brand.logoUrl ? <img src={brand.logoUrl} alt="Siroc" className="brand-logo" /> : null}
-                <div>
-                  <div style={{ fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase", opacity: 0.75 }}>Control Panel</div>
-                  <Typography.Title level={4} style={{ color: "#fff", margin: "4px 0 0" }}>
-                    Siroc
-                  </Typography.Title>
-                </div>
-              </div>
-              {version ? (
-                <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>v{version}</div>
-              ) : null}
-            </>
+            <Mark size={collapsed ? 28 : 36} />
+          )}
+          {collapsed ? null : (
+            <div>
+              <small>Control panel</small>
+              <strong>Siroc</strong>
+              {version ? <em>v{version}</em> : null}
+            </div>
           )}
         </div>
         <Menu
@@ -194,28 +154,18 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
         />
       </Sider>
       <AntLayout>
-        <Header className="cp-header" style={{ padding: "0 20px" }}>
+        <Header className="cp-header" style={{ padding: "0 28px", height: 58, lineHeight: "normal" }}>
           <Flex align="center" justify="space-between" style={{ height: "100%" }}>
-            <Typography.Text type="secondary">
-              {({
-                "/": "Dashboard",
-                "/apache": "Apache status",
-                "/nginx": "Nginx status",
-                "/php-fpm": "PHP-FPM status",
-                "/mysql": "MySQL status",
-                "/mariadb": "MariaDB status",
-                "/redis": "Redis status",
-                "/logs": "Logs",
-                "/scan-logs": "Logs",
-                "/settings": "Settings",
-              } as Record<string, string>)[loc.pathname] || loc.pathname.slice(1)}
-            </Typography.Text>
-            <Flex align="center" gap={8}>
-              <Typography.Text>{user}</Typography.Text>
-              <Button type="text" icon={<KeyOutlined />} onClick={() => setPassOpen(true)}>
+            <div className="siroc-head-copy">
+              <h1>{page.label}</h1>
+              <p>{page.blurb}</p>
+            </div>
+            <Flex align="center" gap={8} className="siroc-who">
+              <span>{user}</span>
+              <Button className="siroc-ghost" onClick={() => setPassOpen(true)}>
                 Password
               </Button>
-              <Button type="text" icon={<LogoutOutlined />} onClick={logout}>
+              <Button className="siroc-ghost" onClick={logout}>
                 Logout
               </Button>
             </Flex>
@@ -238,7 +188,7 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
             action={<span style={{ display: "none" }}>{tick}</span>}
           />
         ) : null}
-        <Content style={{ padding: 24 }}>
+        <Content className="siroc-stage" key={loc.pathname} style={{ padding: "26px 28px 48px" }}>
           <Outlet context={{ user, admin }} />
         </Content>
       </AntLayout>

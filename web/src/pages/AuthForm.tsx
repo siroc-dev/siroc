@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Form, Input, Typography } from "antd";
 import { api, RequestError, type Captcha } from "@/lib/api";
+import { Mark } from "@/components/Mark";
 import { useBrand } from "@/components/ThemeProvider";
 
 export type SetupStackPkg = { name: string; title: string; version: string };
@@ -74,15 +75,14 @@ export function AuthForm({
   }
 
   return (
-    <div style={{ display: "grid", placeItems: "center", minHeight: "100vh", padding: 24 }}>
-      <Card style={{ width: "100%", maxWidth: 420 }}>
-        {brand.hasLogo && brand.logoUrl ? (
-          <img src={brand.logoUrl} alt="Siroc" className="brand-logo brand-logo-login" />
-        ) : null}
-        <Typography.Title level={3} style={{ marginTop: 0 }}>
-          {title}
-        </Typography.Title>
-        <Typography.Paragraph type="secondary">{subtitle}</Typography.Paragraph>
+    <div className="siroc-login">
+      <Card className="siroc-login-card">
+        <div className="siroc-login-brand">
+          {brand.hasLogo && brand.logoUrl ? <img src={brand.logoUrl} alt="" className="brand-logo" /> : <Mark />}
+          <Typography.Title level={2}>Siroc</Typography.Title>
+        </div>
+        <p className="siroc-login-note">{title === "Sign in" ? subtitle : title}</p>
+        {title === "Sign in" ? null : <p className="siroc-login-note">{subtitle}</p>}
         <Form form={form} layout="vertical" onFinish={onFinish} requiredMark={false}>
           <Form.Item name="username" label="Username" rules={[{ required: true }]}>
             <Input autoComplete="username" />

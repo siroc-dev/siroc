@@ -21,12 +21,12 @@ export type ColorPreset = {
 };
 
 export const DEFAULT_BRAND: Brand = {
-  themeStyle: "auto",
+  themeStyle: "dark",
   themeColor: "default",
 };
 
 export const THEME_COLORS: ColorPreset[] = [
-  { id: "default", label: "Default", primary: "#4f46e5", sider: "#1e1b4b", selected: "#4338ca", hover: "#312e81" },
+  { id: "default", label: "Siroc", primary: "#e2783a", sider: "#0c0b0a", selected: "#3d2918", hover: "#1c1814" },
   { id: "mint", label: "Mint", primary: "#10b981", sider: "#064e3b", selected: "#059669", hover: "#065f46" },
   { id: "violet", label: "Violet", primary: "#7c3aed", sider: "#2e1065", selected: "#6d28d9", hover: "#4c1d95" },
   { id: "sky", label: "Sky blue", primary: "#0ea5e9", sider: "#0c4a6e", selected: "#0284c7", hover: "#075985" },
