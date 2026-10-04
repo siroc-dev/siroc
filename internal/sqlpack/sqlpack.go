@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	MaxUpload = 512 << 20
-	MaxSQL    = 1 << 30
+	MaxUpload = 10 << 30
+	MaxSQL    = 10 << 30
 )
 
 var skipLine = regexp.MustCompile(`(?i)^(CREATE\s+DATABASE|DROP\s+DATABASE|CREATE\s+USER|ALTER\s+USER|DROP\s+USER|RENAME\s+USER|GRANT\s+|REVOKE\s+|USE\s+)`)
@@ -77,7 +77,7 @@ func Open(filename string, r io.Reader) (io.ReadCloser, error) {
 		if copyErr != nil {
 			return nil, copyErr
 		}
-		return nil, fmt.Errorf("file is larger than 512MB")
+		return nil, fmt.Errorf("file is larger than 10GB")
 	}
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 		_ = tmp.Close()
@@ -158,7 +158,7 @@ type limited struct {
 
 func (l *limited) Read(p []byte) (int, error) {
 	if l.n <= 0 {
-		return 0, fmt.Errorf("SQL dump is larger than 1GB")
+		return 0, fmt.Errorf("SQL dump is larger than 10GB")
 	}
 	if int64(len(p)) > l.n {
 		p = p[:l.n]
@@ -245,7 +245,7 @@ func (z *zipReader) Read(p []byte) (int, error) {
 			z.cur = rc
 		}
 		if z.left <= 0 {
-			return 0, fmt.Errorf("SQL dump is larger than 1GB")
+			return 0, fmt.Errorf("SQL dump is larger than 10GB")
 		}
 		buf := p
 		if int64(len(buf)) > z.left {

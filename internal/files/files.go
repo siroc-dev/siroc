@@ -247,7 +247,7 @@ func (m *Manager) Chmod(username, rel, mode string, root bool) error {
 }
 
 func (m *Manager) Upload(username, rel string, r io.Reader, root bool) error {
-	const max = 512 << 20
+	const max = MaxUpload
 	var abs string
 	uid, gid := 0, 0
 	if root {
@@ -287,7 +287,7 @@ func (m *Manager) Upload(username, rel string, r io.Reader, root bool) error {
 	}
 	if n > max {
 		_ = os.Remove(tmp)
-		return fmt.Errorf("file too large to upload (max 512MB)")
+		return fmt.Errorf("file too large to upload (max 10GB)")
 	}
 	_ = os.Remove(abs)
 	if err := os.Rename(tmp, abs); err != nil {

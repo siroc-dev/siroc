@@ -17,6 +17,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/auth"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/secret"
+	"github.com/siroc-dev/siroc/internal/sqlpack"
 	"github.com/siroc-dev/siroc/internal/siteopts"
 	"github.com/siroc-dev/siroc/internal/store"
 	"github.com/siroc-dev/siroc/internal/validate"
@@ -382,9 +383,9 @@ func (s *Server) exportDatabase(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) importDatabase(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 520<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, sqlpack.MaxUpload+8<<20)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("upload too large or invalid (max 512MB)"))
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("upload too large or invalid (max 10GB)"))
 		return
 	}
 	db, ok := s.databaseForRequest(w, r)
@@ -412,6 +413,21 @@ func (s *Server) importDatabase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) importDatabaseLog(w http.ResponseWriter, r *http.Request) {
+	db, ok := s.databaseForRequest(w, r)
+	if !ok {
+		return
+	}
+	var offset int64
+	fmt.Sscan(r.URL.Query().Get("offset"), &offset)
+	out, err := s.Agent.DBImportLog(db.DBName, offset)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func rewritePMACookiePath(c string) string {

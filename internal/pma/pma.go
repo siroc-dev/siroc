@@ -193,6 +193,8 @@ $cfg['Servers'][$i]['SignonCookieParams'] = [
 $cfg['UploadDir'] = '';
 $cfg['SaveDir'] = '';
 $cfg['TempDir'] = '` + tmpDir + `';
+$cfg['ExecTimeLimit'] = 0;
+$cfg['MemoryLimit'] = '512M';
 `
 	signon := `<?php
 $secure = !empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https';
@@ -303,6 +305,12 @@ pm.process_idle_timeout = 10s
 php_admin_value[open_basedir] = %s:%s:%s:/tmp:/usr/share/php
 php_admin_value[upload_tmp_dir] = %s
 php_admin_value[session.save_path] = %s
+php_admin_value[upload_max_filesize] = 10G
+php_admin_value[post_max_size] = 11G
+php_admin_value[memory_limit] = 512M
+php_admin_value[max_execution_time] = 0
+php_admin_value[max_input_time] = -1
+request_terminate_timeout = 0
 `, fpmListen, rootDir, tmpDir, tokenDir, tmpDir, tmpDir)
 	return os.WriteFile(filepath.Join(dir, "pma.conf"), []byte(body), 0644)
 }
@@ -313,7 +321,8 @@ func writeNginx() error {
     server_name pma.cp.local;
     root /opt/siroc/phpmyadmin;
     index index.php;
-    client_max_body_size 64m;
+    client_max_body_size 11g;
+    client_body_timeout 3600s;
     location / {
         try_files $uri $uri/ /index.php?$args;
     }
@@ -323,7 +332,9 @@ func writeNginx() error {
         fastcgi_param HTTP_X_FORWARDED_PROTO $http_x_forwarded_proto;
         fastcgi_param HTTPS $http_x_forwarded_proto if_not_empty;
         fastcgi_pass 127.0.0.1:9008;
-        fastcgi_read_timeout 120s;
+        fastcgi_read_timeout 21600s;
+        fastcgi_send_timeout 21600s;
+        fastcgi_request_buffering off;
     }
     location ~ /\. { deny all; }
 }

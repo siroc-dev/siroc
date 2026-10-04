@@ -31,6 +31,13 @@ func NewClient(socket string) *Client {
 	}
 }
 
+// doLong is for uploads and downloads that can outlast the shared agent timeout.
+func (c *Client) doLong(req *http.Request) (*http.Response, error) {
+	client := *c.http
+	client.Timeout = 0
+	return client.Do(req)
+}
+
 func (c *Client) do(method, path string, in, out any) error {
 	var body io.Reader
 	if in != nil {
@@ -190,7 +197,7 @@ func (c *Client) FileDownload(username, path string, root bool) (*http.Response,
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.http.Do(req)
+	res, err := c.doLong(req)
 	if err != nil {
 		return nil, fmt.Errorf("agent unreachable: %w", err)
 	}
@@ -249,7 +256,7 @@ func (c *Client) FileUpload(username, path, filename string, r io.Reader, root b
 		return err
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	res, err := c.http.Do(req)
+	res, err := c.doLong(req)
 	copyErr := <-errCh
 	if err != nil {
 		return fmt.Errorf("agent unreachable: %w", err)
@@ -766,6 +773,13 @@ func (c *Client) DBExport(name, format string) (*http.Response, error) {
 	return res, nil
 }
 
+func (c *Client) DBImportLog(name string, offset int64) (*InstallLogResp, error) {
+	var out InstallLogResp
+	path := "/db/import-log?name=" + url.QueryEscape(name) + "&offset=" + fmt.Sprint(offset)
+	err := c.do(http.MethodGet, path, nil, &out)
+	return &out, err
+}
+
 func (c *Client) DBImport(name, user, password, filename string, r io.Reader) error {
 	pr, pw := io.Pipe()
 	w := multipart.NewWriter(pw)
@@ -799,7 +813,7 @@ func (c *Client) DBImport(name, user, password, filename string, r io.Reader) er
 		return err
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	res, err := c.http.Do(req)
+	res, err := c.doLong(req)
 	copyErr := <-errCh
 	if err != nil {
 		return fmt.Errorf("agent unreachable: %w", err)

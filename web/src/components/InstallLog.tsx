@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 
 const FONT = 'Consolas, "Liberation Mono", Menlo, Monaco, "Courier New", monospace';
 
-export function InstallLog({ name, live }: { name: string; live: boolean }) {
+export function InstallLog({ name, live, endpoint }: { name: string; live: boolean; endpoint?: string }) {
   const host = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const offset = useRef(0);
@@ -35,12 +35,12 @@ export function InstallLog({ name, live }: { name: string; live: boolean }) {
     window.addEventListener("resize", onResize);
     offset.current = 0;
     let stop = false;
+    const path = endpoint || `/api/software/logs/${encodeURIComponent(name)}`;
+    const join = path.includes("?") ? "&" : "?";
     async function pull() {
       if (stop) return;
       try {
-        const data = await api.get<{ text: string; offset: number }>(
-          `/api/software/logs/${encodeURIComponent(name)}?offset=${offset.current}`,
-        );
+        const data = await api.get<{ text: string; offset: number }>(`${path}${join}offset=${offset.current}`);
         if (stop || !data) return;
         if (data.text) term.write(data.text.replace(/\r?\n/g, "\r\n"));
         if (typeof data.offset === "number") offset.current = data.offset;
@@ -58,7 +58,7 @@ export function InstallLog({ name, live }: { name: string; live: boolean }) {
       term.dispose();
       termRef.current = null;
     };
-  }, [name]);
+  }, [name, endpoint]);
 
   if (!name) {
     return (

@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.21">0.2.21</a>
           <a href="#v0.2.20">0.2.20</a>
           <a href="#v0.2.19">0.2.19</a>
           <a href="#v0.2.18">0.2.18</a>
@@ -49,6 +50,19 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.21">
+          <h2><a href="#v0.2.21">0.2.21</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Database import, phpMyAdmin, and the File Manager accept files up to 10GB. A plain SQL dump of that size can be imported, and large imports are not cut off by the short agent timeout.</li>
+            <li>Database import keeps a live log at <code>/var/lib/siroc/import-logs/</code>. The import dialog and the Log button show bytes received, MySQL output, and whether the import finished.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>No bug fixes in this release.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.20">
           <h2><a href="#v0.2.20">0.2.20</a></h2>

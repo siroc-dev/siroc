@@ -4,6 +4,7 @@ import { Alert, App, AutoComplete, Button, Card, Dropdown, Form, Input, Modal, P
 import { ReloadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
+import { InstallLog } from "@/components/InstallLog";
 import { DatabaseMonitorPanel } from "@/pages/DatabaseMonitor";
 import { RedisConfigPanel } from "@/pages/RedisConfig";
 import { RedisStatusPanel, type RedisStatusData } from "@/pages/RedisStatus";
@@ -54,7 +55,14 @@ export function Databases() {
   const [redisErr, setRedisErr] = useState("");
   const [ioBusy, setIoBusy] = useState("");
   const [importPct, setImportPct] = useState(0);
-  const [importName, setImportName] = useState("");
+  const [importFile, setImportFile] = useState("");
+  const [importId, setImportId] = useState(0);
+  const [importDbName, setImportDbName] = useState("");
+  const [importLive, setImportLive] = useState(false);
+  const [importErr, setImportErr] = useState("");
+  const [importOk, setImportOk] = useState("");
+  const [logOpen, setLogOpen] = useState(false);
+  const [logToken, setLogToken] = useState(0);
 
   async function load() {
     const [a, d, e] = await Promise.all([
@@ -238,7 +246,7 @@ export function Databases() {
   function importDb(d: DB) {
     Modal.confirm({
       title: `Import into ${d.dbName}?`,
-      content: "Tables in this database are replaced by the file. Use a .sql, .gz, or .zip dump.",
+      content: "Tables in this database are replaced by the file. Use a .sql, .gz, or .zip dump up to 10GB.",
       okText: "Choose file",
       onOk: () => {
         const input = document.createElement("input");
@@ -248,15 +256,28 @@ export function Databases() {
           const file = input.files?.[0];
           if (!file) return;
           setIoBusy(`import:${d.id}`);
-          setImportName(file.name);
+          setImportFile(file.name);
+          setImportId(d.id);
+          setImportDbName(d.dbName);
           setImportPct(0);
+          setImportErr("");
+          setImportOk("");
+          setImportLive(true);
+          setLogToken((n) => n + 1);
+          setLogOpen(true);
           api.uploadProgress(`/api/databases/${d.id}/import`, file, setImportPct)
-            .then(() => message.success(`Imported into ${d.dbName}`))
-            .catch((err) => message.error(err instanceof Error ? err.message : "Import failed"))
+            .then(() => {
+              setImportOk(`Imported into ${d.dbName}`);
+              message.success(`Imported into ${d.dbName}`);
+            })
+            .catch((err) => {
+              const text = err instanceof Error ? err.message : "Import failed";
+              setImportErr(text);
+              message.error(text);
+            })
             .finally(() => {
               setIoBusy("");
-              setImportName("");
-              setImportPct(0);
+              setImportLive(false);
             });
         };
         input.click();
@@ -353,6 +374,26 @@ export function Databases() {
                   </Dropdown>
                   <Button size="small" loading={ioBusy === `import:${d.id}`} onClick={() => importDb(d)}>
                     Import
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      if (importLive && importId === d.id) {
+                        setLogOpen(true);
+                        return;
+                      }
+                      setImportId(d.id);
+                      setImportDbName(d.dbName);
+                      setImportFile("");
+                      setImportErr("");
+                      setImportOk("");
+                      setImportLive(false);
+                      setLogToken((n) => n + 1);
+                      setLogOpen(true);
+                    }}
+                    disabled={importLive && importId !== d.id}
+                  >
+                    Log
                   </Button>
                   <Button
                     size="small"
@@ -626,9 +667,32 @@ export function Databases() {
           </Typography.Paragraph>
         </Form>
       </Modal>
-      <Modal title="Importing database" open={!!importName} footer={null} closable={false} maskClosable={false}>
-        <Typography.Paragraph style={{ marginTop: 0 }}>{importName}</Typography.Paragraph>
-        <Progress percent={importPct} status="active" />
+      <Modal
+        title={importDbName ? `Import log · ${importDbName}` : "Import log"}
+        open={logOpen}
+        width={760}
+        footer={importLive ? null : <Button onClick={() => setLogOpen(false)}>Close</Button>}
+        closable={!importLive}
+        maskClosable={false}
+        onCancel={() => {
+          if (!importLive) setLogOpen(false);
+        }}
+        destroyOnHidden
+      >
+        {importLive ? (
+          <>
+            <Typography.Paragraph style={{ marginTop: 0 }}>{importFile}</Typography.Paragraph>
+            <Progress percent={importPct} status="active" />
+            <Typography.Paragraph type="secondary">
+              {importPct >= 100 ? "File sent. MySQL import is still running." : "Sending the file. The log updates as the server receives it."}
+            </Typography.Paragraph>
+          </>
+        ) : null}
+        {importOk ? <Alert type="success" showIcon message={importOk} style={{ marginBottom: 12 }} /> : null}
+        {importErr ? <Alert type="error" showIcon message={importErr} style={{ marginBottom: 12 }} /> : null}
+        {importId ? (
+          <InstallLog key={logToken} name={String(importId)} live={importLive} endpoint={`/api/databases/${importId}/import-log`} />
+        ) : null}
       </Modal>
     </div>
   );

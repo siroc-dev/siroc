@@ -302,8 +302,8 @@ func (m *Manager) ServeDownload(w http.ResponseWriter, username, rel string, roo
 		_ = gz.Close()
 		return nil
 	}
-	if st.Size() > 512<<20 {
-		return fmt.Errorf("file too large to download (max 512MB)")
+	if st.Size() > MaxUpload {
+		return fmt.Errorf("file too large to download (max 10GB)")
 	}
 	f, err := os.Open(abs)
 	if err != nil {

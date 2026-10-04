@@ -30,6 +30,7 @@ import (
 
 	"github.com/siroc-dev/siroc/internal/auth"
 	"github.com/siroc-dev/siroc/internal/config"
+	"github.com/siroc-dev/siroc/internal/files"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/secret"
 	"github.com/siroc-dev/siroc/internal/siteopts"
@@ -199,6 +200,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/databases/{id}/phpmyadmin", s.pmaAutologin)
 		r.Get("/api/databases/{id}/export", s.exportDatabase)
 		r.Post("/api/databases/{id}/import", s.importDatabase)
+		r.Get("/api/databases/{id}/import-log", s.importDatabaseLog)
 		r.Post("/api/files/fetch", s.fetchFile)
 		r.Post("/api/files/search", s.searchFiles)
 		r.Get("/api/backup/dests", s.listBackupDests)
@@ -971,9 +973,9 @@ func (s *Server) deleteFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 520<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, files.MaxUpload+8<<20)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("upload too large or invalid (max 512MB)"))
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("upload too large or invalid (max 10GB)"))
 		return
 	}
 	username, root, ok := s.fileUser(w, r, r.FormValue("user"))

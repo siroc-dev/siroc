@@ -344,7 +344,7 @@ func main() {
 		tty.Serve(w, r)
 	})
 	r.Post("/files/upload", func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, 520<<20)
+		r.Body = http.MaxBytesReader(w, r.Body, files.MaxUpload+8<<20)
 		_ = r.ParseMultipartForm(32 << 20)
 		username := r.FormValue("username")
 		path := r.FormValue("path")
@@ -945,10 +945,21 @@ func main() {
 			log.Printf("db export %s: %v", name, err)
 		}
 	})
+	r.Get("/db/import-log", func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("name")
+		var offset int64
+		fmt.Sscan(r.URL.Query().Get("offset"), &offset)
+		text, next, err := dbmgmt.ReadImportLog(name, offset)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.InstallLogResp{Name: name, Text: text, Offset: next})
+	})
 	r.Post("/db/import", func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, sqlpack.MaxUpload+8<<20)
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
-			writeErr(w, http.StatusBadRequest, fmt.Errorf("upload too large or invalid (max 512MB)"))
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("upload too large or invalid (max 10GB)"))
 			return
 		}
 		file, hdr, err := r.FormFile("file")

@@ -3,11 +3,13 @@
 package dbmgmt
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -184,11 +186,21 @@ func (m *Manager) Import(name, user, password, filename string, r io.Reader) err
 	if m.Engine() == "" {
 		return fmt.Errorf("MySQL/MariaDB is not installed")
 	}
-	sql, err := sqlpack.Open(filename, r)
+	done := beginImportLog(name, filename)
+	err := m.importStream(name, user, password, filename, r)
+	done(err)
+	return err
+}
+
+func (m *Manager) importStream(name, user, password, filename string, r io.Reader) error {
+	noteImport(name, "receiving "+filepath.Base(filename))
+	recv := &byteNote{r: r, name: name, label: "received", every: 32 << 20, next: 32 << 20}
+	sql, err := sqlpack.Open(filename, recv)
 	if err != nil {
 		return err
 	}
 	defer sql.Close()
+	noteImport(name, "received "+formatLogBytes(recv.n))
 	if err := mysqlExec("CREATE DATABASE IF NOT EXISTS `" + name + "`;"); err != nil {
 		return err
 	}
@@ -208,12 +220,52 @@ func (m *Manager) Import(name, user, password, filename string, r io.Reader) err
 		return err
 	}
 	_ = cnf.Close()
-	bin := mysqlBin()
-	cmd := exec.Command(bin, "--defaults-extra-file="+cnfName, "--default-character-set=utf8mb4", name)
-	cmd.Stdin = sqlpack.Sanitize(sql)
-	out, err := cmd.CombinedOutput()
+	noteImport(name, "mysql --default-character-set=utf8mb4 "+name)
+	fed := &byteNote{r: sqlpack.Sanitize(sql), name: name, label: "imported", every: 32 << 20, next: 32 << 20}
+	if err := runMysqlImport(name, cnfName, fed); err != nil {
+		return err
+	}
+	noteImport(name, "imported "+formatLogBytes(fed.n))
+	return nil
+}
+
+func runMysqlImport(name, cnfName string, in io.Reader) error {
+	cmd := exec.Command(mysqlBin(), "--defaults-extra-file="+cnfName, "--default-character-set=utf8mb4", name)
+	cmd.Stdin = in
+	pr, pw := io.Pipe()
+	cmd.Stdout = pw
+	cmd.Stderr = pw
+	readDone := make(chan struct{})
+	var tail strings.Builder
+	go func() {
+		defer close(readDone)
+		sc := bufio.NewScanner(pr)
+		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for sc.Scan() {
+			line := sc.Text()
+			noteImport(name, line)
+			if tail.Len() > 8192 {
+				s := tail.String()
+				tail.Reset()
+				if len(s) > 4096 {
+					s = s[len(s)-4096:]
+				}
+				tail.WriteString(s)
+			}
+			tail.WriteString(line)
+			tail.WriteByte('\n')
+		}
+	}()
+	if err := cmd.Start(); err != nil {
+		_ = pw.Close()
+		<-readDone
+		return err
+	}
+	err := cmd.Wait()
+	_ = pw.Close()
+	<-readDone
 	if err != nil {
-		msg := strings.TrimSpace(string(out))
+		msg := strings.TrimSpace(tail.String())
 		if msg == "" {
 			msg = err.Error()
 		}
