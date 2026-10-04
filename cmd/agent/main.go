@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -28,6 +29,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/security"
 	"github.com/siroc-dev/siroc/internal/software"
+	"github.com/siroc-dev/siroc/internal/sqlpack"
 	"github.com/siroc-dev/siroc/internal/sysops"
 	"github.com/siroc-dev/siroc/internal/tty"
 	"github.com/siroc-dev/siroc/internal/update"
@@ -881,7 +883,54 @@ func main() {
 		if !decode(w, r, &req) {
 			return
 		}
-		if err := dbMgr.SetPassword(req.DBUser, req.Password); err != nil {
+		if err := dbMgr.SetPassword(req.DBUser, req.Password, req.DBName); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
+	r.Get("/db/export", func(w http.ResponseWriter, r *http.Request) {
+		name := r.URL.Query().Get("name")
+		format := r.URL.Query().Get("format")
+		filename, contentType, err := sqlpack.ExportMeta(name, format)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		f, err := dbMgr.Dump(name)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		defer os.Remove(f.Name())
+		defer f.Close()
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+		switch strings.ToLower(strings.TrimSpace(format)) {
+		case "gz", "gzip":
+			err = sqlpack.Gzip(w, f)
+		case "zip":
+			err = sqlpack.Zip(w, strings.TrimSuffix(filename, ".zip")+".sql", f)
+		default:
+			_, err = io.Copy(w, f)
+		}
+		if err != nil {
+			log.Printf("db export %s: %v", name, err)
+		}
+	})
+	r.Post("/db/import", func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, sqlpack.MaxUpload+8<<20)
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("upload too large or invalid (max 512MB)"))
+			return
+		}
+		file, hdr, err := r.FormFile("file")
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		defer file.Close()
+		if err := dbMgr.Import(r.FormValue("name"), r.FormValue("user"), r.FormValue("password"), hdr.Filename, file); err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}

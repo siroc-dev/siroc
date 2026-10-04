@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.17">0.2.17</a>
           <a href="#v0.2.16">0.2.16</a>
           <a href="#v0.2.15">0.2.15</a>
           <a href="#v0.2.14">0.2.14</a>
@@ -45,6 +46,18 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.17">
+          <h2><a href="#v0.2.17">0.2.17</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Each database can be exported as SQL, gzip, or zip, and imported from a <code>.sql</code>, <code>.gz</code>, or <code>.zip</code> dump.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>phpMyAdmin sign-on failed because the database account existed only for localhost, while phpMyAdmin connects to 127.0.0.1. Opening phpMyAdmin creates that account. A failed sign-on shows the database error.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.16">
           <h2><a href="#v0.2.16">0.2.16</a></h2>

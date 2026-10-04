@@ -726,8 +726,89 @@ func (c *Client) PMAEnsure() error {
 	return c.do(http.MethodPost, "/pma/ensure", map[string]any{}, nil)
 }
 
+func (c *Client) DBExport(name, format string) (*http.Response, error) {
+	q := url.Values{}
+	q.Set("name", name)
+	q.Set("format", format)
+	req, err := http.NewRequest(http.MethodGet, c.base+"/db/export?"+q.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("agent unreachable: %w", err)
+	}
+	if res.StatusCode >= 400 {
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		var eb ErrorBody
+		if json.Unmarshal(b, &eb) == nil && eb.Error != "" {
+			return nil, fmt.Errorf("%s", eb.Error)
+		}
+		return nil, fmt.Errorf("agent error (%d): %s", res.StatusCode, string(b))
+	}
+	return res, nil
+}
+
+func (c *Client) DBImport(name, user, password, filename string, r io.Reader) error {
+	pr, pw := io.Pipe()
+	w := multipart.NewWriter(pw)
+	errCh := make(chan error, 1)
+	go func() {
+		var err error
+		defer func() {
+			_ = w.Close()
+			_ = pw.CloseWithError(err)
+			errCh <- err
+		}()
+		if err = w.WriteField("name", name); err != nil {
+			return
+		}
+		if err = w.WriteField("user", user); err != nil {
+			return
+		}
+		if err = w.WriteField("password", password); err != nil {
+			return
+		}
+		part, e := w.CreateFormFile("file", filename)
+		if e != nil {
+			err = e
+			return
+		}
+		_, err = io.Copy(part, r)
+	}()
+	req, err := http.NewRequest(http.MethodPost, c.base+"/db/import", pr)
+	if err != nil {
+		_ = pw.Close()
+		return err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	res, err := c.http.Do(req)
+	copyErr := <-errCh
+	if err != nil {
+		return fmt.Errorf("agent unreachable: %w", err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	if copyErr != nil {
+		return copyErr
+	}
+	if res.StatusCode >= 400 {
+		var eb ErrorBody
+		if json.Unmarshal(b, &eb) == nil && eb.Error != "" {
+			return fmt.Errorf("%s", eb.Error)
+		}
+		return fmt.Errorf("agent error (%d): %s", res.StatusCode, string(b))
+	}
+	return nil
+}
+
 func (c *Client) DBPassword(user, password string) error {
-	return c.do(http.MethodPost, "/db/password", DBPasswordReq{DBUser: user, Password: password}, nil)
+	return c.DBPasswordDB(user, password, "")
+}
+
+func (c *Client) DBPasswordDB(user, password, dbName string) error {
+	return c.do(http.MethodPost, "/db/password", DBPasswordReq{DBUser: user, Password: password, DBName: dbName}, nil)
 }
 
 func (c *Client) doBytes(method, path string) ([]byte, error) {

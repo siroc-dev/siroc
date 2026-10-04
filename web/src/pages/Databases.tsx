@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router-dom";
-import { Alert, App, AutoComplete, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, App, AutoComplete, Button, Card, Dropdown, Form, Input, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
@@ -52,6 +52,7 @@ export function Databases() {
   const [cfgErr, setCfgErr] = useState("");
   const [redis, setRedis] = useState<RedisStatusData | null>(null);
   const [redisErr, setRedisErr] = useState("");
+  const [ioBusy, setIoBusy] = useState("");
 
   async function load() {
     const [a, d, e] = await Promise.all([
@@ -209,6 +210,52 @@ export function Databases() {
     }
   }
 
+  async function exportDb(d: DB, format: string) {
+    setIoBusy(`export:${d.id}`);
+    try {
+      const res = await fetch(`/api/databases/${d.id}/export?format=${encodeURIComponent(format)}`, { credentials: "include" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || res.statusText);
+      }
+      const blob = await res.blob();
+      const match = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "");
+      const fallback = format === "gz" ? `${d.dbName}.sql.gz` : format === "zip" ? `${d.dbName}.zip` : `${d.dbName}.sql`;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = match?.[1] || fallback;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setIoBusy("");
+    }
+  }
+
+  function importDb(d: DB) {
+    Modal.confirm({
+      title: `Import into ${d.dbName}?`,
+      content: "Tables in this database are replaced by the file. Use a .sql, .gz, or .zip dump.",
+      okText: "Choose file",
+      onOk: () => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".sql,.gz,.zip,application/gzip,application/zip,application/sql";
+        input.onchange = () => {
+          const file = input.files?.[0];
+          if (!file) return;
+          setIoBusy(`import:${d.id}`);
+          api.upload(`/api/databases/${d.id}/import`, file)
+            .then(() => message.success(`Imported into ${d.dbName}`))
+            .catch((err) => message.error(err instanceof Error ? err.message : "Import failed"))
+            .finally(() => setIoBusy(""));
+        };
+        input.click();
+      },
+    });
+  }
+
   async function applyConfig() {
     setCfgBusy(true);
     try {
@@ -282,7 +329,22 @@ export function Databases() {
               title: "",
               align: "right" as const,
               render: (_: unknown, d: DB) => (
-                <Space>
+                <Space wrap>
+                  <Dropdown
+                    menu={{
+                      items: [
+                        { key: "sql", label: "SQL" },
+                        { key: "gz", label: "GZ" },
+                        { key: "zip", label: "ZIP" },
+                      ],
+                      onClick: ({ key }) => void exportDb(d, key),
+                    }}
+                  >
+                    <Button size="small" loading={ioBusy === `export:${d.id}`}>Export</Button>
+                  </Dropdown>
+                  <Button size="small" loading={ioBusy === `import:${d.id}`} onClick={() => importDb(d)}>
+                    Import
+                  </Button>
                   <Button
                     size="small"
                     onClick={async () => {

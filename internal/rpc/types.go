@@ -1494,4 +1494,5 @@ type PMASignonResp struct {
 type DBPasswordReq struct {
 	DBUser   string `json:"dbUser"`
 	Password string `json:"password"`
+	DBName   string `json:"dbName,omitempty"`
 }

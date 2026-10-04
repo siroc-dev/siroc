@@ -2,9 +2,11 @@ package api
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -338,10 +340,12 @@ func (s *Server) pmaAutologin(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, err)
 			return
 		}
-		if err := s.Agent.DBPassword(db.DBUser, pass); err != nil {
-			writeErr(w, http.StatusBadRequest, fmt.Errorf("reset database password for phpMyAdmin: %w", err))
-			return
-		}
+	}
+	if err := s.Agent.DBPasswordDB(db.DBUser, pass, db.DBName); err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("prepare phpMyAdmin login: %w", err))
+		return
+	}
+	if db.PasswordEnc == "" {
 		if enc, e := s.encryptPassword(pass); e == nil {
 			_ = s.Store.UpdateDatabasePassword(db.ID, enc)
 		}
@@ -352,6 +356,62 @@ func (s *Server) pmaAutologin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) exportDatabase(w http.ResponseWriter, r *http.Request) {
+	db, ok := s.databaseForRequest(w, r)
+	if !ok {
+		return
+	}
+	res, err := s.Agent.DBExport(db.DBName, r.URL.Query().Get("format"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	defer res.Body.Close()
+	for _, h := range []string{"Content-Type", "Content-Disposition", "Content-Length"} {
+		if v := res.Header.Get(h); v != "" {
+			w.Header().Set(h, v)
+		}
+	}
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/octet-stream")
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, res.Body)
+}
+
+func (s *Server) importDatabase(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 520<<20)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("upload too large or invalid (max 512MB)"))
+		return
+	}
+	db, ok := s.databaseForRequest(w, r)
+	if !ok {
+		return
+	}
+	if db.PasswordEnc == "" {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("reset the database password before importing"))
+		return
+	}
+	pass, err := s.decryptPassword(db.PasswordEnc)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	f, hdr, err := r.FormFile("file")
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	defer f.Close()
+	name := filepath.Base(hdr.Filename)
+	if err := s.Agent.DBImport(db.DBName, db.DBUser, pass, name, f); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func rewritePMACookiePath(c string) string {

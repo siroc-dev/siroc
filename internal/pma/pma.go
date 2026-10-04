@@ -102,6 +102,7 @@ func Signon(req rpc.PMASignonReq) (*rpc.PMASignonResp, error) {
 	if err := os.MkdirAll(tokenDir, 0750); err != nil {
 		return nil, err
 	}
+	_ = exec.Command("chown", "www-data:www-data", tokenDir).Run()
 	if strings.TrimSpace(req.DBUser) == "" || req.Password == "" {
 		return nil, fmt.Errorf("database user and password required")
 	}
@@ -124,7 +125,9 @@ func Signon(req rpc.PMASignonReq) (*rpc.PMASignonResp, error) {
 	if err := os.WriteFile(path, payload, 0640); err != nil {
 		return nil, err
 	}
-	_ = exec.Command("chown", "root:www-data", path).Run()
+	if err := exec.Command("chown", "www-data:www-data", path).Run(); err != nil {
+		_ = os.Chmod(path, 0644)
+	}
 	return &rpc.PMASignonResp{OK: true, Token: token, URL: "/pma/signon.php?t=" + token}, nil
 }
 
@@ -212,11 +215,20 @@ if ($token !== '' && is_readable($file)) {
         $_SESSION['PMA_single_signon_user'] = $data['user'];
         $_SESSION['PMA_single_signon_password'] = $data['pass'];
         $_SESSION['PMA_single_signon_host'] = $data['host'] ?? '127.0.0.1';
+        session_write_close();
         header('Location: index.php');
         exit;
     }
 }
+$reason = '';
+if (!empty($_SESSION['PMA_single_signon_error_message'])) {
+    $reason = trim(strip_tags((string)$_SESSION['PMA_single_signon_error_message']));
+}
 http_response_code(403);
+if ($reason !== '') {
+    echo 'phpMyAdmin could not sign in. ' . htmlspecialchars($reason, ENT_QUOTES, 'UTF-8');
+    exit;
+}
 echo 'phpMyAdmin sign-on expired. Open phpMyAdmin again from the control panel.';
 `
 	if err := os.WriteFile(filepath.Join(rootDir, "config.inc.php"), []byte(cfg), 0640); err != nil {
@@ -308,6 +320,7 @@ func writeNginx() error {
     location ~ \.php$ {
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param HTTP_X_FORWARDED_PROTO $http_x_forwarded_proto;
         fastcgi_param HTTPS $http_x_forwarded_proto if_not_empty;
         fastcgi_pass 127.0.0.1:9008;
         fastcgi_read_timeout 120s;

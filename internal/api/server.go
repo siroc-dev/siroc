@@ -196,6 +196,8 @@ func (s *Server) Router() http.Handler {
 		r.Put("/api/databases/{id}/password", s.setDatabasePassword)
 		r.Get("/api/databases/engine", s.dbEngine)
 		r.Post("/api/databases/{id}/phpmyadmin", s.pmaAutologin)
+		r.Get("/api/databases/{id}/export", s.exportDatabase)
+		r.Post("/api/databases/{id}/import", s.importDatabase)
 		r.Post("/api/files/fetch", s.fetchFile)
 		r.Post("/api/files/search", s.searchFiles)
 		r.Get("/api/backup/dests", s.listBackupDests)
@@ -2178,7 +2180,7 @@ func (s *Server) setDatabasePassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("password must be at least 8 characters"))
 		return
 	}
-	if err := s.Agent.DBPassword(db.DBUser, pass); err != nil {
+	if err := s.Agent.DBPasswordDB(db.DBUser, pass, db.DBName); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}

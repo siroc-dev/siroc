@@ -3,12 +3,15 @@
 package dbmgmt
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
+	"github.com/siroc-dev/siroc/internal/sqlpack"
 	"github.com/siroc-dev/siroc/internal/validate"
 )
 
@@ -50,12 +53,10 @@ func (m *Manager) Create(req rpc.DBCreateReq) error {
 	if m.Engine() == "" {
 		return fmt.Errorf("MySQL/MariaDB is not installed")
 	}
-	sql := strings.Join([]string{
-		fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`;", req.DBName),
-		fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'localhost' IDENTIFIED BY '%s';", escape(req.DBUser), escape(req.Password)),
-		fmt.Sprintf("GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'localhost';", req.DBName, escape(req.DBUser)),
-		"FLUSH PRIVILEGES;",
-	}, "\n")
+	sql := strings.Join(append(
+		[]string{fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`;", req.DBName)},
+		userHostSQL(req.DBUser, req.Password, req.DBName)...,
+	), "\n")
 	return mysqlExec(sql)
 }
 
@@ -73,15 +74,22 @@ func (m *Manager) Drop(req rpc.DBDropReq) error {
 	}
 	parts := []string{fmt.Sprintf("DROP DATABASE IF EXISTS `%s`;", req.DBName)}
 	if req.DBUser != "" {
-		parts = append(parts, fmt.Sprintf("DROP USER IF EXISTS '%s'@'localhost';", escape(req.DBUser)))
+		for _, host := range clientHosts {
+			parts = append(parts, fmt.Sprintf("DROP USER IF EXISTS '%s'@'%s';", escape(req.DBUser), host))
+		}
 	}
 	parts = append(parts, "FLUSH PRIVILEGES;")
 	return mysqlExec(strings.Join(parts, "\n"))
 }
 
-func (m *Manager) SetPassword(user, password string) error {
+func (m *Manager) SetPassword(user, password, dbName string) error {
 	if err := validate.DBIdent(user); err != nil {
 		return err
+	}
+	if dbName != "" {
+		if err := validate.DBIdent(dbName); err != nil {
+			return err
+		}
 	}
 	if len(password) < 8 {
 		return fmt.Errorf("database password must be at least 8 characters")
@@ -89,8 +97,134 @@ func (m *Manager) SetPassword(user, password string) error {
 	if m.Engine() == "" {
 		return fmt.Errorf("MySQL/MariaDB is not installed")
 	}
-	sql := fmt.Sprintf("ALTER USER '%s'@'localhost' IDENTIFIED BY '%s';\nFLUSH PRIVILEGES;", escape(user), escape(password))
-	return mysqlExec(sql)
+	return mysqlExec(strings.Join(userHostSQL(user, password, dbName), "\n"))
+}
+
+// clientHosts covers the socket login (localhost) and the TCP login phpMyAdmin uses (127.0.0.1).
+var clientHosts = []string{"localhost", "127.0.0.1"}
+
+func userHostSQL(user, password, dbName string) []string {
+	var parts []string
+	for _, host := range clientHosts {
+		parts = append(parts,
+			fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';", escape(user), host, escape(password)),
+			fmt.Sprintf("ALTER USER '%s'@'%s' IDENTIFIED BY '%s';", escape(user), host, escape(password)),
+		)
+		if dbName != "" {
+			parts = append(parts, fmt.Sprintf("GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'%s';", dbName, escape(user), host))
+		}
+	}
+	parts = append(parts, "FLUSH PRIVILEGES;")
+	return parts
+}
+
+func (m *Manager) Dump(name string) (*os.File, error) {
+	if err := validate.DBIdent(name); err != nil {
+		return nil, err
+	}
+	if m.Engine() == "" {
+		return nil, fmt.Errorf("MySQL/MariaDB is not installed")
+	}
+	dumpBin := "mysqldump"
+	if _, err := exec.LookPath("mariadb-dump"); err == nil {
+		dumpBin = "mariadb-dump"
+	}
+	f, err := os.CreateTemp("", "siroc-dump-*.sql")
+	if err != nil {
+		return nil, err
+	}
+	var stderr bytes.Buffer
+	var dumpErr error
+	for _, extra := range [][]string{{"--skip-ssl"}, {"--ssl-mode=DISABLED"}, nil} {
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			_ = f.Close()
+			_ = os.Remove(f.Name())
+			return nil, err
+		}
+		_ = f.Truncate(0)
+		stderr.Reset()
+		args := append([]string{"--single-transaction", "--routines", "--triggers", "--default-character-set=utf8mb4"}, extra...)
+		args = append(args, name)
+		cmd := exec.Command(dumpBin, args...)
+		cmd.Stdout = f
+		cmd.Stderr = &stderr
+		dumpErr = cmd.Run()
+		if dumpErr == nil {
+			break
+		}
+	}
+	if dumpErr != nil {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = dumpErr.Error()
+		}
+		return nil, fmt.Errorf("export %s: %s", name, msg)
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
+		return nil, err
+	}
+	return f, nil
+}
+
+func (m *Manager) Import(name, user, password, filename string, r io.Reader) error {
+	if err := validate.DBIdent(name); err != nil {
+		return err
+	}
+	if err := validate.DBIdent(user); err != nil {
+		return err
+	}
+	if strings.ContainsAny(password, "\r\n") || password == "" {
+		return fmt.Errorf("database password is missing; reset it and try again")
+	}
+	if m.Engine() == "" {
+		return fmt.Errorf("MySQL/MariaDB is not installed")
+	}
+	sql, err := sqlpack.Open(filename, r)
+	if err != nil {
+		return err
+	}
+	defer sql.Close()
+	if err := mysqlExec("CREATE DATABASE IF NOT EXISTS `" + name + "`;"); err != nil {
+		return err
+	}
+	cnf, err := os.CreateTemp("", "siroc-db-*.cnf")
+	if err != nil {
+		return err
+	}
+	cnfName := cnf.Name()
+	defer os.Remove(cnfName)
+	body := "[client]\nuser=" + optionValue(user) + "\npassword=" + optionValue(password) + "\n"
+	if _, err := cnf.WriteString(body); err != nil {
+		_ = cnf.Close()
+		return err
+	}
+	if err := cnf.Chmod(0600); err != nil {
+		_ = cnf.Close()
+		return err
+	}
+	_ = cnf.Close()
+	bin := mysqlBin()
+	cmd := exec.Command(bin, "--defaults-extra-file="+cnfName, "--default-character-set=utf8mb4", name)
+	cmd.Stdin = sqlpack.Sanitize(sql)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("import %s: %s", name, msg)
+	}
+	return nil
+}
+
+func optionValue(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return `"` + s + `"`
 }
 
 func mysqlExec(sql string) error {

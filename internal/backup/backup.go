@@ -273,13 +273,17 @@ func importDumps(dir string, dbs []rpc.BackupDatabase) error {
 		if err := validate.DBIdent(d.DBUser); err != nil || d.Password == "" {
 			continue
 		}
-		sql := strings.Join([]string{
-			fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`;", d.DBName),
-			fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'localhost' IDENTIFIED BY '%s';", escapeSQL(d.DBUser), escapeSQL(d.Password)),
-			fmt.Sprintf("ALTER USER '%s'@'localhost' IDENTIFIED BY '%s';", escapeSQL(d.DBUser), escapeSQL(d.Password)),
-			fmt.Sprintf("GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'localhost';", d.DBName, escapeSQL(d.DBUser)),
-			"FLUSH PRIVILEGES;",
-		}, "\n")
+		var userSQL []string
+		userSQL = append(userSQL, fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`;", d.DBName))
+		for _, host := range []string{"localhost", "127.0.0.1"} {
+			userSQL = append(userSQL,
+				fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';", escapeSQL(d.DBUser), host, escapeSQL(d.Password)),
+				fmt.Sprintf("ALTER USER '%s'@'%s' IDENTIFIED BY '%s';", escapeSQL(d.DBUser), host, escapeSQL(d.Password)),
+				fmt.Sprintf("GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'%s';", d.DBName, escapeSQL(d.DBUser), host),
+			)
+		}
+		userSQL = append(userSQL, "FLUSH PRIVILEGES;")
+		sql := strings.Join(userSQL, "\n")
 		cmd := exec.Command(bin)
 		cmd.Stdin = strings.NewReader(sql)
 		if out, err := cmd.CombinedOutput(); err != nil {
