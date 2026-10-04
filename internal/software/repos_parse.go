@@ -76,6 +76,47 @@ func replaceDebSuite(line, suite string) string {
 	return prefix + " " + url + " " + suite + " " + rest
 }
 
+func parseReleaseComponents(body string) []string {
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.HasPrefix(line, "-----BEGIN PGP SIGNATURE") {
+			break
+		}
+		k, v, ok := strings.Cut(line, ":")
+		if !ok || strings.TrimSpace(k) != "Components" {
+			continue
+		}
+		return strings.Fields(v)
+	}
+	return nil
+}
+
+func mysqlComponentCandidates(series string) []string {
+	switch series {
+	case "8.0":
+		return []string{"mysql-8.0"}
+	case "8.4":
+		return []string{"mysql-8.4-lts", "mysql-8.4"}
+	case "9.7":
+		return []string{"mysql-9.7-lts", "mysql-innovation"}
+	default:
+		return []string{"mysql-" + series}
+	}
+}
+
+func pickMySQLComponent(series string, have []string) (string, bool) {
+	set := map[string]bool{}
+	for _, c := range have {
+		set[c] = true
+	}
+	for _, c := range mysqlComponentCandidates(series) {
+		if set[c] {
+			return c, true
+		}
+	}
+	return "", false
+}
+
 func releaseURLs(mirror, suite string) []string {
 	base := strings.TrimRight(mirror, "/") + "/dists/" + suite
 	return []string{base + "/InRelease", base + "/Release"}

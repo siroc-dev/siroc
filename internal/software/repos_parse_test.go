@@ -102,3 +102,20 @@ func TestDeb822SuiteRewrite(t *testing.T) {
 		t.Fatal("disable")
 	}
 }
+
+func TestMySQLPackageComponent(t *testing.T) {
+	body := "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nComponents: mysql-8.0 mysql-8.4-lts mysql-9.7-lts mysql-tools\n"
+	have := parseReleaseComponents(body)
+	if c, ok := pickMySQLComponent("8.4", have); !ok || c != "mysql-8.4-lts" {
+		t.Fatalf("8.4 %q %v", c, ok)
+	}
+	if c, ok := pickMySQLComponent("9.7", have); !ok || c != "mysql-9.7-lts" {
+		t.Fatalf("9.7 %q %v", c, ok)
+	}
+	if _, ok := pickMySQLComponent("8.0", []string{"mysql-8.4-lts", "mysql-9.7-lts"}); ok {
+		t.Fatal("8.0 should be missing on a repo that does not publish it")
+	}
+	if parseReleaseComponents("-----BEGIN PGP SIGNATURE-----\nComponents: mysql-8.0\n") != nil {
+		t.Fatal("signature block")
+	}
+}

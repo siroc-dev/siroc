@@ -279,11 +279,49 @@ func installMySQL(version string) error {
 	if err != nil {
 		return err
 	}
-	stopSQLServices()
+	retireSQLSource()
 	removeRepo("mariadb")
-	removeRepo("mysql")
-	aptRemove("mariadb-server", "mariadb-client", "mysql-server", "mysql-community-server", "mysql-client", "mysql-community-client")
-	return buildSQLFromSource("mysql", version)
+	id, code := osRelease()
+	dist := "ubuntu"
+	if id == "debian" {
+		dist = "debian"
+	}
+	mirror := "https://repo.mysql.com/apt/" + dist
+	suite := firstWorkingSuite(mirror, id, code)
+	if suite == "" {
+		return fmt.Errorf("MySQL has no apt repo for %s %s", id, code)
+	}
+	comps, err := fetchReleaseComponents(mirror, suite)
+	if err != nil {
+		return err
+	}
+	component, ok := pickMySQLComponent(version, comps)
+	if !ok {
+		return fmt.Errorf("MySQL %s packages are not published for %s", version, suite)
+	}
+	if err := writeMySQLKeyring(); err != nil {
+		return err
+	}
+	line := fmt.Sprintf("deb [signed-by=/etc/apt/keyrings/cp-mysql.gpg] %s %s %s", mirror, suite, component)
+	if err := writeRepo("mysql", line); err != nil {
+		return err
+	}
+	if err := aptUpdate(); err != nil {
+		return err
+	}
+	aptRemove("mariadb-server", "mariadb-client")
+	pass, err := randomAptPassword()
+	if err != nil {
+		return err
+	}
+	preseedMySQLRoot(pass)
+	if err := aptInstall("mysql-community-server", "mysql-community-client"); err != nil {
+		return err
+	}
+	if err := startSQLService("mysql", "mysqld"); err != nil {
+		return err
+	}
+	return ensureSQLLocalRoot(pass)
 }
 
 func installMariaDB(version string) error {
@@ -291,9 +329,26 @@ func installMariaDB(version string) error {
 	if err != nil {
 		return err
 	}
-	stopSQLServices()
+	retireSQLSource()
 	removeRepo("mysql")
-	removeRepo("mariadb")
-	aptRemove("mysql-server", "mysql-community-server", "mysql-client", "mysql-community-client", "mariadb-server", "mariadb-client")
-	return buildSQLFromSource("mariadb", version)
+	id, code := osRelease()
+	dist := "ubuntu"
+	if id == "debian" {
+		dist = "debian"
+	}
+	mirror := fmt.Sprintf("https://deb.mariadb.org/%s/%s", version, dist)
+	if err := writeVendorRepo("mariadb", "https://mariadb.org/mariadb_release_signing_key.pgp", mirror, id, code, "main"); err != nil {
+		return err
+	}
+	if err := aptUpdate(); err != nil {
+		return err
+	}
+	aptRemove("mysql-server", "mysql-community-server", "mysql-community-client", "mysql-client")
+	if err := aptInstall("mariadb-server", "mariadb-client"); err != nil {
+		return err
+	}
+	if err := startSQLService("mariadb", "mysql"); err != nil {
+		return err
+	}
+	return ensureSQLLocalRoot("")
 }

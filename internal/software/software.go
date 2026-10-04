@@ -98,13 +98,13 @@ func catalog() []spec {
 				return mysqlVersions()
 			},
 			Installed: func() (bool, string) {
-				if ok, ver := sqlSourceInstalled("mysql"); ok {
+				if ok, ver := dpkgVersion("mysql-community-server"); ok {
 					return true, ver
 				}
 				if ok, ver := dpkgVersion("mysql-server"); ok {
 					return true, ver
 				}
-				return dpkgVersion("mysql-community-server")
+				return sqlSourceInstalled("mysql")
 			},
 		},
 		{
@@ -117,10 +117,10 @@ func catalog() []spec {
 				return mariadbVersions()
 			},
 			Installed: func() (bool, string) {
-				if ok, ver := sqlSourceInstalled("mariadb"); ok {
+				if ok, ver := dpkgVersion("mariadb-server"); ok {
 					return true, ver
 				}
-				return dpkgVersion("mariadb-server")
+				return sqlSourceInstalled("mariadb")
 			},
 		},
 		{
