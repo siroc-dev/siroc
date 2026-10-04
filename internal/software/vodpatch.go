@@ -2,6 +2,8 @@ package software
 
 import (
 	"fmt"
+	"io/fs"
+	"path/filepath"
 	"strings"
 )
 
@@ -48,6 +50,30 @@ func patchVodSource(src string) (string, error) {
 		src = src[:at] + "\n    (void)cycle;" + src[at:]
 	}
 	return src, nil
+}
+
+// findNamedFile returns the first path under root whose base name matches.
+// The vod tarball extracts to nginx-build/vod, and dfxp_format.c lives at
+// vod/subtitle/dfxp_format.c inside that tree, not beside ngx_http_vod_module.c.
+func findNamedFile(root, name string) (string, error) {
+	var found string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || d.Name() != name {
+			return nil
+		}
+		found = path
+		return fs.SkipAll
+	})
+	if err != nil {
+		return "", err
+	}
+	if found == "" {
+		return "", fmt.Errorf("%s not found under %s", name, root)
+	}
+	return found, nil
 }
 
 // patchVodDFXP drops libxml2 2.14's deprecated ctxt->recovery check.

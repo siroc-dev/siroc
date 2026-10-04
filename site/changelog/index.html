@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.23">0.2.23</a>
           <a href="#v0.2.22">0.2.22</a>
           <a href="#v0.2.21">0.2.21</a>
           <a href="#v0.2.20">0.2.20</a>
@@ -51,6 +52,18 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.23">
+          <h2><a href="#v0.2.23">0.2.23</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>No new features in this release.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Updating Nginx no longer fails while looking for <code>dfxp_format.c</code>. The VOD module keeps that file under <code>vod/subtitle/</code>, and the build finds it there. Verified by compiling Nginx 1.31.6 with GCC 15 and libxml 2.15.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.22">
           <h2><a href="#v0.2.22">0.2.22</a></h2>

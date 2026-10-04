@@ -268,7 +268,10 @@ func buildNginxModules(ver string) error {
 	if err := os.WriteFile(vodSrc, []byte(patched), 0644); err != nil {
 		return err
 	}
-	dfxp := filepath.Join(nginxBuildDir, "vod", "subtitle", "dfxp_format.c")
+	dfxp, err := findNamedFile(filepath.Join(nginxBuildDir, "vod"), "dfxp_format.c")
+	if err != nil {
+		return err
+	}
 	dfxpBody, err := os.ReadFile(dfxp)
 	if err != nil {
 		return err

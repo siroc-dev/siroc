@@ -1,6 +1,10 @@
 package software
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestVodCompilerOpt(t *testing.T) {
 	got := vodCompilerOpt("fpu sse popcnt avx avx2")
@@ -15,6 +19,24 @@ func TestVodCompilerOpt(t *testing.T) {
 	}
 	if !contains(plain, "-O3") || !contains(plain, "-DNGX_VOD_MAX_TRACK_COUNT=256") || !contains(plain, "-Wno-error=deprecated-declarations") {
 		t.Fatalf("base flags missing: %s", plain)
+	}
+}
+
+func TestFindNamedFile(t *testing.T) {
+	root := t.TempDir()
+	nested := filepath.Join(root, "vod", "subtitle", "dfxp_format.c")
+	if err := os.MkdirAll(filepath.Dir(nested), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nested, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := findNamedFile(root, "dfxp_format.c")
+	if err != nil || got != nested {
+		t.Fatalf("got %s err %v", got, err)
+	}
+	if _, err := findNamedFile(root, "missing.c"); err == nil {
+		t.Fatal("missing file should fail")
 	}
 }
 
