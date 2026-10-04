@@ -120,18 +120,48 @@ func (s *Server) siteLogs(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	if out != nil {
-		for i := range out.Files {
-			out.Files[i].Path = ""
-		}
-		if out.Current != nil {
-			out.Current.Path = ""
-		}
-		if out.Entries == nil {
-			out.Entries = []rpc.SiteLogEntry{}
-		}
-	}
+	hideSiteLogPaths(out)
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) clearSiteLogs(w http.ResponseWriter, r *http.Request) {
+	st, ok := s.siteForStats(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		ID string `json:"id"`
+	}
+	if r.ContentLength != 0 && !decode(w, r, &body) {
+		return
+	}
+	out, err := s.Agent.ClearSiteLogs(rpc.SiteLogReq{
+		Username: st.Username,
+		Domain:   st.Domain,
+		DocRoot:  st.DocRoot,
+		ID:       body.ID,
+	})
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	hideSiteLogPaths(out)
+	writeJSON(w, http.StatusOK, out)
+}
+
+func hideSiteLogPaths(out *rpc.SiteLogsResp) {
+	if out == nil {
+		return
+	}
+	for i := range out.Files {
+		out.Files[i].Path = ""
+	}
+	if out.Current != nil {
+		out.Current.Path = ""
+	}
+	if out.Entries == nil {
+		out.Entries = []rpc.SiteLogEntry{}
+	}
 }
 
 func (s *Server) siteForStats(w http.ResponseWriter, r *http.Request) (*store.Site, bool) {

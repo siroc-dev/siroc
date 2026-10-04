@@ -3,6 +3,7 @@
 package security
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"os/user"
@@ -14,8 +15,10 @@ import (
 )
 
 const (
-	fail2banFilter = "/etc/fail2ban/filter.d/siroc.conf"
-	fail2banJail   = "/etc/fail2ban/jail.d/siroc.conf"
+	fail2banFilter      = "/etc/fail2ban/filter.d/siroc.conf"
+	fail2banJail        = "/etc/fail2ban/jail.d/siroc.conf"
+	fail2banIgnoreStore = "/var/lib/siroc/fail2ban-ignore"
+	fail2banIgnoreJail  = "/etc/fail2ban/jail.d/siroc-ignore.local"
 )
 
 func EnsureFail2ban() error {
@@ -62,9 +65,148 @@ datepattern = ^%%Y-%%m-%%d %%H:%%M:%%S
 	if _, err := os.Stat("/etc/fail2ban/jail.local"); err != nil {
 		_ = os.WriteFile("/etc/fail2ban/jail.local", []byte("[DEFAULT]\nbantime = 1h\nfindtime = 10m\nmaxretry = 5\n\n[sshd]\nenabled = true\n"), 0644)
 	}
+	if err := writeFail2banIgnoreJail(); err != nil {
+		return err
+	}
 	_ = exec.Command("systemctl", "enable", "--now", "fail2ban").Run()
 	if exec.Command("systemctl", "is-active", "--quiet", "fail2ban").Run() == nil {
 		_ = exec.Command("fail2ban-client", "reload").Run()
+	}
+	return nil
+}
+
+func ReadFail2banIgnore() ([]string, error) {
+	b, err := os.ReadFile(fail2banIgnoreStore)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	return NormalizeIgnore(strings.Split(string(b), "\n"))
+}
+
+func AddFail2banIgnore(addr string) error {
+	cur, err := ReadFail2banIgnore()
+	if err != nil {
+		return err
+	}
+	return SetFail2banIgnore(append(cur, addr))
+}
+
+func DelFail2banIgnore(addr string) error {
+	cur, err := ReadFail2banIgnore()
+	if err != nil {
+		return err
+	}
+	one, err := NormalizeIgnore([]string{addr})
+	if err != nil {
+		return err
+	}
+	if len(one) == 0 {
+		return fmt.Errorf("address required")
+	}
+	next := make([]string, 0, len(cur))
+	for _, a := range cur {
+		if a != one[0] {
+			next = append(next, a)
+		}
+	}
+	return SetFail2banIgnore(next)
+}
+
+func SetFail2banIgnore(addrs []string) error {
+	norm, err := NormalizeIgnore(addrs)
+	if err != nil {
+		return err
+	}
+	body := strings.Join(norm, "\n")
+	if body != "" {
+		body += "\n"
+	}
+	if err := os.MkdirAll("/var/lib/siroc", 0750); err != nil {
+		return err
+	}
+	if err := os.WriteFile(fail2banIgnoreStore, []byte(body), 0640); err != nil {
+		return err
+	}
+	if _, err := exec.LookPath("fail2ban-client"); err != nil {
+		return nil
+	}
+	if err := writeFail2banIgnoreJail(); err != nil {
+		return err
+	}
+	if exec.Command("systemctl", "is-active", "--quiet", "fail2ban").Run() != nil {
+		return nil
+	}
+	if out, err := exec.Command("fail2ban-client", "reload").CombinedOutput(); err != nil {
+		return fmt.Errorf("fail2ban reload: %s", strings.TrimSpace(string(out)))
+	}
+	unbanIgnored(norm)
+	return nil
+}
+
+func writeFail2banIgnoreJail() error {
+	addrs, err := ReadFail2banIgnore()
+	if err != nil {
+		return err
+	}
+	body, err := RenderFail2banIgnore(addrs)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll("/etc/fail2ban/jail.d", 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(fail2banIgnoreJail, []byte(body), 0644)
+}
+
+func unbanIgnored(addrs []string) {
+	if len(addrs) == 0 {
+		return
+	}
+	out, err := exec.Command("fail2ban-client", "status").CombinedOutput()
+	if err != nil {
+		return
+	}
+	for _, name := range fail2banJailNames(string(out)) {
+		bout, err := exec.Command("fail2ban-client", "status", name).CombinedOutput()
+		if err != nil {
+			continue
+		}
+		for _, ip := range fail2banBannedIPs(string(bout)) {
+			if IPIgnored(ip, addrs) {
+				_ = exec.Command("fail2ban-client", "set", name, "unbanip", ip).Run()
+			}
+		}
+	}
+}
+
+func fail2banJailNames(status string) []string {
+	var names []string
+	for _, line := range strings.Split(status, "\n") {
+		if !strings.Contains(line, "Jail list:") {
+			continue
+		}
+		part := line[strings.Index(line, "Jail list:")+len("Jail list:"):]
+		for _, name := range strings.Split(part, ",") {
+			name = strings.TrimSpace(name)
+			if name != "" && !strings.ContainsAny(name, " \t/\\") {
+				names = append(names, name)
+			}
+		}
+	}
+	return names
+}
+
+func fail2banBannedIPs(status string) []string {
+	for _, line := range strings.Split(status, "\n") {
+		low := strings.ToLower(line)
+		i := strings.Index(low, "banned ip list:")
+		if i < 0 {
+			continue
+		}
+		return strings.Fields(line[i+len("banned ip list:"):])
 	}
 	return nil
 }

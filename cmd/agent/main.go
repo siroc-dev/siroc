@@ -589,6 +589,18 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Post("/git/head", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.GitHeadReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := hostMgr.GitHead(req.Username, req.Path)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Post("/git/deploy", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.GitDeployReq
 		if !decode(w, r, &req) {
@@ -848,6 +860,18 @@ func main() {
 			return
 		}
 		out, err := weblog.SiteLogs(req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/logs/site/clear", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.SiteLogReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := weblog.ClearSiteLogs(req)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return

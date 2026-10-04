@@ -47,6 +47,7 @@ type siteData struct {
 	Timezone          string
 	DisableFunctions  string
 	OpenBasedir       string
+	Home              string
 	UserTmp           string
 	PHPIniDir         string
 	AllNames          string
@@ -224,7 +225,7 @@ pm.process_idle_timeout = {{.IdleTimeout}}
 {{- end}}
 pm.max_requests = {{.MaxRequests}}
 pm.status_path = /fpm-status
-chdir = /
+chdir = {{.Home}}
 php_admin_value[memory_limit] = {{.MemoryLimit}}
 php_admin_value[max_execution_time] = {{.MaxExecutionTime}}
 php_admin_value[max_input_time] = {{.MaxInputTime}}

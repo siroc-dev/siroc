@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Input, Space, Tag, Typography } from "antd";
+import { Alert, App, Button, Input, Popconfirm, Space, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { asList } from "@/lib/lists";
 import { LogTable, LEVEL_COLOR } from "./LogTable";
@@ -34,6 +34,7 @@ function fileName(f: SiteLogFile) {
 }
 
 export function SiteLogs({ siteId, domain }: { siteId: number; domain: string }) {
+  const { message } = App.useApp();
   const [data, setData] = useState<SiteLogsData | null>(null);
   const [id, setId] = useState("");
   const [query, setQuery] = useState("");
@@ -72,6 +73,21 @@ export function SiteLogs({ siteId, domain }: { siteId: number; domain: string })
 
   function toggleLevel(l: string) {
     setLevels((cur) => (cur.includes(l) ? cur.filter((x) => x !== l) : [...cur, l]));
+  }
+
+  async function clearLogs(all: boolean) {
+    setBusy(true);
+    setErr("");
+    try {
+      const out = await api.post<SiteLogsData>(`/api/sites/${siteId}/logs/clear`, { id: all ? "" : id });
+      setData(out);
+      if (out.current?.id) setId(out.current.id);
+      message.success(all ? "Cleared logs for this website" : "Cleared this log");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to clear logs");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function download() {
@@ -141,6 +157,16 @@ export function SiteLogs({ siteId, domain }: { siteId: number; domain: string })
             <Button size="small" loading={busy} onClick={() => void load(id)}>
               Refresh
             </Button>
+            <Popconfirm title="Empty this log file?" description="The file stays in place so the web server can keep writing." onConfirm={() => void clearLogs(false)}>
+              <Button size="small" danger disabled={!id} loading={busy}>
+                Clear
+              </Button>
+            </Popconfirm>
+            <Popconfirm title="Empty every log for this website?" description="Rotated copies are deleted. Live files are emptied." onConfirm={() => void clearLogs(true)}>
+              <Button size="small" danger loading={busy}>
+                Clear all
+              </Button>
+            </Popconfirm>
           </Space>
         </div>
         {data?.truncated ? (

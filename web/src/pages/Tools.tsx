@@ -19,7 +19,7 @@ type Status = {
   ifaces?: string[];
   mounts?: { device: string; mountPoint: string; fsType: string; size?: string; used?: string; avail?: string; usePct?: string }[];
   fstab?: { device: string; mountPoint: string; fsType: string; options: string }[];
-  fail2ban?: { installed: boolean; active: boolean; jails?: { name: string; banned?: string[]; failed?: number; total?: number }[]; bans?: Fail2banBan[]; message?: string };
+  fail2ban?: { installed: boolean; active: boolean; jails?: { name: string; banned?: string[]; failed?: number; total?: number }[]; bans?: Fail2banBan[]; whitelist?: string[]; message?: string };
   threats?: { failedLogins?: { ip: string; detail?: string }[]; banned?: { ip: string; source?: string }[]; topSources?: { ip: string; count: number }[] };
   ffmpeg?: { installed: boolean; version?: string; codecs?: string[]; output?: string };
   memcached?: { installed: boolean; active: boolean; memoryMB: number; listen: string; port: number; stats?: Record<string, string> };
@@ -305,6 +305,9 @@ export function Tools() {
                           { title: "Banned", width: 90, render: (_, j) => j.total || (j.banned || []).length },
                         ]}
                       />
+                      {(st.fail2ban.whitelist || []).length ? (
+                        <Typography.Text type="secondary">Whitelist: {(st.fail2ban.whitelist || []).join(", ")}. Edit on Security → Fail2ban.</Typography.Text>
+                      ) : null}
                       <Fail2banBans
                         bans={st.fail2ban.bans || []}
                         busy={busy}

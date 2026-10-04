@@ -26,6 +26,24 @@ func TestInHome(t *testing.T) {
 	}
 }
 
+func TestSiteLogFileKind(t *testing.T) {
+	dom := "example.com"
+	if SiteLogFileKind(dom, "example.com-access.log") != "live" {
+		t.Fatal("live access")
+	}
+	if SiteLogFileKind(dom, "example.com-error.log-20261005") != "rotated" {
+		t.Fatal("rotated error")
+	}
+	if SiteLogFileKind(dom, "example.com-modsec.log-20261005.gz") != "rotated" {
+		t.Fatal("rotated waf")
+	}
+	for _, name := range []string{"other.com-access.log", "example.com-access.log.bak", "example.com-access.log-202610051", "../example.com-access.log"} {
+		if SiteLogFileKind(dom, name) != "" {
+			t.Fatalf("accepted %s", name)
+		}
+	}
+}
+
 func TestParseSiteLogID(t *testing.T) {
 	g, n, ok := ParseSiteLogID("waf-audit")
 	if !ok || g != "waf" || n != "audit" {

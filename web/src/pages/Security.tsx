@@ -25,7 +25,7 @@ type WAF = {
   message?: string;
 };
 type Fail2banJail = { name: string; banned?: string[]; failed?: number; total?: number };
-type Fail2ban = { installed: boolean; active: boolean; jails?: Fail2banJail[]; bans?: Fail2banBan[]; message?: string };
+type Fail2ban = { installed: boolean; active: boolean; jails?: Fail2banJail[]; bans?: Fail2banBan[]; whitelist?: string[]; message?: string };
 type CRSRule = { id: number; msg: string; file: string; pack: string; disabled: boolean };
 type AV = { installed: boolean; version?: string; daemonActive: boolean; freshclamActive: boolean; signatures?: string; lastScan?: string };
 type Scan = { ok: boolean; path: string; infected: number; summary: string };
@@ -50,6 +50,7 @@ export function Security() {
   const [scanTarget, setScanTarget] = useState("http://127.0.0.1:80");
   const [scanOut, setScanOut] = useState<ScanResult | null>(null);
   const [fail2ban, setFail2ban] = useState<Fail2ban | null>(null);
+  const [whitelist, setWhitelist] = useState("");
   const [busy, setBusy] = useState("");
 
   async function load() {
@@ -74,6 +75,15 @@ export function Security() {
   useEffect(() => {
     load().catch((e) => message.error(e.message));
   }, []);
+
+  async function addWhitelist() {
+    const ip = whitelist.trim();
+    if (!ip) return;
+    await run("whitelist-add", async () => {
+      await api.post("/api/sysops", { action: "whitelist-add", ip });
+      setWhitelist("");
+    });
+  }
 
   async function run(name: string, fn: () => Promise<void>) {
     setBusy(name);
@@ -249,8 +259,50 @@ export function Security() {
                 ) : (
                   <Space direction="vertical" style={{ width: "100%" }} size="middle">
                     <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                      Jails watch this panel, SSH, FTP, MySQL/MariaDB, Redis, Nginx, and Apache when those services are installed. Click a banned address for ASN and location.
+                      Jails watch this panel, SSH, FTP, MySQL/MariaDB, Redis, Nginx, and Apache when those services are installed. Click a banned address for ASN and location. Whitelisted addresses are never banned, and localhost is always included.
                     </Typography.Paragraph>
+                    <Typography.Text strong>Whitelist</Typography.Text>
+                    <Space wrap>
+                      <Input
+                        placeholder="203.0.113.10 or 203.0.113.0/24"
+                        value={whitelist}
+                        onChange={(e) => setWhitelist(e.target.value)}
+                        onPressEnter={() => void addWhitelist()}
+                        style={{ width: 280 }}
+                      />
+                      <Button type="primary" loading={busy === "whitelist-add"} onClick={() => void addWhitelist()}>
+                        Add
+                      </Button>
+                    </Space>
+                    <Table
+                      size="small"
+                      rowKey="ip"
+                      pagination={false}
+                      dataSource={(fail2ban.whitelist || []).map((ip) => ({ ip }))}
+                      locale={{ emptyText: "No extra addresses. Localhost is still ignored." }}
+                      columns={[
+                        { title: "Address", dataIndex: "ip" },
+                        {
+                          title: "",
+                          width: 100,
+                          align: "right",
+                          render: (_, row) => (
+                            <Popconfirm
+                              title="Remove from the whitelist?"
+                              onConfirm={() =>
+                                void run("whitelist-del", async () => {
+                                  await api.post("/api/sysops", { action: "whitelist-del", ip: row.ip });
+                                })
+                              }
+                            >
+                              <Button size="small" danger>
+                                Remove
+                              </Button>
+                            </Popconfirm>
+                          ),
+                        },
+                      ]}
+                    />
                     <Table
                       size="small"
                       rowKey="name"

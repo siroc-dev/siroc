@@ -51,6 +51,26 @@ func InHome(home, path string) bool {
 	return clean == home || strings.HasPrefix(clean, home+string(os.PathSeparator))
 }
 
+var rotatedLogDate = regexp.MustCompile(`^\d{8}(\.gz)?$`)
+
+// SiteLogFileKind reports whether a filename is a live or rotated log for this domain.
+func SiteLogFileKind(domain, name string) string {
+	if domain == "" || name == "" || strings.Contains(name, "/") || strings.Contains(name, "\\") {
+		return ""
+	}
+	for _, kind := range []string{"access", "error", "modsec"} {
+		base := domain + "-" + kind + ".log"
+		if name == base {
+			return "live"
+		}
+		rest, ok := strings.CutPrefix(name, base+"-")
+		if ok && rotatedLogDate.MatchString(rest) {
+			return "rotated"
+		}
+	}
+	return ""
+}
+
 func ParseSiteLogID(id string) (group, name string, ok bool) {
 	id = strings.TrimSpace(id)
 	switch id {

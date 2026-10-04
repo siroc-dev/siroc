@@ -126,7 +126,11 @@ func (m *Manager) lockPoolFile(path string) (bool, string) {
 	}
 	_ = os.MkdirAll(tmp, 0750)
 	_ = exec.Command("chown", user+":"+user, tmp).Run()
-	next := setPoolValue(string(b), "open_basedir", home+string(os.PathSeparator))
+	next := string(b)
+	if st, err := os.Stat(home); err == nil && st.IsDir() {
+		next = setPoolDirective(next, "chdir", home)
+	}
+	next = setPoolValue(next, "open_basedir", home+string(os.PathSeparator))
 	next = setPoolValue(next, "session.save_path", tmp)
 	next = setPoolValue(next, "upload_tmp_dir", tmp)
 	next = setPoolValue(next, "sys_temp_dir", tmp)
@@ -279,6 +283,7 @@ func fillSiteFPM(data *siteData, homeRoot string, req rpc.SiteWriteReq) error {
 		return err
 	}
 	data.OpenBasedir = home + string(os.PathSeparator)
+	data.Home = home
 	data.UserTmp = tmp
 	if custom {
 		data.PHPIniDir = filepath.Join(home, ".php", req.PHPVersion)

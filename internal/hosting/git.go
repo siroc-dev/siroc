@@ -91,12 +91,46 @@ func (m *Manager) GitDeploy(req rpc.GitDeployReq) (*rpc.GitDeployResp, error) {
 	} else {
 		_ = runUser(req.Username, abs, sshCmd, 3*time.Minute, &log, "git", "reset", "--hard", "origin/"+branch)
 	}
+	head := readGitCommit(req.Username, abs, sshCmd)
 	if strings.TrimSpace(command) != "" {
 		if err := runUser(req.Username, abs, sshCmd, 10*time.Minute, &log, "bash", "-lc", command); err != nil {
-			return gitFail(&log, err)
+			resp, fail := gitFail(&log, err)
+			if resp != nil {
+				resp.Commit = head
+			}
+			return resp, fail
 		}
 	}
-	return &rpc.GitDeployResp{OK: true, Log: trimLog(log.String()), Message: "Deployed " + branch}, nil
+	return &rpc.GitDeployResp{OK: true, Log: trimLog(log.String()), Message: "Deployed " + branch, Commit: head}, nil
+}
+
+func (m *Manager) GitHead(username, rel string) (*rpc.GitCommit, error) {
+	if err := validate.LinuxUser(username); err != nil {
+		return nil, err
+	}
+	abs, err := validate.AccountPath(m.HomeRoot, username, rel, "")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(filepath.Join(abs, ".git")); err != nil {
+		return &rpc.GitCommit{}, nil
+	}
+	if c := readGitCommit(username, abs, ""); c != nil {
+		return c, nil
+	}
+	return &rpc.GitCommit{}, nil
+}
+
+func readGitCommit(username, dir, sshCmd string) *rpc.GitCommit {
+	var buf bytes.Buffer
+	if err := runUser(username, dir, sshCmd, 30*time.Second, &buf, "git", "log", "-1", "--format=%H%n%s%n%an%n%aI"); err != nil {
+		return nil
+	}
+	c, ok := ParseGitLog(buf.String())
+	if !ok {
+		return nil
+	}
+	return &c
 }
 
 func gitFail(log *bytes.Buffer, err error) (*rpc.GitDeployResp, error) {

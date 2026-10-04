@@ -14,6 +14,7 @@ export type SiteGitInfo = {
   lastOk?: boolean;
   lastLog?: string;
   lastAt?: string;
+  commit?: { hash?: string; subject?: string; author?: string; at?: string };
   laravelHint?: string;
   npmHint?: string;
 };
@@ -63,8 +64,13 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
     try {
       await form.validateFields();
       await save(form.getFieldsValue());
-      const out = await api.post<{ log?: string; message?: string }>(`/api/sites/${siteId}/git/deploy`, {});
-      setInfo((cur) => ({ ...(cur || {}), lastOk: true, lastLog: out.log || out.message || "Deployed" }));
+      const out = await api.post<{ log?: string; message?: string; commit?: SiteGitInfo["commit"] }>(`/api/sites/${siteId}/git/deploy`, {});
+      setInfo((cur) => ({
+        ...(cur || {}),
+        lastOk: true,
+        lastLog: out.log || out.message || "Deployed",
+        commit: out.commit || cur?.commit,
+      }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Deploy failed");
       await load();
@@ -164,6 +170,25 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
                   New token
                 </Button>
               </Space>
+            </Space>
+          }
+        />
+      ) : null}
+      {info?.commit?.subject ? (
+        <Alert
+          type="info"
+          showIcon
+          message="Latest deploy"
+          description={
+            <Space direction="vertical" size={2}>
+              <Typography.Text>
+                <Typography.Text code>{info.commit.hash}</Typography.Text> {info.commit.subject}
+              </Typography.Text>
+              {info.commit.author || info.commit.at ? (
+                <Typography.Text type="secondary">
+                  {[info.commit.author, info.commit.at].filter(Boolean).join(" · ")}
+                </Typography.Text>
+              ) : null}
             </Space>
           }
         />

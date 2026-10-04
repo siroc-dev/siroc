@@ -358,8 +358,8 @@ export function PHP() {
               </Space>
             </Space>
             <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-              open_basedir is always the account home (<Typography.Text code>/home/{username}/</Typography.Text>
-              ). PHP cannot read files outside that user. Temp, uploads, and sessions use{" "}
+              PHP starts in the account home (<Typography.Text code>/home/{username}</Typography.Text>
+              ), and open_basedir is that same directory. PHP cannot read files outside that user. Temp, uploads, and sessions use{" "}
               <Typography.Text code>~/tmp</Typography.Text>.
             </Typography.Paragraph>
           </Col>

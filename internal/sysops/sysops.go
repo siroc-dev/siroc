@@ -16,6 +16,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
+	"github.com/siroc-dev/siroc/internal/security"
 	"github.com/siroc-dev/siroc/internal/software"
 	"github.com/siroc-dev/siroc/internal/weblog"
 )
@@ -137,6 +138,10 @@ func Apply(req rpc.SysopsReq) (*rpc.SysopsStatus, error) {
 		err = delFstab(req.MountPoint)
 	case "unban":
 		err = unban(req.Jail, req.IP)
+	case "whitelist-add":
+		err = security.AddFail2banIgnore(req.IP)
+	case "whitelist-del":
+		err = security.DelFail2banIgnore(req.IP)
 	case "ffmpeg":
 		out, e := ffmpegConvert(req.Src, req.Dest, req.Extra)
 		st, _ := Status()
@@ -701,6 +706,9 @@ func fail2banStatus() *rpc.Fail2banStatus {
 		return st
 	}
 	st.Installed = true
+	if ig, err := security.ReadFail2banIgnore(); err == nil {
+		st.Whitelist = ig
+	}
 	st.Active = exec.Command("systemctl", "is-active", "--quiet", "fail2ban").Run() == nil
 	b, err := exec.Command("fail2ban-client", "status").CombinedOutput()
 	if err != nil {

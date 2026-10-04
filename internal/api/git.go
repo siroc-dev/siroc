@@ -163,7 +163,7 @@ func (s *Server) gitWebhook(w http.ResponseWriter, r *http.Request) {
 	gCopy := *g
 	go func() {
 		defer s.endGitDeploy(stCopy.ID)
-		_, _, _ = s.execGitDeploy(&stCopy, &gCopy)
+		_, _, _, _ = s.execGitDeploy(&stCopy, &gCopy)
 	}()
 	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "message": "Deploy started"})
 }
@@ -178,17 +178,17 @@ func (s *Server) endGitDeploy(siteID int64) {
 }
 
 func (s *Server) runGitDeploy(w http.ResponseWriter, st *store.Site, g *store.SiteGit) {
-	log, ok, msg := s.execGitDeploy(st, g)
+	log, commit, ok, msg := s.execGitDeploy(st, g)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("%s", msg))
 		return
 	}
 	g.LastOK = true
 	g.LastLog = log
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": msg, "log": log})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": msg, "log": log, "commit": commit})
 }
 
-func (s *Server) execGitDeploy(st *store.Site, g *store.SiteGit) (log string, ok bool, msg string) {
+func (s *Server) execGitDeploy(st *store.Site, g *store.SiteGit) (log string, commit *rpc.GitCommit, ok bool, msg string) {
 	path := strings.TrimSpace(g.Path)
 	if path == "" {
 		path = validate.RelHome(s.Cfg.HomeRoot, st.Username, st.DocRoot)
@@ -204,6 +204,7 @@ func (s *Server) execGitDeploy(st *store.Site, g *store.SiteGit) (log string, ok
 	msg = "Deployed"
 	if out != nil {
 		log = out.Log
+		commit = out.Commit
 		if out.Message != "" {
 			msg = out.Message
 		}
@@ -219,7 +220,7 @@ func (s *Server) execGitDeploy(st *store.Site, g *store.SiteGit) (log string, ok
 		msg = err.Error()
 	}
 	_ = s.Store.UpdateSiteGitResult(st.ID, ok, log)
-	return log, ok, msg
+	return log, commit, ok, msg
 }
 
 func (s *Server) ensureGit(st *store.Site) (*store.SiteGit, error) {
@@ -259,6 +260,14 @@ func (s *Server) gitView(r *http.Request, st *store.Site, g *store.SiteGit) map[
 		scheme = proto
 	}
 	hook := fmt.Sprintf("%s://%s/api/hooks/git/%s", scheme, r.Host, g.Token)
+	path := strings.TrimSpace(g.Path)
+	if path == "" {
+		path = validate.RelHome(s.Cfg.HomeRoot, st.Username, st.DocRoot)
+	}
+	var commit *rpc.GitCommit
+	if head, err := s.Agent.GitHead(st.Username, path); err == nil && head != nil && head.Subject != "" {
+		commit = head
+	}
 	return map[string]any{
 		"repo":        g.Repo,
 		"branch":      g.Branch,
@@ -272,6 +281,7 @@ func (s *Server) gitView(r *http.Request, st *store.Site, g *store.SiteGit) map[
 		"lastOk":      g.LastOK,
 		"lastLog":     g.LastLog,
 		"lastAt":      g.LastAt,
+		"commit":      commit,
 		"laravelHint": validate.LaravelDeployCommand,
 		"npmHint":     validate.NPMDeployCommand,
 	}

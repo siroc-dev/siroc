@@ -359,6 +359,12 @@ func (c *Client) GitDeploy(in GitDeployReq) (*GitDeployResp, error) {
 	return &out, err
 }
 
+func (c *Client) GitHead(username, path string) (*GitCommit, error) {
+	var out GitCommit
+	err := c.do(http.MethodPost, "/git/head", GitHeadReq{Username: username, Path: path}, &out)
+	return &out, err
+}
+
 func (c *Client) SiteRuntime(in SiteRuntimeReq) (*SiteRuntimeResp, error) {
 	var out SiteRuntimeResp
 	err := c.do(http.MethodPost, "/sites/runtime", in, &out)
@@ -660,6 +666,12 @@ func (c *Client) GoAccessInfo(domain string, refresh bool) (*GoAccessInfo, error
 func (c *Client) SiteLogs(in SiteLogReq) (*SiteLogsResp, error) {
 	var out SiteLogsResp
 	err := c.do(http.MethodPost, "/logs/site", in, &out)
+	return &out, err
+}
+
+func (c *Client) ClearSiteLogs(in SiteLogReq) (*SiteLogsResp, error) {
+	var out SiteLogsResp
+	err := c.do(http.MethodPost, "/logs/site/clear", in, &out)
 	return &out, err
 }
 

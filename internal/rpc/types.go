@@ -1411,6 +1411,7 @@ type Fail2banStatus struct {
 	Active    bool           `json:"active"`
 	Jails     []Fail2banJail `json:"jails,omitempty"`
 	Bans      []Fail2banBan  `json:"bans,omitempty"`
+	Whitelist []string       `json:"whitelist,omitempty"`
 	Message   string         `json:"message,omitempty"`
 }
 
@@ -1484,10 +1485,23 @@ type GitDeployReq struct {
 	Command  string `json:"command,omitempty"`
 }
 
+type GitCommit struct {
+	Hash    string `json:"hash,omitempty"`
+	Subject string `json:"subject,omitempty"`
+	Author  string `json:"author,omitempty"`
+	At      string `json:"at,omitempty"`
+}
+
+type GitHeadReq struct {
+	Username string `json:"username"`
+	Path     string `json:"path"`
+}
+
 type GitDeployResp struct {
-	OK      bool   `json:"ok"`
-	Log     string `json:"log,omitempty"`
-	Message string `json:"message,omitempty"`
+	OK      bool       `json:"ok"`
+	Log     string     `json:"log,omitempty"`
+	Message string     `json:"message,omitempty"`
+	Commit  *GitCommit `json:"commit,omitempty"`
 }
 
 type PMASignonReq struct {

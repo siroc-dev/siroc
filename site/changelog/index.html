@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.27">0.2.27</a>
           <a href="#v0.2.26">0.2.26</a>
           <a href="#v0.2.25">0.2.25</a>
           <a href="#v0.2.24">0.2.24</a>
@@ -55,6 +56,20 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.27">
+          <h2><a href="#v0.2.27">0.2.27</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Git deploy shows the commit that is checked out: short hash, message, author, and time. The Git tab reads it from the deploy directory, including after a webhook pull.</li>
+            <li>Fail2ban has a whitelist on Security. An address or network such as <code>203.0.113.0/24</code> is never banned. Localhost stays ignored, and adding an address unbans it.</li>
+            <li>Website logs can be emptied. Clear empties the open file. Clear all empties Nginx, Apache, WAF, and Laravel logs for that site and deletes rotated copies. The live files stay in place so the web server keeps writing.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>PHP-FPM starts in the account home instead of <code>/</code>, so <code>getcwd()</code> stays inside <code>open_basedir</code>. Existing pools are updated the next time the agent starts.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.26">
           <h2><a href="#v0.2.26">0.2.26</a></h2>
