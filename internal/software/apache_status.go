@@ -18,6 +18,7 @@ import (
 )
 
 const apacheStatusConf = `/etc/apache2/conf-available/siroc-status.conf`
+const apacheStatusSite = `/etc/apache2/sites-available/siroc-status.conf`
 const nginxStatusDeny = `/etc/nginx/snippets/siroc-deny-status.conf`
 
 func ApacheStatus() *rpc.ApacheStatus {
@@ -32,14 +33,22 @@ func ApacheStatus() *rpc.ApacheStatus {
 		return st
 	}
 	st.Active = serviceActive("apache2")
-	_ = enableApacheStatus()
+	reloaded, enErr := enableApacheStatus()
 	if !st.Active {
 		st.Message = "Apache is installed but not running."
 		return st
 	}
 	raw, err := fetchApacheStatus("?auto")
+	if err != nil && reloaded {
+		time.Sleep(300 * time.Millisecond)
+		raw, err = fetchApacheStatus("?auto")
+	}
 	if err != nil {
-		st.Message = "mod_status is not reachable yet. " + err.Error()
+		if enErr != nil {
+			st.Message = "mod_status is not reachable yet. " + enErr.Error()
+		} else {
+			st.Message = "mod_status is not reachable yet. " + err.Error()
+		}
 		return st
 	}
 	parseApacheAuto(st, raw)
@@ -87,31 +96,68 @@ func serviceUptimeSec(name string) int64 {
 	return 0
 }
 
-func enableApacheStatus() error {
+func enableApacheStatus() (bool, error) {
 	if _, err := exec.LookPath("a2enmod"); err != nil {
-		return fmt.Errorf("Apache is not installed")
+		return false, fmt.Errorf("Apache is not installed")
 	}
 	_ = os.MkdirAll("/etc/apache2/conf-available", 0755)
+	_ = os.MkdirAll("/etc/apache2/sites-available", 0755)
 	_ = os.MkdirAll("/etc/nginx/snippets", 0755)
-	body := `<IfModule mod_status.c>
+	// ExtendedStatus is global. The handler lives on its own vhost so a site
+	// rewrite (WordPress, Laravel) cannot turn /server-status into a 404.
+	changed := writeIfChanged(apacheStatusConf, apacheStatusGlobalConf)
+	changed = writeIfChanged(apacheStatusSite, apacheStatusVHost) || changed
+	_ = writeIfChanged(nginxStatusDeny, "location ^~ /server-status { return 404; }\nlocation ^~ /nginx-status { return 404; }\nlocation ^~ /fpm-status { return 404; }\n")
+	if _, err := os.Lstat("/etc/apache2/mods-enabled/status.load"); err != nil {
+		if err := exec.Command("a2enmod", "status").Run(); err != nil {
+			return false, fmt.Errorf("a2enmod status: %w", err)
+		}
+		changed = true
+	}
+	if _, err := os.Lstat("/etc/apache2/conf-enabled/siroc-status.conf"); err != nil {
+		if err := exec.Command("a2enconf", "siroc-status").Run(); err != nil {
+			return false, fmt.Errorf("a2enconf siroc-status: %w", err)
+		}
+		changed = true
+	}
+	if _, err := os.Lstat("/etc/apache2/sites-enabled/siroc-status.conf"); err != nil {
+		if err := exec.Command("a2ensite", "siroc-status").Run(); err != nil {
+			return false, fmt.Errorf("a2ensite siroc-status: %w", err)
+		}
+		changed = true
+	}
+	denyPublicServerStatus()
+	if !changed {
+		return false, nil
+	}
+	if out, err := exec.Command("apache2ctl", "configtest").CombinedOutput(); err != nil {
+		return false, fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	if err := exec.Command("systemctl", "reload", "apache2").Run(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+const apacheStatusGlobalConf = `<IfModule mod_status.c>
     ExtendedStatus On
-    <Location /server-status>
-        SetHandler server-status
-        Require ip 127.0.0.1 ::1
-    </Location>
 </IfModule>
 `
-	changed := writeIfChanged(apacheStatusConf, body)
-	_ = writeIfChanged(nginxStatusDeny, "location ^~ /server-status { return 404; }\nlocation ^~ /nginx-status { return 404; }\nlocation ^~ /fpm-status { return 404; }\n")
-	_ = exec.Command("a2enmod", "status").Run()
-	_ = exec.Command("a2enconf", "siroc-status").Run()
-	denyPublicServerStatus()
-	if changed {
-		_ = exec.Command("apache2ctl", "configtest").Run()
-		_ = exec.Command("systemctl", "reload", "apache2").Run()
-	}
-	return nil
-}
+
+const apacheStatusVHost = `<VirtualHost 127.0.0.1:8080>
+    ServerName 127.0.0.1
+    ServerAlias localhost
+    DocumentRoot /var/www/html
+    RewriteEngine Off
+    <IfModule security2_module>
+        SecRuleEngine Off
+    </IfModule>
+    <Location "/server-status">
+        SetHandler server-status
+        Require local
+    </Location>
+</VirtualHost>
+`
 
 func writeIfChanged(path, body string) bool {
 	old, _ := os.ReadFile(path)
@@ -159,6 +205,7 @@ func fetchApacheStatus(query string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	req.Host = "127.0.0.1"
 	req.Header.Set("User-Agent", "siroc")
 	res, err := cli.Do(req)
 	if err != nil {

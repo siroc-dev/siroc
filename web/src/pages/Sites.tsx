@@ -30,6 +30,10 @@ function toRel(user: string, abs: string) {
   return abs.replace(/^\/+/, "");
 }
 
+function siteLabel(s: { domain: string; displayName?: string }) {
+  return s.displayName || s.domain;
+}
+
 function defaultDoc(domain: string) {
   const d = (domain || "").trim().toLowerCase();
   return d ? `domains/${d}/public_html` : "";
@@ -39,6 +43,8 @@ type Site = {
   id: number;
   username: string;
   domain: string;
+  displayName?: string;
+  displayAliases?: string[];
   docRoot: string;
   phpVersion: string;
   enabled: boolean;
@@ -381,7 +387,7 @@ export function Sites() {
     setWafBusy(key);
     try {
       await api.put(`/api/sites/${s.id}/waf`, { enabled });
-      message.success(enabled ? `ModSecurity on for ${s.domain}` : `ModSecurity off for ${s.domain}`);
+      message.success(enabled ? `ModSecurity on for ${siteLabel(s)}` : `ModSecurity off for ${siteLabel(s)}`);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -480,7 +486,7 @@ export function Sites() {
 
   function openRename(s: Site) {
     setRenameSite(s);
-    renameForm.setFieldsValue({ domain: s.domain });
+    renameForm.setFieldsValue({ domain: siteLabel(s) });
   }
 
   async function saveRename(values: { domain: string }) {
@@ -488,7 +494,7 @@ export function Sites() {
     setBusy(true);
     try {
       await api.post(`/api/sites/${renameSite.id}/rename`, { domain: values.domain });
-      message.success(`${renameSite.domain} renamed to ${values.domain}`);
+      message.success(`${siteLabel(renameSite)} renamed to ${values.domain}`);
       setRenameSite(null);
       await load();
     } catch (err) {
@@ -540,7 +546,7 @@ export function Sites() {
     setBusy(true);
     try {
       const st = await api.post<Site>(`/api/sites/${edit.id}/ssl`, {});
-      message.success(`Let's Encrypt issued for ${edit.domain}`);
+      message.success(`Let's Encrypt issued for ${siteLabel(edit)}`);
       setEdit(st);
       await load();
     } catch (err) {
@@ -555,7 +561,7 @@ export function Sites() {
     setBusy(true);
     try {
       const st = await api.patch<Site>(`/api/sites/${edit.id}`, { ssl: true, sslKind: "local" });
-      message.success(`Local HTTPS enabled for ${edit.domain}`);
+      message.success(`Local HTTPS enabled for ${siteLabel(edit)}`);
       setEdit(st);
       await load();
     } catch (err) {
@@ -570,7 +576,7 @@ export function Sites() {
     setBusy(true);
     try {
       const st = await api.delete<Site>(`/api/sites/${edit.id}/ssl`);
-      message.success(`HTTPS disabled for ${edit.domain}`);
+      message.success(`HTTPS disabled for ${siteLabel(edit)}`);
       setEdit(st);
       await load();
     } catch (err) {
@@ -649,7 +655,7 @@ export function Sites() {
     }
     if (kind === "wordpress" && out.kind !== "wordpress") {
       wpForm.setFieldsValue({
-        title: s.domain,
+        title: siteLabel(s),
         url: `http://${s.domain}`,
         prefix: randomWPPrefix(),
         adminUser: randomWPLogin(),
@@ -681,7 +687,7 @@ export function Sites() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return sites;
-    return sites.filter((s) => s.domain.toLowerCase().includes(q) || s.username.toLowerCase().includes(q) || (s.aliases || []).some((a) => a.toLowerCase().includes(q)));
+    return sites.filter((s) => s.domain.toLowerCase().includes(q) || siteLabel(s).toLowerCase().includes(q) || s.username.toLowerCase().includes(q) || (s.aliases || []).some((a) => a.toLowerCase().includes(q)) || (s.displayAliases || []).some((a) => a.toLowerCase().includes(q)));
   }, [sites, query]);
 
   function siteFilesPath(s: Site) {
@@ -729,9 +735,12 @@ export function Sites() {
             title: "Domain name",
             ellipsis: true,
             render: (_, s) => (
-              <Link className="site-list-domain" to={`/sites/${s.id}`}>
-                {s.domain}
-              </Link>
+              <>
+                <Link className="site-list-domain" to={`/sites/${s.id}`}>
+                  {siteLabel(s)}
+                </Link>
+                {s.displayName && s.displayName !== s.domain ? <div className="site-list-puny">{s.domain}</div> : null}
+              </>
             ),
           },
           {
@@ -812,7 +821,7 @@ export function Sites() {
                     if (key === "toggle") void toggle(s);
                     if (key === "delete") {
                       modal.confirm({
-                        title: `Delete ${s.domain}?`,
+                        title: `Delete ${siteLabel(s)}?`,
                         okText: "Delete",
                         okButtonProps: { danger: true },
                         onOk: () => remove(s.id),
@@ -950,7 +959,7 @@ export function Sites() {
         style={{ minWidth: 260, marginBottom: 12 }}
         placeholder="Select a website"
         value={ruleSite?.id}
-        options={sites.map((s) => ({ value: s.id, label: s.domain }))}
+        options={sites.map((s) => ({ value: s.id, label: siteLabel(s) }))}
         onChange={setRuleSiteId}
       />
       {ruleSite ? <SiteWAFRules siteId={ruleSite.id} domain={ruleSite.domain} /> : <Typography.Text type="secondary">Add a website first.</Typography.Text>}

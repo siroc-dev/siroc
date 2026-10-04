@@ -28,7 +28,7 @@ var descriptions = map[string]string{
 	"openvas":    "OpenVAS / Greenbone vulnerability management.",
 	"memcached":  "Memory object cache for PHP and application backends.",
 	"ffmpeg":     "Media converter for video and audio processing.",
-	"fail2ban":   "Bans IPs after repeated SSH and Siroc panel login failures.",
+	"fail2ban":   "Bans IPs after repeated SSH, FTP, MySQL/MariaDB, Redis, Nginx, Apache, and Siroc panel login failures.",
 	"phpmyadmin": "Browser UI for MySQL and MariaDB, served from the panel.",
 	"quota":      "Disk quotas so each hosting account has a storage limit.",
 }

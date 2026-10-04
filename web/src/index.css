@@ -27,6 +27,11 @@ html[data-theme="dark"] body {
   margin-bottom: 12px;
 }
 
+.site-list-puny {
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
 .site-list-domain {
   padding: 0;
   border: 0;

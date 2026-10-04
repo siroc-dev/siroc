@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.16">0.2.16</a>
           <a href="#v0.2.15">0.2.15</a>
           <a href="#v0.2.14">0.2.14</a>
           <a href="#v0.2.13">0.2.13</a>
@@ -44,6 +45,20 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.16">
+          <h2><a href="#v0.2.16">0.2.16</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Fail2ban lists banned addresses in a table. Open a row for ASN and location, and delete a row to unban it. Jails cover the panel, SSH, FTP, MySQL or MariaDB, Redis, Nginx, and Apache when those services are installed.</li>
+            <li>Web server optimize can set HttpOnly cookies on or off. On adds the flag for cookies from Nginx and Apache.</li>
+            <li>Websites accept international domain names. The panel stores punycode and shows the real name.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Apache Server Status no longer returns HTTP 404 when a site rewrite handles requests to 127.0.0.1. Status is served from its own local virtual host.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.15">
           <h2><a href="#v0.2.15">0.2.15</a></h2>

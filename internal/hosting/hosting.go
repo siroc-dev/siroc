@@ -256,9 +256,16 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 	if err := validate.LinuxUser(req.Username); err != nil {
 		return err
 	}
-	if err := validate.Domain(req.Domain); err != nil {
+	dom, err := validate.ASCIIHost(req.Domain)
+	if err != nil {
 		return err
 	}
+	req.Domain = dom
+	aliases, err := validate.DomainAliases(req.Domain, req.Aliases)
+	if err != nil {
+		return err
+	}
+	req.Aliases = aliases
 	if validate.IsAppKind(req.Kind) {
 		return m.writeApp(req)
 	}
@@ -299,10 +306,6 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 	_ = m.FixWebPerms(req.Username, doc)
 
 	sock := fmt.Sprintf("/run/php/php%s-%s-%s.sock", req.PHPVersion, req.Username, slug(req.Domain))
-	aliases, err := validate.DomainAliases(req.Domain, req.Aliases)
-	if err != nil {
-		return err
-	}
 	snippet, err := validate.NginxSnippet(req.Rewrite)
 	if err != nil {
 		return err
@@ -508,7 +511,8 @@ func (m *Manager) Delete(username, domain string) error {
 	if err := validate.LinuxUser(username); err != nil {
 		return err
 	}
-	if err := validate.Domain(domain); err != nil {
+	domain, err := validate.ASCIIHost(domain)
+	if err != nil {
 		return err
 	}
 	_ = os.Remove(filepath.Join("/etc/nginx/sites-enabled", domain+".conf"))
@@ -527,15 +531,15 @@ func (m *Manager) Delete(username, domain string) error {
 }
 
 func (m *Manager) Rename(req rpc.SiteRenameReq) error {
-	old := strings.ToLower(strings.TrimSpace(req.OldDomain))
-	newDom := strings.ToLower(strings.TrimSpace(req.Domain))
 	if err := validate.LinuxUser(req.Username); err != nil {
 		return err
 	}
-	if err := validate.Domain(old); err != nil {
+	old, err := validate.ASCIIHost(req.OldDomain)
+	if err != nil {
 		return fmt.Errorf("old domain: %w", err)
 	}
-	if err := validate.Domain(newDom); err != nil {
+	newDom, err := validate.ASCIIHost(req.Domain)
+	if err != nil {
 		return err
 	}
 	req.Domain = newDom

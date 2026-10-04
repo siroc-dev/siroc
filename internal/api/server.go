@@ -1327,7 +1327,18 @@ func (s *Server) createSite(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	body.Domain = strings.ToLower(strings.TrimSpace(body.Domain))
+	typed := strings.TrimSpace(body.Domain)
+	ascii, err := validate.ASCIIHost(typed)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	shown := validate.DisplayDomain(ascii)
+	body.DocRoot = strings.ReplaceAll(body.DocRoot, typed, ascii)
+	if shown != ascii {
+		body.DocRoot = strings.ReplaceAll(body.DocRoot, shown, ascii)
+	}
+	body.Domain = ascii
 	aliases, err := validate.DomainAliases(body.Domain, body.Aliases)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
@@ -1942,8 +1953,8 @@ func (s *Server) renameSite(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	newDomain := strings.ToLower(strings.TrimSpace(body.Domain))
-	if err := validate.Domain(newDomain); err != nil {
+	newDomain, err := validate.ASCIIHost(body.Domain)
+	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}

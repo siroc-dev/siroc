@@ -15,6 +15,8 @@ export type SiteSettingsSite = {
   id: number;
   username: string;
   domain: string;
+  displayName?: string;
+  displayAliases?: string[];
   docRoot: string;
   phpVersion: string;
   aliases: string[];
@@ -199,11 +201,15 @@ export function SiteSettings({
   }, [site]);
 
   const when = addedAt(site.createdAt);
-  const title = `Site modification [${site.domain}]${when ? ` -- Time added [${when}]` : ""}`;
+  const label = site.displayName || site.domain;
+  const title = `Site modification [${label}]${when ? ` -- Time added [${when}]` : ""}`;
   const port = site.ssl ? "80, 443" : "80";
   const rows = useMemo(
-    () => [{ name: site.domain, primary: true }, ...(site.aliases || []).map((name) => ({ name, primary: false }))],
-    [site.domain, site.aliases],
+    () => [
+      { name: site.domain, label: site.displayName || site.domain, primary: true },
+      ...(site.aliases || []).map((name, i) => ({ name, label: site.displayAliases?.[i] || name, primary: false })),
+    ],
+    [site.domain, site.displayName, site.aliases, site.displayAliases],
   );
 
   async function addDomains() {
@@ -278,7 +284,16 @@ export function SiteSettings({
                   getCheckboxProps: (row) => ({ disabled: row.primary }),
                 }}
                 columns={[
-                  { title: "Domain name", dataIndex: "name", render: (name: string, row) => (row.primary ? <span className="site-mod-primary">{name}</span> : name) },
+                  {
+                    title: "Domain name",
+                    dataIndex: "label",
+                    render: (label: string, row: { name: string; primary: boolean }) => (
+                      <span>
+                        {row.primary ? <span className="site-mod-primary">{label}</span> : label}
+                        {label !== row.name ? <div className="site-list-puny">{row.name}</div> : null}
+                      </span>
+                    ),
+                  },
                   { title: "Port", width: 110, render: () => port },
                   {
                     title: "Operate",
@@ -420,7 +435,7 @@ ${site.ssl ? "listen 443 ssl;\n" : ""}${phpSite ? `php ${site.phpVersion};\n` : 
                   type="warning"
                   showIcon
                   style={{ marginBottom: 12 }}
-                  message={`${site.domain} is not a public TLD`}
+                  message={`${label} is not a public TLD`}
                   description="Let's Encrypt will refuse this name. Use local HTTPS, or set a custom ACME server."
                 />
               ) : null}

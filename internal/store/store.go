@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/siroc-dev/siroc/internal/siteopts"
+	"github.com/siroc-dev/siroc/internal/validate"
 	_ "modernc.org/sqlite"
 )
 
@@ -63,10 +64,12 @@ type Site struct {
 	AccountID      int64            `json:"accountId"`
 	Username       string           `json:"username"`
 	Domain         string           `json:"domain"`
+	DisplayName    string           `json:"displayName,omitempty"`
 	DocRoot        string           `json:"docRoot"`
 	PHPVersion     string           `json:"phpVersion"`
 	Enabled        bool             `json:"enabled"`
 	Aliases        []string         `json:"aliases"`
+	DisplayAliases []string         `json:"displayAliases,omitempty"`
 	SSL            bool             `json:"ssl"`
 	SSLKind        string           `json:"sslKind,omitempty"`
 	SSLExpiry      string           `json:"sslExpiry,omitempty"`
@@ -654,9 +657,22 @@ func scanSite(scan func(dest ...any) error) (*Site, error) {
 	st.WAFDisabledIDs = parseWAFRuleIDs(disabled)
 	st.Options = siteopts.Parse(opts)
 	st.Aliases = parseAliases(aliases)
+	st.DisplayName = validate.DisplayDomain(st.Domain)
+	st.DisplayAliases = displayAliases(st.Aliases)
 	st.Rewrite = parseRewriteText(rewrites)
 	st.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
 	return st, nil
+}
+
+func displayAliases(aliases []string) []string {
+	if len(aliases) == 0 {
+		return nil
+	}
+	out := make([]string, len(aliases))
+	for i, a := range aliases {
+		out[i] = validate.DisplayDomain(a)
+	}
+	return out
 }
 
 func (s *Store) GetSite(id int64) (*Site, error) {

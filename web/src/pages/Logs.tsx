@@ -27,7 +27,7 @@ type LogResp = {
   truncated?: boolean;
   message?: string;
 };
-type SiteOpt = { id: number; domain: string };
+type SiteOpt = { id: number; domain: string; displayName?: string };
 
 const TABS = [
   { key: "panel", label: "Panel" },
@@ -141,13 +141,13 @@ export function Logs() {
               style={{ minWidth: 260 }}
               placeholder="Select a website"
               value={siteId || undefined}
-              options={sites.map((s) => ({ value: s.id, label: s.domain }))}
+              options={sites.map((s) => ({ value: s.id, label: s.displayName || s.domain }))}
               onChange={setSiteId}
             />
           }
         >
           {site ? (
-            <SiteLogs siteId={site.id} domain={site.domain} />
+            <SiteLogs siteId={site.id} domain={site.displayName || site.domain} />
           ) : (
             <Typography.Text type="secondary">Create a website first.</Typography.Text>
           )}

@@ -19,6 +19,7 @@ export type SiteDashSite = {
   id: number;
   username: string;
   domain: string;
+  displayName?: string;
   docRoot: string;
   phpVersion: string;
   enabled: boolean;
@@ -148,14 +149,17 @@ export function SiteDash({
       <Breadcrumb
         items={[
           { title: <a onClick={onBack}>Websites & domains</a> },
-          { title: site.domain },
+          { title: site.displayName || site.domain },
         ]}
       />
       <div className="site-dash-hero">
         <div>
           <Typography.Title level={3} style={{ margin: "8px 0 4px" }}>
-            {site.domain}
+            {site.displayName || site.domain}
           </Typography.Title>
+          {site.displayName && site.displayName !== site.domain ? (
+            <Typography.Text type="secondary">{site.domain}</Typography.Text>
+          ) : null}
           <Space wrap size={8}>
             <Tag color={site.enabled ? "success" : "default"}>{site.enabled ? "Active" : "Disabled"}</Tag>
             <Tag color={site.ssl ? "success" : "warning"}>{sslLabel(site)}</Tag>

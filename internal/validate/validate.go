@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+
+	"golang.org/x/net/idna"
 )
 
 var (
@@ -60,17 +62,63 @@ func LinuxUser(name string) error {
 }
 
 func Domain(name string) error {
+	_, err := ASCIIHost(name)
+	return err
+}
+
+// ASCIIHost converts an IDN to punycode and checks it is a DNS hostname.
+func ASCIIHost(name string) (string, error) {
 	n := strings.ToLower(strings.TrimSpace(name))
+	n = strings.TrimSuffix(n, ".")
 	if n == "localhost" {
-		return nil
+		return n, nil
 	}
-	if !domainRe.MatchString(n) {
-		return fmt.Errorf("invalid domain")
+	if n == "" || strings.Contains(n, "..") || strings.HasPrefix(n, "*.") {
+		return "", fmt.Errorf("invalid domain")
 	}
-	if strings.Contains(n, "..") {
-		return fmt.Errorf("invalid domain")
+	ascii, err := idna.Lookup.ToASCII(n)
+	if err != nil {
+		return "", fmt.Errorf("invalid domain")
 	}
-	return nil
+	ascii = strings.ToLower(ascii)
+	if !domainRe.MatchString(ascii) {
+		return "", fmt.Errorf("invalid domain")
+	}
+	return ascii, nil
+}
+
+// ASCIIAlias accepts a hostname or a wildcard like *.example.com, including IDN.
+func ASCIIAlias(name string) (string, error) {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if strings.HasPrefix(n, "*.") {
+		rest, err := ASCIIHost(n[2:])
+		if err != nil {
+			return "", err
+		}
+		return "*." + rest, nil
+	}
+	return ASCIIHost(n)
+}
+
+// DisplayDomain is the Unicode name for an IDN. ASCII names are unchanged.
+func DisplayDomain(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	wild := strings.HasPrefix(strings.ToLower(name), "*.")
+	host := name
+	if wild {
+		host = name[2:]
+	}
+	u, err := idna.Lookup.ToUnicode(host)
+	if err != nil || u == "" {
+		u = host
+	}
+	if wild {
+		return "*." + u
+	}
+	return u
 }
 
 func WildcardAlias(name string) error {
@@ -94,8 +142,9 @@ func DomainOrWildcardAlias(name string) error {
 }
 
 func DomainAliases(primary string, aliases []string) ([]string, error) {
-	primary = strings.ToLower(strings.TrimSpace(primary))
-	if err := Domain(primary); err != nil {
+	var err error
+	primary, err = ASCIIHost(primary)
+	if err != nil {
 		return nil, err
 	}
 	seen := map[string]struct{}{primary: {}}
@@ -105,8 +154,9 @@ func DomainAliases(primary string, aliases []string) ([]string, error) {
 		if n == "" {
 			continue
 		}
-		if err := DomainOrWildcardAlias(n); err != nil {
-			return nil, fmt.Errorf("alias %q: %w", n, err)
+		n, err = ASCIIAlias(n)
+		if err != nil {
+			return nil, fmt.Errorf("alias %q: %w", raw, err)
 		}
 		if _, ok := seen[n]; ok {
 			continue

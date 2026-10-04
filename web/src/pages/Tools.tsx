@@ -3,6 +3,7 @@ import { Alert, App, Button, Card, Form, Input, InputNumber, Select, Space, Swit
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
 import { PanelUpdate } from "@/components/PanelUpdate";
+import { Fail2banBans, type Fail2banBan } from "@/components/Fail2banBans";
 
 type Status = {
   hostname: string;
@@ -18,7 +19,7 @@ type Status = {
   ifaces?: string[];
   mounts?: { device: string; mountPoint: string; fsType: string; size?: string; used?: string; avail?: string; usePct?: string }[];
   fstab?: { device: string; mountPoint: string; fsType: string; options: string }[];
-  fail2ban?: { installed: boolean; active: boolean; jails?: { name: string; banned?: string[]; failed?: number }[]; message?: string };
+  fail2ban?: { installed: boolean; active: boolean; jails?: { name: string; banned?: string[]; failed?: number; total?: number }[]; bans?: Fail2banBan[]; message?: string };
   threats?: { failedLogins?: { ip: string; detail?: string }[]; banned?: { ip: string; source?: string }[]; topSources?: { ip: string; count: number }[] };
   ffmpeg?: { installed: boolean; version?: string; codecs?: string[]; output?: string };
   memcached?: { installed: boolean; active: boolean; memoryMB: number; listen: string; port: number; stats?: Record<string, string> };
@@ -276,31 +277,24 @@ export function Tools() {
                   {!st?.fail2ban?.installed ? (
                     <Alert type="info" showIcon message="Install Fail2ban from Software first. Panel login bans are on Security → Fail2ban." />
                   ) : (
-                    <Table
-                      size="small"
-                      rowKey="name"
-                      pagination={false}
-                      dataSource={st.fail2ban.jails || []}
-                      columns={[
-                        { title: "Jail", dataIndex: "name" },
-                        { title: "Failed", dataIndex: "failed", width: 90 },
-                        {
-                          title: "Banned",
-                          render: (_, j) =>
-                            (j.banned || []).length ? (
-                              <Space wrap>
-                                {(j.banned || []).map((ip) => (
-                                  <Tag key={ip} closable onClose={() => apply({ action: "unban", jail: j.name, ip })}>
-                                    {ip}
-                                  </Tag>
-                                ))}
-                              </Space>
-                            ) : (
-                              "—"
-                            ),
-                        },
-                      ]}
-                    />
+                    <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                      <Table
+                        size="small"
+                        rowKey="name"
+                        pagination={false}
+                        dataSource={st.fail2ban.jails || []}
+                        columns={[
+                          { title: "Jail", dataIndex: "name" },
+                          { title: "Failed", dataIndex: "failed", width: 90 },
+                          { title: "Banned", width: 90, render: (_, j) => j.total || (j.banned || []).length },
+                        ]}
+                      />
+                      <Fail2banBans
+                        bans={st.fail2ban.bans || []}
+                        busy={busy}
+                        onUnban={(jail, ip) => void apply({ action: "unban", jail, ip })}
+                      />
+                    </Space>
                   )}
                 </Card>
                 <Card title="Network threat detection">

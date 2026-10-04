@@ -1399,6 +1399,7 @@ type Fail2banStatus struct {
 	Installed bool           `json:"installed"`
 	Active    bool           `json:"active"`
 	Jails     []Fail2banJail `json:"jails,omitempty"`
+	Bans      []Fail2banBan  `json:"bans,omitempty"`
 	Message   string         `json:"message,omitempty"`
 }
 
@@ -1407,6 +1408,16 @@ type Fail2banJail struct {
 	Banned []string `json:"banned,omitempty"`
 	Failed int      `json:"failed,omitempty"`
 	Total  int      `json:"total,omitempty"`
+}
+
+type Fail2banBan struct {
+	IP       string `json:"ip"`
+	Jail     string `json:"jail"`
+	ASN      string `json:"asn,omitempty"`
+	ASOrg    string `json:"asOrg,omitempty"`
+	Country  string `json:"country,omitempty"`
+	City     string `json:"city,omitempty"`
+	Location string `json:"location,omitempty"`
 }
 
 type ThreatStatus struct {

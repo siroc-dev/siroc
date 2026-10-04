@@ -882,7 +882,7 @@ func configureApacheBackend(string) error {
 	}
 	_ = exec.Command("a2dissite", "000-default").Run()
 	_ = exec.Command("a2enmod", "proxy", "proxy_fcgi", "rewrite", "headers", "setenvif", "status").Run()
-	_ = enableApacheStatus()
+	_, _ = enableApacheStatus()
 	conf := `<VirtualHost 127.0.0.1:8080>
     ServerName _default_
     DocumentRoot /var/www/html

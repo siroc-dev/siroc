@@ -46,6 +46,7 @@ func webKnobs() []webKnob {
 		{Name: "tcp_nopush", Label: "TCP nopush", Group: "nginx"},
 		{Name: "tcp_nodelay", Label: "TCP nodelay", Group: "nginx"},
 		{Name: "server_tokens", Label: "Server tokens", Group: "nginx"},
+		{Name: "cookie_httponly", Label: "HttpOnly cookies", Group: "nginx"},
 		{Name: "server_names_hash_bucket_size", Label: "Server names hash bucket", Group: "nginx"},
 		{Name: "proxy_read_timeout", Label: "Proxy read timeout", Group: "nginx"},
 		{Name: "ssl_protocols", Label: "SSL protocols", Group: "nginx"},
@@ -119,6 +120,12 @@ func WebOptimize(ramGB int) *rpc.WebOptimize {
 		}
 		st.Settings = append(st.Settings, item)
 	}
+	if !ngxOK && apOK {
+		st.Settings = append(st.Settings, rpc.WebOptimizeItem{
+			Name: "cookie_httponly", Label: "HttpOnly cookies", Group: "apache",
+			Recommend: rec["cookie_httponly"], Value: rec["cookie_httponly"], Live: live["cookie_httponly"],
+		})
+	}
 	return st
 }
 
@@ -135,6 +142,9 @@ func ApplyWebOptimize(in rpc.WebOptimizeApply) error {
 		}
 		if !webValRe.MatchString(v) {
 			return fmt.Errorf("invalid value for %s", k)
+		}
+		if k == "cookie_httponly" && v != "on" && v != "off" {
+			return fmt.Errorf("HttpOnly cookies must be on or off")
 		}
 		vals[k] = v
 	}
@@ -235,6 +245,7 @@ func webTune(ramGB, cpus int) map[string]string {
 		"tcp_nopush":                    "on",
 		"tcp_nodelay":                   "on",
 		"server_tokens":                 "off",
+		"cookie_httponly":               "on",
 		"server_names_hash_bucket_size": "128",
 		"proxy_read_timeout":            "300s",
 		"ssl_protocols":                 "TLSv1.2 TLSv1.3",
@@ -378,7 +389,7 @@ proxy_read_timeout ` + v["proxy_read_timeout"] + `;
 ssl_session_cache shared:SSL:10m;
 ssl_session_timeout 1d;
 ssl_protocols ` + v["ssl_protocols"] + `;
-`
+` + nginxCookieHttpOnly(v["cookie_httponly"])
 }
 
 func applyApacheOptimize(vals map[string]string) error {
@@ -393,7 +404,7 @@ KeepAliveTimeout ` + vals["KeepAliveTimeout"] + `
 HostnameLookups ` + vals["HostnameLookups"] + `
 ServerTokens ` + vals["ServerTokens"] + `
 ServerSignature Off
-`
+` + apacheCookieHttpOnly(vals["cookie_httponly"])
 	if err := os.WriteFile(apacheOptimizePath, []byte(body), 0644); err != nil {
 		return err
 	}
@@ -432,7 +443,41 @@ func mergeWebLive() map[string]string {
 	readWebFile(apacheMPMPath, out)
 	readWebFile(apacheOptimizePath, out)
 	readWebFile("/etc/apache2/conf-enabled/zz-cp-optimize.conf", out)
+	markCookieHttpOnly(nginxOptimizePath, out)
+	markCookieHttpOnly(apacheOptimizePath, out)
 	return out
+}
+
+func nginxCookieHttpOnly(v string) string {
+	if v != "on" {
+		return ""
+	}
+	return "proxy_cookie_flags ~ httponly;\n"
+}
+
+func apacheCookieHttpOnly(v string) string {
+	if v != "on" {
+		return ""
+	}
+	return `<IfModule mod_headers.c>
+    Header always edit Set-Cookie "(?i)^((?:(?!HttpOnly).)*)$" "$1; HttpOnly"
+</IfModule>
+`
+}
+
+func markCookieHttpOnly(path string, out map[string]string) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	s := string(b)
+	if strings.Contains(s, "proxy_cookie_flags") && strings.Contains(s, "httponly") {
+		out["cookie_httponly"] = "on"
+		return
+	}
+	if strings.Contains(s, "Set-Cookie") && strings.Contains(s, "HttpOnly") {
+		out["cookie_httponly"] = "on"
+	}
 }
 
 func readWebFile(path string, out map[string]string) {

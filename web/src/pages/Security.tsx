@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Alert, App, AutoComplete, Button, Card, Checkbox, Col, Input, Popconfirm, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { ScanSummary, type ScanResult } from "@/components/ScanSummary";
+import { Fail2banBans, type Fail2banBan } from "@/components/Fail2banBans";
 import { useNavigate } from "react-router-dom";
 import { spaClick } from "@/lib/nav";
 
@@ -23,8 +24,8 @@ type WAF = {
   uploadScan?: boolean;
   message?: string;
 };
-type Fail2banJail = { name: string; banned?: string[]; failed?: number };
-type Fail2ban = { installed: boolean; active: boolean; jails?: Fail2banJail[]; message?: string };
+type Fail2banJail = { name: string; banned?: string[]; failed?: number; total?: number };
+type Fail2ban = { installed: boolean; active: boolean; jails?: Fail2banJail[]; bans?: Fail2banBan[]; message?: string };
 type CRSRule = { id: number; msg: string; file: string; pack: string; disabled: boolean };
 type AV = { installed: boolean; version?: string; daemonActive: boolean; freshclamActive: boolean; signatures?: string; lastScan?: string };
 type Scan = { ok: boolean; path: string; infected: number; summary: string };
@@ -244,11 +245,11 @@ export function Security() {
                 }
               >
                 {!fail2ban?.installed ? (
-                  <Typography.Text type="secondary">Install Fail2ban from Software. After install it watches SSH and Siroc panel logins.</Typography.Text>
+                  <Typography.Text type="secondary">Install Fail2ban from Software. After install it watches panel login, SSH, FTP, MySQL/MariaDB, Redis, Nginx, and Apache.</Typography.Text>
                 ) : (
                   <Space direction="vertical" style={{ width: "100%" }} size="middle">
                     <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                      The <Typography.Text code>siroc</Typography.Text> jail bans IPs after repeated panel login failures on this control panel. SSH stays in the <Typography.Text code>sshd</Typography.Text> jail.
+                      Jails watch this panel, SSH, FTP, MySQL/MariaDB, Redis, Nginx, and Apache when those services are installed. Click a banned address for ASN and location.
                     </Typography.Paragraph>
                     <Table
                       size="small"
@@ -259,30 +260,18 @@ export function Security() {
                       columns={[
                         { title: "Jail", dataIndex: "name" },
                         { title: "Failed", dataIndex: "failed", width: 90 },
-                        {
-                          title: "Banned",
-                          render: (_, j) =>
-                            (j.banned || []).length ? (
-                              <Space wrap>
-                                {(j.banned || []).map((ip) => (
-                                  <Tag
-                                    key={ip}
-                                    closable
-                                    onClose={() =>
-                                      run("unban", async () => {
-                                        await api.post("/api/sysops", { action: "unban", jail: j.name, ip });
-                                      })
-                                    }
-                                  >
-                                    {ip}
-                                  </Tag>
-                                ))}
-                              </Space>
-                            ) : (
-                              "—"
-                            ),
-                        },
+                        { title: "Banned", dataIndex: "total", width: 90, render: (n: number) => n || 0 },
                       ]}
+                    />
+                    <Typography.Text strong>Banned</Typography.Text>
+                    <Fail2banBans
+                      bans={fail2ban.bans || []}
+                      busy={busy === "unban"}
+                      onUnban={(jail, ip) =>
+                        void run("unban", async () => {
+                          await api.post("/api/sysops", { action: "unban", jail, ip });
+                        })
+                      }
                     />
                   </Space>
                 )}

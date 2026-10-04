@@ -16,25 +16,26 @@ import (
 
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/software"
+	"github.com/siroc-dev/siroc/internal/weblog"
 )
 
 func Status() (*rpc.SysopsStatus, error) {
 	st := &rpc.SysopsStatus{
-		Hostname: hostname(),
-		Time:     time.Now().In(localLoc()).Format(time.RFC3339),
-		Timezone: timezone(),
-		NTP:      ntpOn(),
-		DNS:      nameservers(),
-		Search:   searchDomain(),
-		Swap:     swapInfo(),
-		IPs:      addrs(),
-		Routes:   routes(),
-		Ifaces:   ifaces(),
-		Mounts:   mounts(),
-		Fstab:    fstab(),
-		Fail2ban: fail2banStatus(),
-		Threats:  threats(),
-		FFmpeg:   ffmpegStatus(),
+		Hostname:  hostname(),
+		Time:      time.Now().In(localLoc()).Format(time.RFC3339),
+		Timezone:  timezone(),
+		NTP:       ntpOn(),
+		DNS:       nameservers(),
+		Search:    searchDomain(),
+		Swap:      swapInfo(),
+		IPs:       addrs(),
+		Routes:    routes(),
+		Ifaces:    ifaces(),
+		Mounts:    mounts(),
+		Fstab:     fstab(),
+		Fail2ban:  fail2banStatus(),
+		Threats:   threats(),
+		FFmpeg:    ffmpegStatus(),
 		Memcached: memcachedStatus(),
 		Quota:     quotaReady(),
 	}
@@ -709,6 +710,19 @@ func fail2banStatus() *rpc.Fail2banStatus {
 			}
 			st.Jails = append(st.Jails, jailInfo(name))
 		}
+	}
+	for _, j := range st.Jails {
+		for _, ip := range j.Banned {
+			place := weblog.LookupPlace(ip)
+			st.Bans = append(st.Bans, rpc.Fail2banBan{
+				IP: ip, Jail: j.Name,
+				ASN: place.ASN, ASOrg: place.ASOrg,
+				Country: place.Country, City: place.City, Location: place.Location,
+			})
+		}
+	}
+	if st.Bans == nil {
+		st.Bans = []rpc.Fail2banBan{}
 	}
 	return st
 }
