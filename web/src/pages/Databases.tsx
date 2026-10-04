@@ -9,7 +9,7 @@ import { RedisConfigPanel } from "@/pages/RedisConfig";
 import { RedisStatusPanel, type RedisStatusData } from "@/pages/RedisStatus";
 
 type Account = { username: string };
-type DB = { id: number; username: string; dbName: string; dbUser: string; engine: string };
+type DB = { id: number; username: string; dbName: string; dbUser: string; engine: string; hasPassword?: boolean };
 type CfgItem = { name: string; label: string; value: string; live?: string; recommend?: string };
 type DBConfig = {
   engine: string;
@@ -40,6 +40,10 @@ export function Databases() {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
+  const [passForm] = Form.useForm();
+  const [passTarget, setPassTarget] = useState<DB | null>(null);
+  const [newPass, setNewPass] = useState("");
+  const [visiblePass, setVisiblePass] = useState<Record<number, string>>({});
   const watchUser = Form.useWatch("username", form);
   const [cfg, setCfg] = useState<DBConfig | null>(null);
   const [ramGB, setRamGB] = useState(1);
@@ -141,9 +145,53 @@ export function Databases() {
     setCreated("");
     try {
       const res = await api.post<{ database: DB; password: string }>("/api/databases", v);
-      setCreated(`Created ${res.database.dbName} / ${res.database.dbUser}. Password is shown only once: ${res.password}`);
+      setVisiblePass((prev) => ({ ...prev, [res.database.id]: res.password }));
+      setCreated(`Created ${res.database.dbName} / ${res.database.dbUser}. The password is saved and shown in the list.`);
       form.resetFields(["dbName", "dbUser", "password"]);
       message.success("Database created");
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function showDbPassword(d: DB) {
+    try {
+      const out = await api.get<{ password: string }>(`/api/databases/${d.id}/password`);
+      setVisiblePass((prev) => ({ ...prev, [d.id]: out.password }));
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Password is not stored");
+    }
+  }
+
+  function openReset(d: DB) {
+    setPassTarget(d);
+    setNewPass("");
+    passForm.resetFields();
+  }
+
+  async function randomResetPassword() {
+    try {
+      const data = await api.get<{ password: string }>("/api/password/suggest");
+      passForm.setFieldValue("password", data.password);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Cannot generate password");
+    }
+  }
+
+  async function resetDbPassword(values: { password: string }) {
+    if (!passTarget) return;
+    setBusy(true);
+    try {
+      const out = await api.put<{ password: string }>(`/api/databases/${passTarget.id}/password`, {
+        password: values.password,
+      });
+      const pw = out.password || values.password;
+      setNewPass(pw);
+      setVisiblePass((prev) => ({ ...prev, [passTarget.id]: pw }));
+      message.success(`Password reset for ${passTarget.dbUser}`);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -205,6 +253,32 @@ export function Databases() {
             { title: "User", dataIndex: "dbUser" },
             { title: "Account", dataIndex: "username" },
             {
+              title: "Password",
+              render: (_: unknown, d: DB) => {
+                const pw = visiblePass[d.id];
+                if (pw) {
+                  return (
+                    <Space size={4}>
+                      <Typography.Text copyable>{pw}</Typography.Text>
+                      <Button size="small" type="link" onClick={() => setVisiblePass((prev) => {
+                        const next = { ...prev };
+                        delete next[d.id];
+                        return next;
+                      })}>
+                        Hide
+                      </Button>
+                    </Space>
+                  );
+                }
+                if (!d.hasPassword) return <Typography.Text type="secondary">Not stored</Typography.Text>;
+                return (
+                  <Button size="small" onClick={() => void showDbPassword(d)}>
+                    Show
+                  </Button>
+                );
+              },
+            },
+            {
               title: "",
               align: "right" as const,
               render: (_: unknown, d: DB) => (
@@ -221,6 +295,9 @@ export function Databases() {
                     }}
                   >
                     phpMyAdmin
+                  </Button>
+                  <Button size="small" onClick={() => openReset(d)}>
+                    Reset password
                   </Button>
                   <Popconfirm title={`Delete ${d.dbName}?`} onConfirm={() => remove(d.id)}>
                     <Button size="small" danger>
@@ -399,6 +476,45 @@ export function Databases() {
       ) : (
         databasesTab
       )}
+
+      <Modal
+        title={passTarget ? `Reset password · ${passTarget.dbName}` : "Reset password"}
+        open={!!passTarget}
+        onCancel={() => {
+          setPassTarget(null);
+          setNewPass("");
+        }}
+        onOk={() => (newPass ? setPassTarget(null) : passForm.submit())}
+        confirmLoading={busy}
+        destroyOnHidden
+        okText={newPass ? "Done" : "Reset password"}
+      >
+        <Form form={passForm} layout="vertical" onFinish={resetDbPassword} requiredMark={false} style={{ marginTop: 8 }}>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="This changes the MySQL user password and saves it so it can be shown again."
+          />
+          {newPass ? (
+            <>
+              <Typography.Text type="secondary">New password</Typography.Text>
+              <Typography.Paragraph copyable style={{ marginBottom: 0 }}>
+                {newPass}
+              </Typography.Paragraph>
+            </>
+          ) : (
+            <>
+              <Form.Item name="password" label="New password" rules={[{ required: true, min: 8 }]}>
+                <Input.Password autoComplete="new-password" />
+              </Form.Item>
+              <Button icon={<ReloadOutlined />} onClick={() => void randomResetPassword()}>
+                Random password
+              </Button>
+            </>
+          )}
+        </Form>
+      </Modal>
 
       <Modal
         title="Create database"

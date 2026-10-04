@@ -897,3 +897,128 @@ html[data-theme="dark"] .log-list button.is-on {
     gap: 8px;
   }
 }
+
+.site-mod .ant-modal-body {
+  padding: 0;
+}
+
+.site-mod-body {
+  display: flex;
+  min-height: 520px;
+}
+
+.site-mod-nav {
+  width: 200px;
+  flex: none;
+  background: #f7f7f8;
+  border-right: 1px solid #f0f0f0;
+  padding: 8px 0;
+}
+
+.site-mod-nav button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 10px 16px;
+  cursor: pointer;
+  color: #333;
+}
+
+.site-mod-nav button.active {
+  background: #fff;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 #1677ff;
+}
+
+.site-mod-pane {
+  flex: 1;
+  min-width: 0;
+  padding: 16px 20px 24px;
+}
+
+.site-mod-domain-top {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.site-mod-hint {
+  flex: 1;
+  border: 1px dashed #d9d9d9;
+  border-radius: 8px;
+  padding: 14px 16px;
+  color: #666;
+  background: #fafafa;
+  line-height: 1.6;
+}
+
+.site-mod-add {
+  background: #52c41a;
+  border-color: #52c41a;
+}
+
+.site-mod-add:hover {
+  background: #73d13d !important;
+  border-color: #73d13d !important;
+}
+
+.site-mod-primary {
+  color: #52c41a;
+  font-weight: 600;
+}
+
+.site-mod-config {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+html[data-theme="dark"] .site-mod-nav {
+  background: #141414;
+  border-right-color: #303030;
+}
+
+html[data-theme="dark"] .site-mod-nav button {
+  color: #e5e5e5;
+}
+
+html[data-theme="dark"] .site-mod-nav button.active {
+  background: #1f1f1f;
+}
+
+html[data-theme="dark"] .site-mod-hint {
+  background: #1f1f1f;
+  border-color: #303030;
+  color: #bbb;
+}
+
+@media (max-width: 720px) {
+  .site-mod-body {
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .site-mod-nav {
+    width: 100%;
+    display: flex;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+
+  .site-mod-nav button {
+    width: auto;
+    white-space: nowrap;
+  }
+
+  .site-mod-domain-top {
+    flex-direction: column;
+  }
+}

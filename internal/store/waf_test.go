@@ -49,6 +49,16 @@ func TestWAFDefaultsAndToggle(t *testing.T) {
 	if err != nil || len(list) != 1 || list[0].WAFEnabled {
 		t.Fatalf("list: %+v %v", list, err)
 	}
+	if err := st.UpdateSiteWAFRules(site.ID, []int{942100, 941100, 942100}); err != nil {
+		t.Fatal(err)
+	}
+	site, err = st.GetSite(site.ID)
+	if err != nil || len(site.WAFDisabledIDs) != 2 || site.WAFDisabledIDs[0] != 941100 || site.WAFDisabledIDs[1] != 942100 {
+		t.Fatalf("rules: %+v %v", site.WAFDisabledIDs, err)
+	}
+	if err := st.UpdateSiteWAFRules(site.ID, []int{1}); err == nil {
+		t.Fatal("expected invalid rule id")
+	}
 }
 
 func TestEffectiveWAF(t *testing.T) {

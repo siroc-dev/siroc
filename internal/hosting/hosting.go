@@ -13,6 +13,7 @@ import (
 
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/security"
+	"github.com/siroc-dev/siroc/internal/siteopts"
 	"github.com/siroc-dev/siroc/internal/validate"
 	"github.com/siroc-dev/siroc/internal/weblog"
 )
@@ -57,6 +58,10 @@ type siteData struct {
 	Rewrite           string
 	ProxyPass         string
 	WAF               bool
+	WAFRemove         []int
+	Extra             string
+	Access            string
+	Index             string
 }
 
 const nginxTmpl = `server {
@@ -82,7 +87,7 @@ const nginxTmpl = `server {
         return 301 https://$host$request_uri;
     }
 {{- else}}
-    location / {
+{{.Extra}}{{.Access}}    location / {
 {{- if .ProxyPass}}
         proxy_pass {{.ProxyPass}};
         proxy_http_version 1.1;
@@ -135,7 +140,7 @@ server {
     location ^~ /fpm-status { return 404; }
     include /etc/nginx/snippets/siroc-xmlrpc-{{.Domain}}.conf;
     include /etc/nginx/snippets/siroc-uploads-php-{{.Domain}}.conf;
-
+{{.Extra}}{{.Access}}
     location / {
 {{- if .ProxyPass}}
         proxy_pass {{.ProxyPass}};
@@ -179,6 +184,9 @@ const apacheTmpl = `<VirtualHost 127.0.0.1:8080>
     UseCanonicalPhysicalPort Off
     SetEnvIf X-Forwarded-Proto "https" HTTPS=on
     DocumentRoot {{.DocRoot}}
+{{- if .Index}}
+    DirectoryIndex {{.Index}}
+{{- end}}
     <Directory {{.DocRoot}}>
         Options FollowSymLinks
         AllowOverride All
@@ -196,6 +204,10 @@ const apacheTmpl = `<VirtualHost 127.0.0.1:8080>
         SecAuditLog ${APACHE_LOG_DIR}/sites/{{.Domain}}-modsec.log
 {{- if not .WAF}}
         SecRuleEngine Off
+{{- else}}
+{{- range .WAFRemove}}
+        SecRuleRemoveById {{.}}
+{{- end}}
 {{- end}}
     </IfModule>
 </VirtualHost>
@@ -319,6 +331,10 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 		Rewrite:     snippet,
 		ProxyPass:   "",
 		WAF:         req.WAF,
+		WAFRemove:   req.WAFRemove,
+	}
+	if err := applyGuards(&data, req.Options, ""); err != nil {
+		return err
 	}
 	if err := fillSiteFPM(&data, m.HomeRoot, req); err != nil {
 		return err
@@ -386,6 +402,25 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 	return nil
 }
 
+func applyGuards(data *siteData, opt siteopts.Options, proxy string) error {
+	extra, err := siteopts.NginxExtra(opt, proxy)
+	if err != nil {
+		return err
+	}
+	access, err := siteopts.NginxAccess(opt)
+	if err != nil {
+		return err
+	}
+	index, err := siteopts.ApacheIndex(opt)
+	if err != nil {
+		return err
+	}
+	data.Extra = extra
+	data.Access = access
+	data.Index = index
+	return nil
+}
+
 func (m *Manager) writeProxy(req rpc.SiteWriteReq) error {
 	pass, err := validate.ProxyURL(req.ProxyPass)
 	if err != nil {
@@ -434,6 +469,9 @@ func (m *Manager) writeProxy(req rpc.SiteWriteReq) error {
 		SSLKey:      key,
 		ProxyPass:   pass,
 		PostMaxSize: "64M",
+	}
+	if err := applyGuards(&data, req.Options, pass); err != nil {
+		return err
 	}
 	if err := weblog.TouchSiteLogs(req.Domain); err != nil {
 		return err

@@ -32,6 +32,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/config"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/secret"
+	"github.com/siroc-dev/siroc/internal/siteopts"
 	"github.com/siroc-dev/siroc/internal/store"
 	"github.com/siroc-dev/siroc/internal/validate"
 	"github.com/siroc-dev/siroc/internal/version"
@@ -179,6 +180,8 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/sites/{id}/stats.html", s.siteStatsHTML)
 		r.Get("/api/sites/{id}/logs", s.siteLogs)
 		r.Put("/api/sites/{id}/waf", s.setSiteWAF)
+		r.Get("/api/sites/{id}/waf/rules", s.siteWAFRules)
+		r.Put("/api/sites/{id}/waf/rules", s.siteWAFRules)
 		r.Get("/api/sites/{id}/git", s.getSiteGit)
 		r.Put("/api/sites/{id}/git", s.putSiteGit)
 		r.Post("/api/sites/{id}/git/token", s.rotateSiteGitToken)
@@ -189,6 +192,8 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/databases/suggest", s.suggestDatabase)
 		r.Post("/api/databases", s.createDatabase)
 		r.Delete("/api/databases/{id}", s.deleteDatabase)
+		r.Get("/api/databases/{id}/password", s.showDatabasePassword)
+		r.Put("/api/databases/{id}/password", s.setDatabasePassword)
 		r.Get("/api/databases/engine", s.dbEngine)
 		r.Post("/api/databases/{id}/phpmyadmin", s.pmaAutologin)
 		r.Post("/api/files/fetch", s.fetchFile)
@@ -1445,17 +1450,18 @@ func (s *Server) updateSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		PHPVersion string   `json:"phpVersion"`
-		Enabled    *bool    `json:"enabled"`
-		Aliases    []string `json:"aliases"`
-		Rewrite    *string  `json:"rewrite"`
-		SSL        *bool    `json:"ssl"`
-		SSLKind    *string  `json:"sslKind"`
-		DocRoot    *string  `json:"docRoot"`
-		Kind       *string  `json:"kind"`
-		ProxyPass  *string  `json:"proxyPass"`
-		AppPort    *int     `json:"appPort"`
-		AppCmd     *string  `json:"appCmd"`
+		PHPVersion string            `json:"phpVersion"`
+		Enabled    *bool             `json:"enabled"`
+		Aliases    []string          `json:"aliases"`
+		Rewrite    *string           `json:"rewrite"`
+		SSL        *bool             `json:"ssl"`
+		SSLKind    *string           `json:"sslKind"`
+		DocRoot    *string           `json:"docRoot"`
+		Kind       *string           `json:"kind"`
+		ProxyPass  *string           `json:"proxyPass"`
+		AppPort    *int              `json:"appPort"`
+		AppCmd     *string           `json:"appCmd"`
+		Options    *siteopts.Options `json:"options"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -1596,10 +1602,31 @@ func (s *Server) updateSite(w http.ResponseWriter, r *http.Request) {
 		st.AppCmd = ""
 		st.AppPort = 0
 	}
+	saveOpts := false
+	if body.Options != nil {
+		norm, nerr := siteopts.Normalize(*body.Options)
+		if nerr != nil {
+			writeErr(w, http.StatusBadRequest, nerr)
+			return
+		}
+		st.Options = norm
+		saveOpts = true
+	}
 	req := s.siteWriteReq(*st, php, enabled, aliases, ssl, kind, rewrite)
 	if err := s.Agent.SiteWrite(req); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
+	}
+	if saveOpts {
+		raw, merr := siteopts.Marshal(st.Options)
+		if merr != nil {
+			writeErr(w, http.StatusBadRequest, merr)
+			return
+		}
+		if err := s.Store.UpdateSiteOptions(st.ID, raw); err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
 	}
 	if ssl && kind == "letsencrypt" && body.Aliases != nil {
 		out, err := s.Agent.SiteSSL(s.siteSSLReq(st.Username, st.Domain, aliases, ""))
@@ -1712,6 +1739,8 @@ func (s *Server) siteWriteReq(st store.Site, php string, enabled bool, aliases [
 		AppPort:    st.AppPort,
 		AppCmd:     st.AppCmd,
 		WAF:        s.siteWAF(st),
+		WAFRemove:  append([]int(nil), st.WAFDisabledIDs...),
+		Options:    st.Options,
 	}
 }
 
@@ -2095,6 +2124,80 @@ func (s *Server) deleteDatabase(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Store.DeleteDatabase(id)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) showDatabasePassword(w http.ResponseWriter, r *http.Request) {
+	db, ok := s.databaseForRequest(w, r)
+	if !ok {
+		return
+	}
+	if db.PasswordEnc == "" {
+		writeErr(w, http.StatusNotFound, fmt.Errorf("password was not stored for this database"))
+		return
+	}
+	pw, err := s.decryptPassword(db.PasswordEnc)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"password": pw})
+}
+
+func (s *Server) setDatabasePassword(w http.ResponseWriter, r *http.Request) {
+	db, ok := s.databaseForRequest(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Password string `json:"password"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	pass := strings.TrimSpace(body.Password)
+	if pass == "" {
+		var err error
+		pass, err = secret.RandomPassword(16)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	if !auth.ValidPassword(pass) {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("password must be at least 8 characters"))
+		return
+	}
+	if err := s.Agent.DBPassword(db.DBUser, pass); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	enc, err := s.encryptPassword(pass)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if err := s.Store.UpdateDatabasePassword(db.ID, enc); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"password": pass})
+}
+
+func (s *Server) databaseForRequest(w http.ResponseWriter, r *http.Request) (*store.Database, bool) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
+		return nil, false
+	}
+	db, err := s.Store.GetDatabase(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, fmt.Errorf("database not found"))
+		return nil, false
+	}
+	if !s.allowAccount(w, r, db.Username) {
+		return nil, false
+	}
+	return db, true
 }
 
 func (s *Server) dbEngine(w http.ResponseWriter, _ *http.Request) {

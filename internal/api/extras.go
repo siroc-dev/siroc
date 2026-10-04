@@ -15,6 +15,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/auth"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/secret"
+	"github.com/siroc-dev/siroc/internal/siteopts"
 	"github.com/siroc-dev/siroc/internal/store"
 	"github.com/siroc-dev/siroc/internal/validate"
 )
@@ -744,6 +745,11 @@ func (s *Server) userBackupManifest(acc *store.Account) *rpc.BackupManifest {
 			AppPort:    st.AppPort,
 			AppCmd:     st.AppCmd,
 			WAF:        st.WAFEnabled,
+			WAFRemove:  append([]int(nil), st.WAFDisabledIDs...),
+		}
+		if !siteopts.IsZero(st.Options) {
+			opt := st.Options
+			row.Options = &opt
 		}
 		if g, err := s.Store.GetSiteGit(st.ID); err == nil && g != nil {
 			row.GitRepo = g.Repo
@@ -852,6 +858,10 @@ func (s *Server) applyBackupManifest(man *rpc.BackupManifest) error {
 				continue
 			}
 			_ = s.writeRestoredSite(acc, st)
+			_ = s.restoreSiteOptions(existing.ID, st.Options)
+			if st.WAFRemove != nil {
+				_ = s.Store.UpdateSiteWAFRules(existing.ID, st.WAFRemove)
+			}
 			if st.GitRepo != "" {
 				_ = s.Store.UpsertSiteGit(&store.SiteGit{
 					SiteID: existing.ID, Repo: st.GitRepo, Branch: st.GitBranch, Path: st.GitPath, Command: st.GitCommand, Token: st.GitToken,
@@ -865,6 +875,12 @@ func (s *Server) applyBackupManifest(man *rpc.BackupManifest) error {
 		}
 		if err := s.writeRestoredSite(acc, st); err != nil {
 			return err
+		}
+		if err := s.restoreSiteOptions(created.ID, st.Options); err != nil {
+			return err
+		}
+		if st.WAFRemove != nil {
+			_ = s.Store.UpdateSiteWAFRules(created.ID, st.WAFRemove)
 		}
 		if st.GitRepo != "" {
 			token := st.GitToken
@@ -901,6 +917,14 @@ func (s *Server) writeRestoredSite(acc *store.Account, st rpc.BackupSite) error 
 	if kind == "" {
 		kind = "php"
 	}
+	var opt siteopts.Options
+	if st.Options != nil {
+		norm, err := siteopts.Normalize(*st.Options)
+		if err != nil {
+			return err
+		}
+		opt = norm
+	}
 	return s.Agent.SiteWrite(rpc.SiteWriteReq{
 		Username:   acc.Username,
 		Domain:     st.Domain,
@@ -916,8 +940,21 @@ func (s *Server) writeRestoredSite(acc *store.Account, st rpc.BackupSite) error 
 		AppPort:    st.AppPort,
 		AppCmd:     st.AppCmd,
 		WAF:        st.WAF,
+		WAFRemove:  append([]int(nil), st.WAFRemove...),
+		Options:    opt,
 		FPM:        s.accountFPMPtr(acc),
 	})
+}
+
+func (s *Server) restoreSiteOptions(id int64, opt *siteopts.Options) error {
+	if opt == nil {
+		return nil
+	}
+	raw, err := siteopts.Marshal(*opt)
+	if err != nil {
+		return err
+	}
+	return s.Store.UpdateSiteOptions(id, raw)
 }
 
 func ftpHomeRel(owner, home string) string {

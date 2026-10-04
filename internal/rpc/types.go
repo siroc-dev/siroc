@@ -1,5 +1,7 @@
 package rpc
 
+import "github.com/siroc-dev/siroc/internal/siteopts"
+
 type ErrorBody struct {
 	Error string `json:"error"`
 }
@@ -135,21 +137,23 @@ type ServiceReq struct {
 }
 
 type SiteWriteReq struct {
-	Username   string          `json:"username"`
-	Domain     string          `json:"domain"`
-	DocRoot    string          `json:"docRoot"`
-	PHPVersion string          `json:"phpVersion"`
-	Enabled    bool            `json:"enabled"`
-	Aliases    []string        `json:"aliases,omitempty"`
-	SSL        bool            `json:"ssl,omitempty"`
-	SSLKind    string          `json:"sslKind,omitempty"`
-	Rewrite    string          `json:"rewrite,omitempty"`
-	FPM        *PHPFPMSettings `json:"fpm,omitempty"`
-	Kind       string          `json:"kind,omitempty"`
-	ProxyPass  string          `json:"proxyPass,omitempty"`
-	AppPort    int             `json:"appPort,omitempty"`
-	AppCmd     string          `json:"appCmd,omitempty"`
-	WAF        bool            `json:"waf"`
+	Username   string           `json:"username"`
+	Domain     string           `json:"domain"`
+	DocRoot    string           `json:"docRoot"`
+	PHPVersion string           `json:"phpVersion"`
+	Enabled    bool             `json:"enabled"`
+	Aliases    []string         `json:"aliases,omitempty"`
+	SSL        bool             `json:"ssl,omitempty"`
+	SSLKind    string           `json:"sslKind,omitempty"`
+	Rewrite    string           `json:"rewrite,omitempty"`
+	FPM        *PHPFPMSettings  `json:"fpm,omitempty"`
+	Kind       string           `json:"kind,omitempty"`
+	ProxyPass  string           `json:"proxyPass,omitempty"`
+	AppPort    int              `json:"appPort,omitempty"`
+	AppCmd     string           `json:"appCmd,omitempty"`
+	WAF        bool             `json:"waf"`
+	WAFRemove  []int            `json:"wafRemove,omitempty"`
+	Options    siteopts.Options `json:"options,omitempty"`
 }
 
 type SiteRuntimeReq struct {
@@ -1263,24 +1267,26 @@ type BackupAccount struct {
 }
 
 type BackupSite struct {
-	Domain     string   `json:"domain"`
-	DocRoot    string   `json:"docRoot,omitempty"`
-	PHPVersion string   `json:"phpVersion,omitempty"`
-	Enabled    bool     `json:"enabled"`
-	Aliases    []string `json:"aliases,omitempty"`
-	SSL        bool     `json:"ssl,omitempty"`
-	SSLKind    string   `json:"sslKind,omitempty"`
-	Rewrite    string   `json:"rewrite,omitempty"`
-	Kind       string   `json:"kind,omitempty"`
-	ProxyPass  string   `json:"proxyPass,omitempty"`
-	AppPort    int      `json:"appPort,omitempty"`
-	AppCmd     string   `json:"appCmd,omitempty"`
-	WAF        bool     `json:"waf,omitempty"`
-	GitRepo    string   `json:"gitRepo,omitempty"`
-	GitBranch  string   `json:"gitBranch,omitempty"`
-	GitPath    string   `json:"gitPath,omitempty"`
-	GitCommand string   `json:"gitCommand,omitempty"`
-	GitToken   string   `json:"gitToken,omitempty"`
+	Domain     string            `json:"domain"`
+	DocRoot    string            `json:"docRoot,omitempty"`
+	PHPVersion string            `json:"phpVersion,omitempty"`
+	Enabled    bool              `json:"enabled"`
+	Aliases    []string          `json:"aliases,omitempty"`
+	SSL        bool              `json:"ssl,omitempty"`
+	SSLKind    string            `json:"sslKind,omitempty"`
+	Rewrite    string            `json:"rewrite,omitempty"`
+	Kind       string            `json:"kind,omitempty"`
+	ProxyPass  string            `json:"proxyPass,omitempty"`
+	AppPort    int               `json:"appPort,omitempty"`
+	AppCmd     string            `json:"appCmd,omitempty"`
+	WAF        bool              `json:"waf,omitempty"`
+	WAFRemove  []int             `json:"wafRemove,omitempty"`
+	Options    *siteopts.Options `json:"options,omitempty"`
+	GitRepo    string            `json:"gitRepo,omitempty"`
+	GitBranch  string            `json:"gitBranch,omitempty"`
+	GitPath    string            `json:"gitPath,omitempty"`
+	GitCommand string            `json:"gitCommand,omitempty"`
+	GitToken   string            `json:"gitToken,omitempty"`
 }
 
 type BackupDatabase struct {

@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/siroc-dev/siroc/internal/siteopts"
 	_ "modernc.org/sqlite"
 )
 
@@ -57,24 +59,26 @@ type FTPUser struct {
 }
 
 type Site struct {
-	ID         int64     `json:"id"`
-	AccountID  int64     `json:"accountId"`
-	Username   string    `json:"username"`
-	Domain     string    `json:"domain"`
-	DocRoot    string    `json:"docRoot"`
-	PHPVersion string    `json:"phpVersion"`
-	Enabled    bool      `json:"enabled"`
-	Aliases    []string  `json:"aliases"`
-	SSL        bool      `json:"ssl"`
-	SSLKind    string    `json:"sslKind,omitempty"`
-	SSLExpiry  string    `json:"sslExpiry,omitempty"`
-	Rewrite    string    `json:"rewrite,omitempty"`
-	Kind       string    `json:"kind,omitempty"`
-	ProxyPass  string    `json:"proxyPass,omitempty"`
-	AppPort    int       `json:"appPort,omitempty"`
-	AppCmd     string    `json:"appCmd,omitempty"`
-	WAFEnabled bool      `json:"wafEnabled"`
-	CreatedAt  time.Time `json:"createdAt"`
+	ID             int64            `json:"id"`
+	AccountID      int64            `json:"accountId"`
+	Username       string           `json:"username"`
+	Domain         string           `json:"domain"`
+	DocRoot        string           `json:"docRoot"`
+	PHPVersion     string           `json:"phpVersion"`
+	Enabled        bool             `json:"enabled"`
+	Aliases        []string         `json:"aliases"`
+	SSL            bool             `json:"ssl"`
+	SSLKind        string           `json:"sslKind,omitempty"`
+	SSLExpiry      string           `json:"sslExpiry,omitempty"`
+	Rewrite        string           `json:"rewrite,omitempty"`
+	Kind           string           `json:"kind,omitempty"`
+	ProxyPass      string           `json:"proxyPass,omitempty"`
+	AppPort        int              `json:"appPort,omitempty"`
+	AppCmd         string           `json:"appCmd,omitempty"`
+	WAFEnabled     bool             `json:"wafEnabled"`
+	WAFDisabledIDs []int            `json:"wafDisabledIds,omitempty"`
+	Options        siteopts.Options `json:"options,omitempty"`
+	CreatedAt      time.Time        `json:"createdAt"`
 }
 
 type NginxRewrite struct {
@@ -215,6 +219,8 @@ CREATE TABLE IF NOT EXISTS settings (
 		`ALTER TABLE databases ADD COLUMN password_enc TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE accounts ADD COLUMN waf_enabled INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE sites ADD COLUMN waf_enabled INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE sites ADD COLUMN waf_disabled_json TEXT NOT NULL DEFAULT '[]'`,
+		`ALTER TABLE sites ADD COLUMN site_opts_json TEXT NOT NULL DEFAULT '{}'`,
 	} {
 		_, _ = s.DB.Exec(col)
 	}
@@ -633,18 +639,20 @@ func (s *Store) CreateSite(accountID int64, domain, docroot, php string, aliases
 	return s.GetSite(id)
 }
 
-const siteCols = `s.id, s.account_id, a.username, s.domain, s.docroot, s.php_version, s.enabled, s.aliases_json, s.ssl_enabled, s.ssl_expiry, s.ssl_kind, s.nginx_rewrites_json, s.kind, s.proxy_pass, s.app_port, s.app_cmd, s.waf_enabled, s.created_at`
+const siteCols = `s.id, s.account_id, a.username, s.domain, s.docroot, s.php_version, s.enabled, s.aliases_json, s.ssl_enabled, s.ssl_expiry, s.ssl_kind, s.nginx_rewrites_json, s.kind, s.proxy_pass, s.app_port, s.app_cmd, s.waf_enabled, s.waf_disabled_json, s.site_opts_json, s.created_at`
 
 func scanSite(scan func(dest ...any) error) (*Site, error) {
 	st := &Site{}
 	var en, ssl, waf int
-	var created, aliases, rewrites string
-	if err := scan(&st.ID, &st.AccountID, &st.Username, &st.Domain, &st.DocRoot, &st.PHPVersion, &en, &aliases, &ssl, &st.SSLExpiry, &st.SSLKind, &rewrites, &st.Kind, &st.ProxyPass, &st.AppPort, &st.AppCmd, &waf, &created); err != nil {
+	var created, aliases, rewrites, disabled, opts string
+	if err := scan(&st.ID, &st.AccountID, &st.Username, &st.Domain, &st.DocRoot, &st.PHPVersion, &en, &aliases, &ssl, &st.SSLExpiry, &st.SSLKind, &rewrites, &st.Kind, &st.ProxyPass, &st.AppPort, &st.AppCmd, &waf, &disabled, &opts, &created); err != nil {
 		return nil, err
 	}
 	st.Enabled = en == 1
 	st.SSL = ssl == 1
 	st.WAFEnabled = waf == 1
+	st.WAFDisabledIDs = parseWAFRuleIDs(disabled)
+	st.Options = siteopts.Parse(opts)
 	st.Aliases = parseAliases(aliases)
 	st.Rewrite = parseRewriteText(rewrites)
 	st.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
@@ -709,6 +717,14 @@ func (s *Store) UpdateSite(id int64, php, docroot string, enabled bool, aliases 
 	return err
 }
 
+func (s *Store) UpdateSiteOptions(id int64, raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		raw = "{}"
+	}
+	_, err := s.DB.Exec(`UPDATE sites SET site_opts_json = ? WHERE id = ?`, raw, id)
+	return err
+}
+
 func (s *Store) RenameSite(id int64, domain, php, docroot string, enabled bool, aliases []string, ssl bool, expiry, kind, rewrite string) error {
 	if err := s.UpdateSite(id, php, docroot, enabled, aliases, ssl, expiry, kind, rewrite); err != nil {
 		return err
@@ -737,6 +753,58 @@ func (s *Store) UpdateSiteWAF(id int64, enabled bool) error {
 	}
 	_, err := s.DB.Exec(`UPDATE sites SET waf_enabled = ? WHERE id = ?`, v, id)
 	return err
+}
+
+func (s *Store) UpdateSiteWAFRules(id int64, ids []int) error {
+	norm, err := NormalizeWAFRuleIDs(ids)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(norm)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.Exec(`UPDATE sites SET waf_disabled_json = ? WHERE id = ?`, string(raw), id)
+	return err
+}
+
+func NormalizeWAFRuleIDs(ids []int) ([]int, error) {
+	if len(ids) > 200 {
+		return nil, fmt.Errorf("at most 200 disabled rules per website")
+	}
+	seen := map[int]bool{}
+	var out []int
+	for _, id := range ids {
+		if id < 100 || id > 999999999 {
+			return nil, fmt.Errorf("invalid rule id %d", id)
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	sort.Ints(out)
+	if out == nil {
+		out = []int{}
+	}
+	return out, nil
+}
+
+func parseWAFRuleIDs(raw string) []int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []int{}
+	}
+	var ids []int
+	if err := json.Unmarshal([]byte(raw), &ids); err != nil {
+		return []int{}
+	}
+	norm, err := NormalizeWAFRuleIDs(ids)
+	if err != nil {
+		return []int{}
+	}
+	return norm
 }
 
 func EffectiveWAF(account, site bool) bool {

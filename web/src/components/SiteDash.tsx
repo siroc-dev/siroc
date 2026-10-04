@@ -29,6 +29,7 @@ export type SiteDashSite = {
   kind?: string;
   appPort?: number;
   wafEnabled?: boolean;
+  wafDisabledIds?: number[];
 };
 
 export type SiteDashAction =
@@ -95,6 +96,7 @@ export function SiteDash({
   onBack,
   onOpen,
   onWaf,
+  onRules,
 }: {
   site: SiteDashSite;
   admin?: boolean;
@@ -104,6 +106,7 @@ export function SiteDash({
   onBack: () => void;
   onOpen: (key: SiteDashAction) => void;
   onWaf: (enabled: boolean) => void;
+  onRules?: () => void;
 }) {
   const phpSite = !APP_KINDS.has(site.kind || "") && site.kind !== "proxy";
   const files: Tile[] = [
@@ -137,7 +140,7 @@ export function SiteDash({
       color: site.ssl ? "#52c41a" : "#faad14",
       warn: site.ssl ? undefined : "Domain not secured",
     },
-    { key: "edit", title: "Hosting settings", desc: "Aliases, rewrite, document root", icon: <SettingOutlined />, color: "#595959" },
+    { key: "edit", title: "Site settings", desc: "Domain, directory, SSL, rewrite", icon: <SettingOutlined />, color: "#595959" },
   ];
 
   return (
@@ -219,6 +222,11 @@ export function SiteDash({
             />
           </div>
         </div>
+        {onRules ? (
+          <Button style={{ marginTop: 12 }} onClick={onRules}>
+            Rule exceptions{site.wafDisabledIds?.length ? ` (${site.wafDisabledIds.length} off)` : ""}
+          </Button>
+        ) : null}
       </section>
     </div>
   );

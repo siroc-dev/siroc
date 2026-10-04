@@ -67,7 +67,7 @@ describe("Sites page", () => {
     await waitFor(() => {
       expect(screen.getByText("Protect my websites")).toBeTruthy();
     });
-    expect(screen.getByText("a01.test")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "a01.test" })).toBeTruthy();
     const switches = screen.getAllByRole("switch");
     expect(switches.length).toBeGreaterThanOrEqual(2);
     switches[0].click();
@@ -88,7 +88,7 @@ describe("Sites page", () => {
     });
     const { unmount } = renderSites(false, "a01");
     await waitFor(() => {
-      expect(screen.getByText("a01.test")).toBeTruthy();
+      expect(screen.getByRole("link", { name: "a01.test" })).toBeTruthy();
     });
     screen.getByRole("link", { name: "a01.test" }).click();
     await waitFor(() => {

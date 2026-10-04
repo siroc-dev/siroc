@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import { MoreOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Card, Dropdown, Flex, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
@@ -12,7 +12,9 @@ import { WebOptimize } from "@/components/WebOptimize";
 import { ArtisanRun, type ArtisanCmd } from "@/components/ArtisanRun";
 import { LaravelQueues, type LaravelQueueRow, type LaravelSchedule } from "@/components/LaravelQueues";
 import { SiteLogs } from "@/components/SiteLogs";
+import { SiteWAFRules } from "@/components/SiteWAFRules";
 import { SiteGit } from "@/components/SiteGit";
+import { SiteSettings, type SiteOptions, type SiteSection } from "@/components/SiteSettings";
 import type { FormInstance } from "antd/es/form";
 
 type Account = { username: string; wafEnabled?: boolean };
@@ -50,6 +52,8 @@ type Site = {
   appPort?: number;
   appCmd?: string;
   wafEnabled?: boolean;
+  createdAt?: string;
+  options?: SiteOptions;
 };
 
 const SITE_KINDS = [
@@ -278,6 +282,7 @@ function RewriteBlock({ form }: { form: FormInstance }) {
 export function Sites() {
   const { message, modal } = App.useApp();
   const nav = useNavigate();
+  const [search, setSearch] = useSearchParams();
   const { id: siteIdParam } = useParams();
   const { admin } = useOutletContext<{ user: string; admin?: boolean }>();
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -289,6 +294,7 @@ export function Sites() {
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [edit, setEdit] = useState<Site | null>(null);
+  const [settingsSection, setSettingsSection] = useState<SiteSection>("domain");
   const [logSite, setLogSite] = useState<Site | null>(null);
   const [gitSite, setGitSite] = useState<Site | null>(null);
   const [stats, setStats] = useState<Site | null>(null);
@@ -296,7 +302,6 @@ export function Sites() {
   const [statsErr, setStatsErr] = useState("");
   const [statsBusy, setStatsBusy] = useState(false);
   const [form] = Form.useForm();
-  const [editForm] = Form.useForm();
   const [renameForm] = Form.useForm();
   const [renameSite, setRenameSite] = useState<Site | null>(null);
   const [appSite, setAppSite] = useState<Site | null>(null);
@@ -316,6 +321,8 @@ export function Sites() {
   const [runtime, setRuntime] = useState<AppRuntime | null>(null);
   const [runtimeBusy, setRuntimeBusy] = useState(false);
   const [wafBusy, setWafBusy] = useState("");
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [ruleSiteId, setRuleSiteId] = useState(0);
 
   async function load() {
     const [a, s, p, u] = await Promise.all([
@@ -451,31 +458,21 @@ export function Sites() {
     }
   }
 
-  function openEdit(s: Site) {
+  function openEdit(s: Site, section: SiteSection = "domain") {
+    setSettingsSection(section);
     setEdit(s);
-    editForm.setFieldsValue({
-      phpVersion: s.phpVersion,
-      aliases: s.aliases || [],
-      rewrite: s.rewrite || "",
-      docRoot: toRel(s.username, s.docRoot),
-      kind: s.kind || "php",
-      proxyPass: s.proxyPass || "",
-      appPort: s.appPort || undefined,
-      appCmd: s.appCmd || defaultAppCmd(s.kind || "php"),
-    });
   }
 
-  async function saveEdit(values: { phpVersion: string; aliases: string[]; rewrite?: string; docRoot: string; kind?: string; proxyPass?: string; appPort?: number; appCmd?: string }) {
+  async function patchSite(body: Record<string, unknown>, ok: string) {
     if (!edit) return;
     setBusy(true);
     try {
-      await api.patch(`/api/sites/${edit.id}`, values);
-      message.success(`${edit.domain} updated`);
-      setEdit(null);
+      const st = await api.patch<Site>(`/api/sites/${edit.id}`, body);
+      message.success(ok);
+      setEdit(st);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
-      await load();
     } finally {
       setBusy(false);
     }
@@ -696,7 +693,9 @@ export function Sites() {
     if (key === "databases") nav(`/databases?user=${encodeURIComponent(s.username)}&domain=${encodeURIComponent(s.domain)}`);
     if (key === "backup") nav("/backup");
     if (key === "info") setInfoSite(s);
-    if (key === "php" || key === "ssl" || key === "edit") openEdit(s);
+    if (key === "php") openEdit(s, "php");
+    if (key === "ssl") openEdit(s, "ssl");
+    if (key === "edit") openEdit(s, "domain");
     if (key === "logs") setLogSite(s);
     if (key === "ssh") nav(`/terminal?user=${encodeURIComponent(s.username)}`);
     if (key === "git") setGitSite(s);
@@ -787,7 +786,7 @@ export function Sites() {
                     { key: "logs", label: "Logs" },
                     { key: "git", label: "Git deploy" },
                     { key: "stats", label: "Stats" },
-                    { key: "edit", label: "Edit" },
+                    { key: "edit", label: "Settings" },
                     { key: "rename", label: "Rename" },
                     ...(APP_KINDS.has(s.kind || "") ? [{ key: "app", label: "App" }] : []),
                     ...(!APP_KINDS.has(s.kind || "") && s.kind !== "proxy"
@@ -911,6 +910,54 @@ export function Sites() {
     </Card>
   );
 
+  const ruleSite = sites.find((s) => s.id === ruleSiteId) || sites[0];
+
+  const wafTab = (
+    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+    <Card title="ModSecurity WAF">
+      <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+        Blocks common attacks on Apache (SQL injection, XSS). The global engine stays under Security. Turn WAF off for your whole account, or disable it on a single website in the table.
+      </Typography.Paragraph>
+      {accounts.length ? (
+        <Space direction="vertical" style={{ width: "100%" }} size="middle">
+          {accounts.map((a) => (
+            <Flex key={a.username} align="center" justify="space-between" gap={16}>
+              <div>
+                <Typography.Text strong>{admin ? a.username : "Protect my websites"}</Typography.Text>
+                <div>
+                  <Typography.Text type="secondary">
+                    {a.wafEnabled !== false ? "On for this account" : "Off for this account — site switches are disabled"}
+                  </Typography.Text>
+                </div>
+              </div>
+              <Switch
+                checked={a.wafEnabled !== false}
+                loading={wafBusy === `acc:${a.username}`}
+                onChange={(v) => void setAccountWAF(a.username, v)}
+              />
+            </Flex>
+          ))}
+        </Space>
+      ) : (
+        <Typography.Text type="secondary">Create a hosting account first.</Typography.Text>
+      )}
+    </Card>
+    <Card title="Rule exceptions">
+      <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+        Disable a rule on one website when it blocks a real request. The same rule stays on for every other site.
+      </Typography.Paragraph>
+      <Select
+        style={{ minWidth: 260, marginBottom: 12 }}
+        placeholder="Select a website"
+        value={ruleSite?.id}
+        options={sites.map((s) => ({ value: s.id, label: s.domain }))}
+        onChange={setRuleSiteId}
+      />
+      {ruleSite ? <SiteWAFRules siteId={ruleSite.id} domain={ruleSite.domain} /> : <Typography.Text type="secondary">Add a website first.</Typography.Text>}
+    </Card>
+    </Space>
+  );
+
   return (
     <div className="cp-page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
@@ -937,45 +984,41 @@ export function Sites() {
             onBack={() => nav("/sites")}
             onOpen={(key) => runDash(openSite, key)}
             onWaf={(v) => void setSiteWAF(openSite, v)}
+            onRules={() => setRulesOpen(true)}
           />
         </Card>
       ) : null}
-      {openSite ? null : accounts.length > 0 ? (
-        <Card style={{ marginBottom: 16 }} title="ModSecurity WAF">
-          <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-            Blocks common attacks on Apache (SQL injection, XSS). The global engine stays under Security. Turn WAF off for your whole account, or disable it on a single website in the table.
-          </Typography.Paragraph>
-          <Space direction="vertical" style={{ width: "100%" }} size="middle">
-            {accounts.map((a) => (
-              <Flex key={a.username} align="center" justify="space-between" gap={16}>
-                <div>
-                  <Typography.Text strong>{admin ? a.username : "Protect my websites"}</Typography.Text>
-                  <div>
-                    <Typography.Text type="secondary">
-                      {a.wafEnabled !== false ? "On for this account" : "Off for this account — site switches are disabled"}
-                    </Typography.Text>
-                  </div>
-                </div>
-                <Switch
-                  checked={a.wafEnabled !== false}
-                  loading={wafBusy === `acc:${a.username}`}
-                  onChange={(v) => void setAccountWAF(a.username, v)}
-                />
-              </Flex>
-            ))}
-          </Space>
-        </Card>
-      ) : null}
+      <Modal
+        title={openSite ? `Rule exceptions · ${openSite.domain}` : "Rule exceptions"}
+        open={rulesOpen && !!openSite}
+        onCancel={() => setRulesOpen(false)}
+        footer={null}
+        width={760}
+        destroyOnHidden
+      >
+        {openSite ? <SiteWAFRules siteId={openSite.id} domain={openSite.domain} /> : null}
+      </Modal>
       {openSite ? null : admin ? (
         <Tabs
+          activeKey={["le", "optimize", "waf"].includes(search.get("tab") || "") ? search.get("tab")! : "sites"}
+          onChange={(key) => {
+            const next = new URLSearchParams(search);
+            if (key === "sites") next.delete("tab");
+            else next.set("tab", key);
+            setSearch(next, { replace: true });
+          }}
           items={[
-            { key: "sites", label: "Websites", children: sitesTable },
-            { key: "le", label: "Let's Encrypt", children: leTab },
-            { key: "optimize", label: "Optimize", children: <WebOptimize /> },
+            { key: "sites", label: <Link to="/sites">Websites</Link>, children: sitesTable },
+            { key: "le", label: <Link to="/sites?tab=le">Let's Encrypt</Link>, children: leTab },
+            { key: "optimize", label: <Link to="/sites?tab=optimize">Optimize</Link>, children: <WebOptimize /> },
+            { key: "waf", label: <Link to="/sites?tab=waf">ModSecurity</Link>, children: wafTab },
           ]}
         />
       ) : openSite ? null : (
-        sitesTable
+        <>
+          {wafTab}
+          {sitesTable}
+        </>
       )}
 
       <Modal
@@ -1098,105 +1141,24 @@ export function Sites() {
         </Form>
       </Modal>
 
-      <Modal
-        width={720}
-        title={edit ? `Edit ${edit.domain}` : "Edit website"}
-        open={!!edit}
-        onCancel={() => setEdit(null)}
-        onOk={() => editForm.submit()}
-        confirmLoading={busy}
-        destroyOnHidden
-        okText="Save"
-      >
-        {edit ? (
-          <Form form={editForm} layout="vertical" onFinish={saveEdit} requiredMark={false} style={{ marginTop: 8 }}>
-            <Form.Item name="phpVersion" label="PHP version">
-              <Select options={phpOptions(edit.phpVersion)} />
-            </Form.Item>
-            <Form.Item name="kind" label="Type">
-              <Select
-                options={SITE_KINDS}
-                onChange={(v) => {
-                  if (APP_KINDS.has(v) && !editForm.getFieldValue("appCmd")) {
-                    editForm.setFieldsValue({ appCmd: defaultAppCmd(v) });
-                  }
-                }}
-              />
-            </Form.Item>
-            <Form.Item noStyle shouldUpdate>
-              {() => {
-                const kind = editForm.getFieldValue("kind") as string;
-                if (kind === "proxy") {
-                  return (
-                    <Form.Item name="proxyPass" label="Proxy URL" extra="nginx proxy_pass target">
-                      <Input placeholder="http://127.0.0.1:3000/" />
-                    </Form.Item>
-                  );
-                }
-                if (APP_KINDS.has(kind)) {
-                  return (
-                    <>
-                      <Form.Item name="appCmd" label="Start command">
-                        <Input placeholder={defaultAppCmd(kind)} />
-                      </Form.Item>
-                      <Form.Item name="appPort" label="Port">
-                        <InputNumber min={1024} max={65535} style={{ width: "100%" }} />
-                      </Form.Item>
-                    </>
-                  );
-                }
-                return null;
-              }}
-            </Form.Item>
-            <Form.Item
-              name="docRoot"
-              label="Document root"
-              extra={`Must stay inside ${homePrefix(edit.username)}`}
-              rules={[{ required: true, message: "Path required" }]}
-            >
-              <Input addonBefore={homePrefix(edit.username)} />
-            </Form.Item>
-            <Form.Item name="aliases" label="Domain aliases" extra="www.example.com or *.example.com for every subdomain">
-              <Select mode="tags" tokenSeparators={[",", " "]} placeholder="www.example.com, *.example.com" />
-            </Form.Item>
-            <RewriteBlock form={editForm} />
-            <Typography.Text type="secondary">SSL</Typography.Text>
-            <div style={{ marginTop: 8 }}>
-              <Space wrap>
-                {sslTag(edit)}
-                {edit.ssl && edit.sslExpiry ? <Typography.Text type="secondary">{edit.sslExpiry}</Typography.Text> : null}
-              </Space>
-            </div>
-            <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
-              Local certificates are self-signed (browser warning). Let's Encrypt needs a public domain. HTTP is not redirected while using a local certificate.
-            </Typography.Paragraph>
-            {!publicHostname(edit.domain) ? (
-              <Alert
-                type="warning"
-                showIcon
-                style={{ marginTop: 12 }}
-                message={`${edit.domain} is not a public TLD`}
-                description="Let's Encrypt production and staging will refuse this name. Use local HTTPS, or set a custom ACME server in the Let's Encrypt tab."
-              />
-            ) : null}
-            <Space wrap style={{ marginTop: 12 }}>
-              <Button loading={busy} onClick={issueSSL}>
-                {edit.sslKind === "letsencrypt" ? "Renew Let's Encrypt" : "Issue Let's Encrypt"}
-              </Button>
-              {edit.sslKind !== "local" || !edit.ssl ? (
-                <Button loading={busy} onClick={useLocalSSL}>
-                  Use local HTTPS
-                </Button>
-              ) : null}
-              {edit.ssl ? (
-                <Button loading={busy} onClick={disableSSL}>
-                  Disable HTTPS
-                </Button>
-              ) : null}
-            </Space>
-          </Form>
-        ) : null}
-      </Modal>
+      {edit ? (
+        <SiteSettings
+          site={edit}
+          section={settingsSection}
+          busy={busy}
+          phpVersions={phpOptions(edit.phpVersion)}
+          publicName={publicHostname(edit.domain)}
+          onClose={() => setEdit(null)}
+          onPatch={patchSite}
+          onIssueSSL={issueSSL}
+          onLocalSSL={useLocalSSL}
+          onDisableSSL={disableSSL}
+          onGit={() => setGitSite(edit)}
+          onLogs={() => setLogSite(edit)}
+          onSSH={() => nav(`/terminal?user=${encodeURIComponent(edit.username)}`)}
+          onLaravel={() => void openApp(edit, "laravel")}
+        />
+      ) : null}
 
       <Modal
         title={renameSite ? `Rename ${renameSite.domain}` : "Rename website"}
