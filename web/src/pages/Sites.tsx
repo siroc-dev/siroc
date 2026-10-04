@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { MoreOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Card, Dropdown, Flex, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
@@ -730,9 +730,9 @@ export function Sites() {
             title: "Domain name",
             ellipsis: true,
             render: (_, s) => (
-              <button type="button" className="site-list-domain" onClick={() => nav(`/sites/${s.id}`)}>
+              <Link className="site-list-domain" to={`/sites/${s.id}`}>
                 {s.domain}
-              </button>
+              </Link>
             ),
           },
           {

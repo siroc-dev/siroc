@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { useOutletContext, useSearchParams } from "react-router-dom";
 import {
   App,
@@ -44,6 +44,7 @@ import {
 } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { languageFromPath } from "@/lib/fileLang";
+import { joinPath, moveDestinations } from "@/lib/filePaths";
 import { editorWorkspace, formatBytes } from "@/lib/usage";
 import { SSHTerminal } from "@/components/SSHTerminal";
 
@@ -52,20 +53,13 @@ const MonacoFileEditor = lazy(() => import("@/components/MonacoFileEditor").then
 type Account = { username: string };
 type Entry = { name: string; path: string; isDir: boolean; size: number; mode: string; modTime: string };
 type Listing = { path: string; absPath?: string; root?: boolean; entries: Entry[] };
-type Clip = { path: string; name: string; isDir: boolean; op: "copy" | "move" };
+type Clip = { items: { path: string; name: string; isDir: boolean }[]; op: "copy" | "move" };
 
 const rootShortcuts = ["/", "/etc", "/home", "/opt/siroc", "/var/log", "/etc/nginx", "/etc/php"];
 
 function isArchive(name: string) {
   const n = name.toLowerCase();
   return [".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".gz", ".bz2", ".xz"].some((ext) => n.endsWith(ext));
-}
-
-function joinPath(dir: string, name: string) {
-  const base = dir.replace(/\/+$/, "");
-  const leaf = name.replace(/^\/+/, "");
-  if (!base || base === "/") return "/" + leaf;
-  return `${base}/${leaf}`;
 }
 
 function parseMode(mode: string) {
@@ -122,7 +116,7 @@ export function Files() {
   const [clip, setClip] = useState<Clip | null>(null);
   const [perm, setPerm] = useState<Entry | null>(null);
   const [modeBits, setModeBits] = useState({ u: 6, g: 4, o: 4 });
-  const [moveItem, setMoveItem] = useState<Entry | null>(null);
+  const [moveItems, setMoveItems] = useState<Entry[]>([]);
   const [moveDest, setMoveDest] = useState("");
   const [fetchOpen, setFetchOpen] = useState(false);
   const [fetchUrl, setFetchUrl] = useState("");
@@ -133,6 +127,9 @@ export function Files() {
   const [termOpen, setTermOpen] = useState(false);
   const [termCwd, setTermCwd] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
+  const [ctxOpen, setCtxOpen] = useState(false);
+  const [ctxItems, setCtxItems] = useState<Entry[]>([]);
+  const [ctxPoint, setCtxPoint] = useState({ x: 0, y: 0 });
   const [filter, setFilter] = useState("");
   const [treeKids, setTreeKids] = useState<Record<string, Entry[]>>({});
   const [expanded, setExpanded] = useState<string[]>(["/"]);
@@ -293,7 +290,7 @@ export function Files() {
         setAbsPath("");
         setEditorReady(false);
       }
-      if (clip?.path === path) setClip(null);
+      if (clip?.items.some((i) => i.path === path)) setClip(null);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -480,19 +477,28 @@ export function Files() {
     }
   }
 
+  function setClipboard(items: Entry[], op: "copy" | "move") {
+    if (!items.length) return;
+    setClip({ items: items.map((e) => ({ path: e.path, name: e.name, isDir: e.isDir })), op });
+    const label = items.length === 1 ? items[0].name : `${items.length} items`;
+    message.success(op === "copy" ? `Copied ${label}` : `Cut ${label}`);
+  }
+
   async function pasteInto(dir: string) {
-    if (!clip) return;
-    const dest = joinPath(dir, clip.name);
+    if (!clip?.items.length) return;
     setBusy(true);
     try {
-      if (clip.op === "move") {
-        await api.post("/api/files/rename", { user, path: clip.path, dest });
-        message.success("Moved");
-        setClip(null);
-      } else {
-        await api.post("/api/files/copy", { user, path: clip.path, dest });
-        message.success("Copied");
+      for (const item of clip.items) {
+        const dest = joinPath(dir, item.name);
+        if (clip.op === "move") {
+          await api.post("/api/files/rename", { user, path: item.path, dest });
+        } else {
+          await api.post("/api/files/copy", { user, path: item.path, dest });
+        }
       }
+      const n = clip.items.length;
+      message.success(clip.op === "move" ? (n === 1 ? "Moved" : `Moved ${n} items`) : n === 1 ? "Copied" : `Copied ${n} items`);
+      if (clip.op === "move") setClip(null);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Paste failed");
@@ -501,14 +507,24 @@ export function Files() {
     }
   }
 
+  function openMove(items: Entry[]) {
+    if (!items.length) return;
+    setMoveItems(items);
+    setMoveDest(items.length === 1 ? joinPath(listing.path, items[0].name) : listing.path);
+  }
+
   async function applyMove() {
-    if (!moveItem || !moveDest) return;
+    const jobs = moveDestinations(moveItems, moveDest);
+    if (!jobs.length) return;
     setBusy(true);
     try {
-      await api.post("/api/files/rename", { user, path: moveItem.path, dest: moveDest });
-      message.success("Moved");
-      setMoveItem(null);
-      if (clip?.path === moveItem.path) setClip(null);
+      for (const job of jobs) {
+        await api.post("/api/files/rename", { user, path: job.path, dest: job.dest });
+      }
+      message.success(jobs.length === 1 ? "Moved" : `Moved ${jobs.length} items`);
+      setMoveItems([]);
+      setSelected([]);
+      if (clip && jobs.some((j) => clip.items.some((i) => i.path === j.path))) setClip(null);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Move failed");
@@ -611,16 +627,12 @@ export function Files() {
 
   function toolbarCopy() {
     if (!needPicked("copy")) return;
-    const e = picked[0];
-    setClip({ path: e.path, name: e.name, isDir: e.isDir, op: "copy" });
-    message.success(`Copied ${e.name}`);
+    setClipboard(picked, "copy");
   }
 
   function toolbarMove() {
     if (!needPicked("move")) return;
-    const e = picked[0];
-    setMoveItem(e);
-    setMoveDest(joinPath(listing.path, e.name));
+    openMove(picked);
   }
 
   function toolbarExtract() {
@@ -651,54 +663,93 @@ export function Files() {
     });
   }
 
-  function fileActions(e: Entry): MenuProps["items"] {
-    const items: MenuProps["items"] = [
-      { key: "download", icon: <DownloadOutlined />, label: "Download" },
-    ];
-    if (e.isDir) {
-      items.push({ key: "terminal", icon: <LaptopOutlined />, label: "Terminal" });
+  function actionTargets(e: Entry) {
+    return picked.some((x) => x.path === e.path) && picked.length > 1 ? picked : [e];
+  }
+
+  function fileActions(items: Entry[]): MenuProps["items"] {
+    const one = items.length === 1 ? items[0] : null;
+    const out: MenuProps["items"] = [];
+    if (one) {
+      out.push({ key: "open", icon: one.isDir ? <FolderOutlined /> : <FileOutlined />, label: "Open" });
+      out.push({ key: "download", icon: <DownloadOutlined />, label: "Download" });
+      if (one.isDir) out.push({ key: "terminal", icon: <LaptopOutlined />, label: "Terminal" });
+      if (!one.isDir && isArchive(one.name)) {
+        out.push({ key: "extract", icon: <FileZipOutlined />, label: "Extract", disabled: busy });
+      } else {
+        out.push({ key: "archive", icon: <FileZipOutlined />, label: "Archive", disabled: busy });
+      }
+      out.push({ key: "perm", icon: <LockOutlined />, label: "Permissions" });
+    } else if (items.length > 1) {
+      out.push({ key: "download", icon: <DownloadOutlined />, label: "Download" });
     }
-    if (!e.isDir && isArchive(e.name)) {
-      items.push({ key: "extract", icon: <FileZipOutlined />, label: "Extract", disabled: busy });
-    } else {
-      items.push({ key: "archive", icon: <FileZipOutlined />, label: "Archive", disabled: busy });
-    }
-    items.push(
-      { key: "perm", icon: <LockOutlined />, label: "Permissions" },
-      { key: "copy", icon: <CopyOutlined />, label: "Copy" },
-      { key: "move", icon: <ScissorOutlined />, label: "Move" },
+    const pasteDir = one?.isDir ? one.path : listing.path;
+    out.push(
+      { key: "copy", icon: <CopyOutlined />, label: items.length > 1 ? `Copy ${items.length} items` : "Copy" },
+      { key: "move", icon: <ScissorOutlined />, label: items.length > 1 ? `Move ${items.length} items` : "Move" },
       {
         key: "paste",
         icon: <SnippetsOutlined />,
         label: "Paste",
-        disabled: !clip || busy || (e.isDir && clip.path === e.path),
+        disabled: !clip || busy || clip.items.some((i) => i.path === pasteDir),
       },
       { type: "divider" },
-      { key: "delete", icon: <DeleteOutlined />, label: "Delete", danger: true },
+      { key: "delete", icon: <DeleteOutlined />, label: items.length > 1 ? `Delete ${items.length} items` : "Delete", danger: true },
     );
-    return items;
+    return out;
   }
 
-  function onFileAction(e: Entry, key: string) {
-    if (key === "download") void download(e);
-    if (key === "terminal") openTerminal(e.path);
-    if (key === "extract") confirmExtract(e);
-    if (key === "archive") void archiveEntry(e);
-    if (key === "perm") openPerm(e);
-    if (key === "copy") setClip({ path: e.path, name: e.name, isDir: e.isDir, op: "copy" });
-    if (key === "move") {
-      setMoveItem(e);
-      setMoveDest(joinPath(listing.path, e.name));
+  function folderActions(): MenuProps["items"] {
+    return [
+      { key: "new-file", icon: <FileAddOutlined />, label: "New file" },
+      { key: "new-folder", icon: <FolderAddOutlined />, label: "New folder" },
+      { key: "upload", icon: <UploadOutlined />, label: "Upload" },
+      { key: "paste", icon: <SnippetsOutlined />, label: "Paste", disabled: !clip || busy },
+      { type: "divider" },
+      { key: "refresh", icon: <ReloadOutlined />, label: "Refresh" },
+    ];
+  }
+
+  function onFileAction(items: Entry[], key: string) {
+    const one = items.length === 1 ? items[0] : null;
+    if (key === "open" && one) void open(one);
+    if (key === "download") {
+      for (const e of items.filter((x) => !x.isDir)) void download(e);
     }
-    if (key === "paste") void pasteInto(e.isDir ? e.path : listing.path);
+    if (key === "terminal" && one) openTerminal(one.path);
+    if (key === "extract" && one) confirmExtract(one);
+    if (key === "archive" && one) void archiveEntry(one);
+    if (key === "perm" && one) openPerm(one);
+    if (key === "copy") setClipboard(items, "copy");
+    if (key === "move") openMove(items);
+    if (key === "paste") void pasteInto(one?.isDir ? one.path : listing.path);
     if (key === "delete") {
       modal.confirm({
-        title: `Delete ${e.name}?`,
+        title: items.length === 1 ? `Delete ${items[0].name}?` : `Delete ${items.length} items?`,
+        content: items.map((e) => e.name).join(", "),
         okText: "Delete",
         okButtonProps: { danger: true },
-        onOk: () => remove(e.path),
+        onOk: async () => {
+          for (const e of items) await remove(e.path);
+        },
       });
     }
+  }
+
+  function onFolderAction(key: string) {
+    if (key === "new-file") setFileOpen(true);
+    if (key === "new-folder") setFolderOpen(true);
+    if (key === "upload") setUpOpen(true);
+    if (key === "paste") void pasteInto(listing.path);
+    if (key === "refresh") void load();
+  }
+
+  function openContext(ev: MouseEvent, items: Entry[]) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setCtxItems(items);
+    setCtxPoint({ x: ev.clientX, y: ev.clientY });
+    setCtxOpen(true);
   }
 
   return (
@@ -814,13 +865,22 @@ export function Files() {
           </div>
           {clip ? (
             <Typography.Paragraph type="secondary" style={{ margin: "8px 12px 0" }}>
-              {clip.op === "move" ? "Moving" : "Copied"} <Typography.Text code>{clip.name}</Typography.Text> — open a folder, then Paste.
+              {clip.op === "move" ? "Moving" : "Copied"}{" "}
+              <Typography.Text code>{clip.items.length === 1 ? clip.items[0].name : `${clip.items.length} items`}</Typography.Text>{" "}
+              — open a folder, then Paste.
               <Button type="link" size="small" onClick={() => setClip(null)}>
                 Cancel
               </Button>
             </Typography.Paragraph>
           ) : null}
-          <div className="cp-table-wrap file-table fm-table">
+          <div
+            className="cp-table-wrap file-table fm-table"
+            onContextMenu={(ev) => {
+              const row = (ev.target as HTMLElement).closest("tr.ant-table-row");
+              if (row) return;
+              openContext(ev, []);
+            }}
+          >
             <Table
               size="small"
               rowKey="path"
@@ -831,6 +891,13 @@ export function Files() {
                 selectedRowKeys: selected,
                 onChange: (keys) => setSelected(keys.map(String)),
               }}
+              onRow={(record) => ({
+                onContextMenu: (ev) => {
+                  const items = selected.includes(record.path) && selected.length > 1 ? picked : [record];
+                  if (!selected.includes(record.path)) setSelected([record.path]);
+                  openContext(ev, items);
+                },
+              })}
               columns={[
                 {
                   title: "Name",
@@ -870,10 +937,10 @@ export function Files() {
                       placement="bottomRight"
                       getPopupContainer={() => document.body}
                       menu={{
-                        items: fileActions(e),
+                        items: fileActions(actionTargets(e)),
                         onClick: ({ key, domEvent }) => {
                           domEvent.stopPropagation();
-                          onFileAction(e, key);
+                          onFileAction(actionTargets(e), key);
                         },
                       }}
                     >
@@ -886,6 +953,27 @@ export function Files() {
           </div>
         </section>
       </div>
+
+      {ctxOpen ? (
+        <Dropdown
+          open
+          trigger={["click"]}
+          onOpenChange={(v) => {
+            if (!v) setCtxOpen(false);
+          }}
+          getPopupContainer={() => document.body}
+          menu={{
+            items: ctxItems.length ? fileActions(ctxItems) : folderActions(),
+            onClick: ({ key }) => {
+              setCtxOpen(false);
+              if (ctxItems.length) onFileAction(ctxItems, key);
+              else onFolderAction(key);
+            },
+          }}
+        >
+          <span className="fm-ctx-anchor" style={{ position: "fixed", left: ctxPoint.x, top: ctxPoint.y, width: 1, height: 1 }} />
+        </Dropdown>
+      ) : null}
 
       <Modal
         title="New file"
@@ -975,15 +1063,26 @@ export function Files() {
       </Modal>
 
       <Modal
-        title={`Move ${moveItem?.name || ""}`}
-        open={!!moveItem}
-        onCancel={() => setMoveItem(null)}
+        title={moveItems.length === 1 ? `Move ${moveItems[0].name}` : `Move ${moveItems.length} items`}
+        open={moveItems.length > 0}
+        onCancel={() => setMoveItems([])}
         onOk={() => void applyMove()}
         confirmLoading={busy}
         okText="Move"
       >
-        <Typography.Paragraph type="secondary">Destination path (folder + name)</Typography.Paragraph>
-        <Input value={moveDest} onChange={(e) => setMoveDest(e.target.value)} placeholder="/path/name" />
+        {moveItems.length > 1 ? (
+          <Typography.Paragraph type="secondary">
+            {moveItems.map((e) => e.name).join(", ")}
+          </Typography.Paragraph>
+        ) : null}
+        <Typography.Paragraph type="secondary">
+          {moveItems.length === 1 ? "Destination path (folder + name)" : "Destination folder. Each item keeps its name."}
+        </Typography.Paragraph>
+        <Input
+          value={moveDest}
+          onChange={(e) => setMoveDest(e.target.value)}
+          placeholder={moveItems.length === 1 ? "/path/name" : "/path/folder"}
+        />
       </Modal>
 
       <Modal title={`Permissions · ${perm?.name || ""}`} open={!!perm} onCancel={() => setPerm(null)} onOk={() => void savePerm()} confirmLoading={busy} okText="Save">

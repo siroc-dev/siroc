@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   DesktopOutlined,
   MoonOutlined,
@@ -55,7 +55,6 @@ function StyleCard({
 
 export function Settings() {
   const { message } = App.useApp();
-  const nav = useNavigate();
   const { brand, setBrand } = useBrand();
   const [sys, setSys] = useState<Sys | null>(null);
   const [svc, setSvc] = useState<Svc[]>([]);
@@ -386,9 +385,7 @@ export function Settings() {
                     Restart
                   </Button>
                   {row.manage ? (
-                    <Button type="link" size="small" onClick={() => nav(row.manage!)}>
-                      Manage
-                    </Button>
+                    <Link to={row.manage}>Manage</Link>
                   ) : null}
                 </Space>
               ),

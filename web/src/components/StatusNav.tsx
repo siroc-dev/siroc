@@ -1,5 +1,5 @@
-import { useLocation, useNavigate } from "react-router-dom";
-import { Segmented, Space, Switch, Tag, Typography } from "antd";
+import { Link, useLocation } from "react-router-dom";
+import { Space, Switch, Tag, Typography } from "antd";
 import type { ReactNode } from "react";
 
 export const statusRoutes = [
@@ -45,14 +45,15 @@ export function fmtMs(ms: number) {
 
 export function StatusNav() {
   const loc = useLocation();
-  const nav = useNavigate();
   return (
     <div className="status-nav">
-      <Segmented
-        value={statusRoutes.some((r) => r.path === loc.pathname) ? loc.pathname : "/apache"}
-        onChange={(v) => nav(String(v))}
-        options={statusRoutes.map((r) => ({ label: r.label, value: r.path }))}
-      />
+      <div className="status-nav-links">
+        {statusRoutes.map((r) => (
+          <Link key={r.path} to={r.path} className={loc.pathname === r.path ? "is-on" : undefined}>
+            {r.label}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

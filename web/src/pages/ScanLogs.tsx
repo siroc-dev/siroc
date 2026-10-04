@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { App, Button, Card, Collapse, Select, Space, Table, Tag, Typography } from "antd";
 import { ScanSummary, toolLabel, type ScanResult } from "@/components/ScanSummary";
 import { api } from "@/lib/api";
+import { spaClick } from "@/lib/nav";
 
 export function ScanLogs({ embedded }: { embedded?: boolean }) {
   const { message } = App.useApp();
@@ -56,7 +57,9 @@ export function ScanLogs({ embedded }: { embedded?: boolean }) {
                 { value: "openvas", label: "OpenVAS / Greenbone" },
               ]}
             />
-            <Button onClick={() => nav("/security")}>Run a scan</Button>
+            <Button href="/security" onClick={spaClick("/security", nav)}>
+              Run a scan
+            </Button>
           </Space>
         }
       >

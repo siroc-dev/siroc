@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Alert, App, Button, Card, Flex, Input, Modal, Popconfirm, Progress, Select, Space, Table, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { elapsed, jobLabel, type InstallJob, type InstallQueue } from "@/lib/jobs";
+import { spaClick } from "@/lib/nav";
 
 type Pkg = {
   name: string;
@@ -344,10 +345,10 @@ export function Software() {
                     ) : null}
                     {p.name === "redis" && p.installed ? (
                       <>
-                        <Button size="small" onClick={() => nav("/databases?tab=redis")}>
+                        <Button size="small" href="/databases?tab=redis" onClick={spaClick("/databases?tab=redis", nav)}>
                           Status
                         </Button>
-                        <Button size="small" onClick={() => nav("/databases?tab=redis")}>
+                        <Button size="small" href="/databases?tab=config" onClick={spaClick("/databases?tab=config", nav)}>
                           Config
                         </Button>
                       </>

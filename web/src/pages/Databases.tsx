@@ -390,10 +390,10 @@ export function Databases() {
             setSearch(next, { replace: true });
           }}
           items={[
-            { key: "list", label: "Databases", children: databasesTab },
-            { key: "redis", label: "Redis", children: redisTab },
-            { key: "monitor", label: "Monitor", children: <DatabaseMonitorPanel /> },
-            { key: "config", label: "Config", children: configTab },
+            { key: "list", label: <Link to="/databases">Databases</Link>, children: databasesTab },
+            { key: "redis", label: <Link to="/databases?tab=redis">Redis</Link>, children: redisTab },
+            { key: "monitor", label: <Link to="/databases?tab=monitor">Monitor</Link>, children: <DatabaseMonitorPanel /> },
+            { key: "config", label: <Link to="/databases?tab=config">Config</Link>, children: configTab },
           ]}
         />
       ) : (

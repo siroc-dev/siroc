@@ -537,6 +537,32 @@ a.brand { text-decoration: none; color: inherit; }
   padding-left: 1.2em;
 }
 
+.release {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.release h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.release h2 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.kind {
+  margin: 18px 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dust);
+}
+
+.kind.fix { color: #8fbf9f; }
+
 .doc code, .doc pre {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
 }

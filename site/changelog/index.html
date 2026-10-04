@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Siroc changelog</title>
+    <meta name="description" content="Siroc release notes: features added and bugs fixed in each version." />
+    <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="nav">
+        <a class="brand" href="../">
+          <img src="../favicon.svg" alt="" />
+          Siroc
+        </a>
+        <nav class="nav-links">
+          <a href="../#install">Install</a>
+          <a href="../docs/">Docs</a>
+          <a href="./" aria-current="page">Changelog</a>
+          <a href="https://github.com/siroc-dev/siroc">GitHub</a>
+        </nav>
+      </header>
+
+      <article class="doc">
+        <h1>Changelog</h1>
+        <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
+
+        <nav class="doc-toc">
+          <a href="#v0.2.14">0.2.14</a>
+          <a href="#v0.2.13">0.2.13</a>
+          <a href="#v0.2.12">0.2.12</a>
+          <a href="#v0.2.11">0.2.11</a>
+          <a href="#v0.2.10">0.2.10</a>
+          <a href="#v0.2.9">0.2.9</a>
+          <a href="#v0.2.8">0.2.8</a>
+          <a href="#v0.2.7">0.2.7</a>
+          <a href="#v0.2.6">0.2.6</a>
+          <a href="#v0.2.5">0.2.5</a>
+          <a href="#v0.2.4">0.2.4</a>
+        </nav>
+
+        <section class="release" id="v0.2.14">
+          <h2><a href="#v0.2.14">0.2.14</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>File manager copies or moves every checked file and folder, then pastes them into one destination.</li>
+            <li>Right-click a row for Open, Copy, Move, Paste, and Delete. Right-click empty space for New file, New folder, Upload, and Paste.</li>
+            <li>Sidebar items, status pages, Logs and Databases tabs, and website names are real URLs, so they can open in a new tab.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Copy and Move used only the first checked item, so a multi-select still said “Move assets”.</li>
+          </ul>
+        </section>
+
+        <section class="release" id="v0.2.13">
+          <h2><a href="#v0.2.13">0.2.13</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Panel, server, SSH, cron, and website logs show as a table, newest first, with a page size picker.</li>
+            <li>Scan history sorts newest first and uses the same pager.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Log viewers dumped the raw tail with the oldest lines first and no table pager.</li>
+          </ul>
+        </section>
+
+        <section class="release" id="v0.2.12">
+          <h2><a href="#v0.2.12">0.2.12</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Dashboard Traffic and Disk I/O charts update from live interface and disk counters.</li>
+            <li>Logs menu covers Panel, Website, Server, SSH, Cron / syslog, and Scan.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>No bug fixes in this release.</li>
+          </ul>
+        </section>
+
+        <section class="release" id="v0.2.11">
+          <h2><a href="#v0.2.11">0.2.11</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Databases shows Redis status, Redis settings, and a raw <code>redis.conf</code> editor.</li>
+            <li>Database monitor reports SQL slow queries and the Redis slow log.</li>
+            <li>The project license is Apache License 2.0.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Apply update no longer fails with “package checksum mismatch” when a CDN still has the previous rolling tarball. Releases use a versioned URL.</li>
+          </ul>
+        </section>
+
+        <section class="release" id="v0.2.10">
+          <h2><a href="#v0.2.10">0.2.10</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Login shows a captcha after two failed attempts within 30 minutes.</li>
+            <li>Fail2ban can jail the panel login log, and Security is split into tabs.</li>
+            <li>Software is a table; install and update open in a modal.</li>
+            <li>ModSecurity can virus-scan uploads with ClamAV.</li>
+            <li>The panel checks for updates every day at 04:00 server time.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>A failed login no longer clears the failure counter before the 30-minute window ends.</li>
+          </ul>
+        </section>
+
+        <section class="release" id="v0.2.9">
+          <h2><a href="#v0.2.9">0.2.9</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Settings for server timezone, theme style and color, logo, favicon, and service status.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>No bug fixes in this release.</li>
+          </ul>
+        </section>
+
+        <section class="release" id="v0.2.8">
+          <h2><a href="#v0.2.8">0.2.8</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Backup stores one archive per hosting user and can restore sites, databases, and mail together.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Restore creates the Linux user when that account is missing, instead of failing on a home directory that does not exist.</li>
+          </ul>
+        </section>
+
+        <section class="release" id="v0.2.7">
+          <h2><a href="#v0.2.7">0.2.7</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Plesk-style file manager with upload, editor, archive, and permissions.</li>
+            <li>New databases get a random name, user suffix, and password.</li>
+            <li>phpMyAdmin opens from Databases through the panel.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>phpMyAdmin returned HTTP 502 when its PHP-FPM pool was down or pointed at a dead socket.</li>
+          </ul>
+        </section>
+
+        <section class="release" id="v0.2.6">
+          <h2><a href="#v0.2.6">0.2.6</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Each website opens a dashboard for files, databases, Git, SSL, logs, and app tools.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>No bug fixes in this release.</li>
+          </ul>
+        </section>
+
+        <section class="release" id="v0.2.5">
+          <h2><a href="#v0.2.5">0.2.5</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Per-site Git deploy, with Git offered in the default software set.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>No bug fixes in this release.</li>
+          </ul>
+        </section>
+
+        <section class="release" id="v0.2.4">
+          <h2><a href="#v0.2.4">0.2.4</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>A site alias can be a wildcard such as <code>*.example.com</code>.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Files uploaded into a hosting home as root are given back to that Linux user.</li>
+          </ul>
+        </section>
+      </article>
+
+      <footer class="foot">
+        <span><a href="../">Siroc</a> · Changelog · Apache License 2.0</span>
+        <span><a href="https://github.com/siroc-dev/siroc">github.com/siroc-dev/siroc</a></span>
+      </footer>
+    </div>
+  </body>
+</html>

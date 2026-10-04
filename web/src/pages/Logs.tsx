@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useOutletContext, useSearchParams } from "react-router-dom";
+import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import { Alert, App, Button, Card, Input, Select, Space, Tabs, Tag, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
@@ -105,7 +105,7 @@ export function Logs() {
 
   const items = (admin ? TABS : TABS.filter((t) => t.key === "website")).map((t) => ({
     key: t.key,
-    label: t.label,
+    label: <Link to={`/logs?tab=${t.key}`}>{t.label}</Link>,
   }));
 
   const site = sites.find((s) => s.id === siteId);

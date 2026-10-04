@@ -34,6 +34,7 @@ html[data-theme="dark"] body {
   color: #1677ff;
   font-weight: 600;
   cursor: pointer;
+  text-decoration: none;
 }
 
 .site-list-domain:hover {
@@ -531,8 +532,48 @@ html[data-theme="dark"] body {
   -webkit-overflow-scrolling: touch;
 }
 
-.status-nav .ant-segmented {
+.status-nav-links {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 2px;
   min-width: max-content;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.status-nav-links a {
+  padding: 5px 12px;
+  border-radius: 6px;
+  color: inherit;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.status-nav-links a.is-on {
+  background: #fff;
+  font-weight: 600;
+}
+
+html[data-theme="dark"] .status-nav-links {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .status-nav-links a.is-on {
+  background: #1f1f1f;
+}
+
+.ant-menu-item {
+  position: relative;
+}
+
+.ant-menu-item .cp-nav-link,
+.ant-menu-item .cp-nav-link:hover {
+  color: inherit;
+}
+
+.ant-menu-title-content .cp-nav-link {
+  display: block;
 }
 
 .cp-term {

@@ -3,6 +3,7 @@ import { Alert, App, AutoComplete, Button, Card, Checkbox, Col, Input, Popconfir
 import { api } from "@/lib/api";
 import { ScanSummary, type ScanResult } from "@/components/ScanSummary";
 import { useNavigate } from "react-router-dom";
+import { spaClick } from "@/lib/nav";
 
 type Rule = { id: number; action: string; port: string; proto: string; source: string };
 type FW = { installed: boolean; active: boolean; defaultIncoming: string; defaultPorts?: string[]; rules: Rule[]; message?: string };
@@ -295,7 +296,7 @@ export function Security() {
       <Card
         title="Vulnerability scanners"
         extra={
-          <Button type="link" onClick={() => nav("/logs?tab=scan")}>
+          <Button type="link" href="/logs?tab=scan" onClick={spaClick("/logs?tab=scan", nav)}>
             Scan logs
           </Button>
         }
@@ -367,7 +368,7 @@ export function Security() {
                     </Typography.Link>
                   ) : null}
                   {scanOut.id ? (
-                    <Typography.Link onClick={() => nav(`/logs?tab=scan&id=${encodeURIComponent(scanOut.id)}`)}>
+                    <Typography.Link href={`/logs?tab=scan&id=${encodeURIComponent(scanOut.id)}`} onClick={spaClick(`/logs?tab=scan&id=${encodeURIComponent(scanOut.id)}`, nav)}>
                       View in Scan logs
                     </Typography.Link>
                   ) : null}

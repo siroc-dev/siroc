@@ -90,7 +90,7 @@ describe("Sites page", () => {
     await waitFor(() => {
       expect(screen.getByText("a01.test")).toBeTruthy();
     });
-    screen.getByRole("button", { name: "a01.test" }).click();
+    screen.getByRole("link", { name: "a01.test" }).click();
     await waitFor(() => {
       expect(screen.getByText("File manager")).toBeTruthy();
       expect(screen.getByText("Git")).toBeTruthy();

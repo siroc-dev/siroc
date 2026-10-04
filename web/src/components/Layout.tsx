@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Alert, App, Badge, Button, Flex, Form, Input, Layout as AntLayout, Menu, Modal, Typography } from "antd";
 import {
   AppstoreOutlined,
@@ -22,7 +22,7 @@ import {
 } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { elapsed, jobLabel, type InstallQueue } from "@/lib/jobs";
-import { canUsePath } from "@/lib/nav";
+import { canUsePath, spaClick } from "@/lib/nav";
 import { useBrand } from "@/components/ThemeProvider";
 
 const { Sider, Content, Header } = AntLayout;
@@ -114,17 +114,29 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
 
   const menuItems = items
     .filter((i) => canUsePath(admin, i.key))
-    .map((i) => ({
-    ...i,
-    label:
-      i.key === "/software" && installing ? (
-        <Badge count={queue?.active || 0} size="small" offset={[8, 0]}>
-          {i.label}
-        </Badge>
-      ) : (
-        i.label
-      ),
-  }));
+    .map((i) => {
+      const text =
+        i.key === "/software" && installing ? (
+          <Badge count={queue?.active || 0} size="small" offset={[8, 0]}>
+            {i.label}
+          </Badge>
+        ) : (
+          i.label
+        );
+      return {
+        key: i.key,
+        icon: (
+          <Link to={i.key} className="cp-nav-link" tabIndex={-1} aria-hidden>
+            {i.icon}
+          </Link>
+        ),
+        label: (
+          <Link to={i.key} className="cp-nav-link">
+            {text}
+          </Link>
+        ),
+      };
+    });
 
   return (
     <AntLayout style={{ minHeight: "100vh" }}>
@@ -176,8 +188,8 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
           mode="inline"
           selectedKeys={selected}
           items={menuItems}
-          onClick={({ key }) => {
-            if (String(key).startsWith("/")) nav(key);
+          onClick={({ key, domEvent }) => {
+            spaClick(String(key), nav)(domEvent);
           }}
         />
       </Sider>
@@ -219,8 +231,9 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
                 ? `Installing ${jobLabel(current)}${elapsed(current.startedAt) ? ` · ${elapsed(current.startedAt)}` : ""}`
                 : "Install queue starting…"
             }
-            description={waiting ? `${waiting} waiting · view queue` : "in progress · view queue"}
-            onClick={() => nav("/software")}
+            description={
+              <Link to="/software">{waiting ? `${waiting} waiting · view queue` : "in progress · view queue"}</Link>
+            }
             style={{ cursor: "pointer" }}
             action={<span style={{ display: "none" }}>{tick}</span>}
           />
