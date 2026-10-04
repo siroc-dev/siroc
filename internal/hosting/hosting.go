@@ -65,6 +65,7 @@ type siteData struct {
 	Extra             string
 	Access            string
 	Index             string
+	Static            string
 }
 
 const nginxTmpl = `server {
@@ -95,6 +96,7 @@ const nginxTmpl = `server {
 {{.ProxyLoc}}
 {{- else}}
 {{.RewriteServer}}
+{{.Static}}
 {{- if not .SkipRoot}}
     location / {
 {{.Rewrite}}        proxy_pass http://127.0.0.1:8080;
@@ -142,6 +144,7 @@ server {
 {{.ProxyLoc}}
 {{- else}}
 {{.RewriteServer}}
+{{.Static}}
 {{- if not .SkipRoot}}
     location / {
 {{.Rewrite}}        proxy_pass http://127.0.0.1:8080;
@@ -413,6 +416,13 @@ func applyGuards(data *siteData, opt siteopts.Options, proxy string) error {
 	data.Extra = extra
 	data.Access = access
 	data.Index = index
+	if strings.TrimSpace(proxy) == "" {
+		static, err := siteopts.NginxStatic(opt)
+		if err != nil {
+			return err
+		}
+		data.Static = static
+	}
 	if strings.TrimSpace(proxy) != "" {
 		loc, err := siteopts.NginxProxyLocation(opt, proxy)
 		if err != nil {

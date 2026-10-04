@@ -11,6 +11,8 @@ export type SiteOptions = {
   maintenance?: boolean;
   redirects?: { from: string; to: string; code: number }[];
   proxy?: ProxySettingsValue;
+  static?: boolean;
+  staticExt?: string;
 };
 
 export type SiteSettingsSite = {
@@ -83,6 +85,9 @@ const KINDS = [
 
 const APP = new Set(["nodejs", "python", "go", "rust", "docker"]);
 
+const DEFAULT_STATIC_EXT =
+  "ac3 avi bmp bz2 css cue dat doc docx dts eot exe flv gif gz htm html ico img iso jpeg jpg js mkv mp3 mp4 mpeg mpg ogg pdf png ppt pptx qt rar rm svg swf tar tgz ttf txt wav webp woff woff2 xls xlsx zip";
+
 function homePrefix(user: string) {
   return user ? `/home/${user}/` : "/home/";
 }
@@ -108,6 +113,8 @@ function baseOpts(site: SiteSettingsSite): SiteOptions {
     maintenance: !!o.maintenance,
     redirects: o.redirects || [],
     proxy: o.proxy,
+    static: o.static,
+    staticExt: o.staticExt,
   };
 }
 
@@ -174,6 +181,8 @@ export function SiteSettings({
   const [index, setIndex] = useState("");
   const [hotlink, setHotlink] = useState(false);
   const [maintenance, setMaintenance] = useState(false);
+  const [staticOn, setStaticOn] = useState(true);
+  const [staticExt, setStaticExt] = useState(DEFAULT_STATIC_EXT);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [code, setCode] = useState(301);
@@ -198,6 +207,8 @@ export function SiteSettings({
     setIndex((o.index || []).join(" "));
     setHotlink(!!o.hotlink);
     setMaintenance(!!o.maintenance);
+    setStaticOn(o.static !== false);
+    setStaticExt(o.staticExt || DEFAULT_STATIC_EXT);
     setRedirects(o.redirects || []);
     setDraft("");
     setPicked([]);
@@ -476,11 +487,41 @@ ${site.ssl ? "listen 443 ssl;\n" : ""}${phpSite ? `php ${site.phpVersion};\n` : 
           ) : null}
 
           {tab === "server" ? (
-            <Typography.Paragraph>
-              {phpSite
-                ? "Nginx listens on ports 80 and 443 and proxies this site to Apache and PHP-FPM on 127.0.0.1:8080."
-                : `Nginx listens on ports 80 and 443 and proxies this site to ${site.proxyPass || "the app port"}.`}
-            </Typography.Paragraph>
+            phpSite ? (
+              <>
+                <Typography.Paragraph type="secondary">
+                  Nginx listens on ports 80 and 443. PHP still goes to Apache. Static files are read from the document root, and a missing file is sent to Apache.
+                </Typography.Paragraph>
+                <Space>
+                  <Switch checked={staticOn} onChange={setStaticOn} />
+                  <span>Serve static files directly by nginx</span>
+                </Space>
+                <Input.TextArea
+                  rows={4}
+                  style={{ marginTop: 12, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}
+                  value={staticExt}
+                  disabled={!staticOn}
+                  onChange={(e) => setStaticExt(e.target.value)}
+                />
+                <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+                  One extension per word. PHP stays on Apache.
+                </Typography.Paragraph>
+                <Button
+                  type="primary"
+                  loading={busy}
+                  onClick={() => {
+                    const ext = staticExt.trim().replace(/\s+/g, " ");
+                    return saveOpts({ static: staticOn, staticExt: ext === DEFAULT_STATIC_EXT ? "" : ext }, "Web server saved");
+                  }}
+                >
+                  Save
+                </Button>
+              </>
+            ) : (
+              <Typography.Paragraph>
+                Nginx listens on ports 80 and 443 and proxies this site to {site.proxyPass || "the app port"}.
+              </Typography.Paragraph>
+            )
           ) : null}
 
           {tab === "git" ? (

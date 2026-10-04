@@ -72,6 +72,50 @@ func TestMaintenanceAndHotlink(t *testing.T) {
 	}
 }
 
+func TestStaticDirect(t *testing.T) {
+	body, err := NginxStatic(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"location ~* \\.(ac3|avi|", "|css|", "|js|", "webp|woff|woff2|", "try_files $uri @siroc_apache;", "location @siroc_apache {", "proxy_pass http://127.0.0.1:8080;"} {
+		if !contains(body, want) {
+			t.Fatalf("missing %q\n%s", want, body)
+		}
+	}
+	off := false
+	empty, err := NginxStatic(Options{Static: &off})
+	if err != nil || empty != "" {
+		t.Fatalf("off: %q %v", empty, err)
+	}
+	custom, err := NginxStatic(Options{StaticExt: "CSS, js|png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(custom, "location ~* \\.(css|js|png)$") || contains(custom, "ac3|") {
+		t.Fatalf("custom:\n%s", custom)
+	}
+	if _, err := NginxStatic(Options{StaticExt: "php"}); err == nil {
+		t.Fatal("expected php rejected")
+	}
+	if _, err := NginxStatic(Options{StaticExt: "css{js"}); err == nil {
+		t.Fatal("expected bad extension")
+	}
+	hot, err := NginxExtra(Options{Hotlink: true}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(hot, "try_files $uri @siroc_apache;") || contains(hot, "proxy_pass") {
+		t.Fatalf("hotlink should serve the file:\n%s", hot)
+	}
+	proxied, err := NginxExtra(Options{Hotlink: true, Static: &off}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(proxied, "proxy_pass http://127.0.0.1:8080;") {
+		t.Fatalf("hotlink off static:\n%s", proxied)
+	}
+}
+
 func contains(s, part string) bool {
 	return len(s) >= len(part) && (s == part || len(part) == 0 || (len(s) > 0 && indexOf(s, part) >= 0))
 }

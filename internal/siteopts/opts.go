@@ -17,6 +17,10 @@ type Options struct {
 	Maintenance bool       `json:"maintenance,omitempty"`
 	Redirects   []Redirect `json:"redirects,omitempty"`
 	Proxy       *Proxy     `json:"proxy,omitempty"`
+	// Static is nil when the site still uses the default (Nginx serves static files).
+	// A false pointer turns that off. StaticExt empty means the Plesk extension list.
+	Static    *bool  `json:"static,omitempty"`
+	StaticExt string `json:"staticExt,omitempty"`
 }
 
 type Redirect struct {
@@ -54,7 +58,7 @@ func Marshal(o Options) (string, error) {
 }
 
 func IsZero(o Options) bool {
-	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && !o.Maintenance && len(o.Redirects) == 0 && o.Proxy == nil
+	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && !o.Maintenance && len(o.Redirects) == 0 && o.Proxy == nil && !staticExplicitOff(o) && o.StaticExt == ""
 }
 
 func Normalize(in Options) (Options, error) {
@@ -145,6 +149,15 @@ func Normalize(in Options) (Options, error) {
 		return Options{}, err
 	}
 	out.Proxy = p
+	if in.Static != nil {
+		v := *in.Static
+		out.Static = &v
+	}
+	ext, err := parseStaticExt(in.StaticExt)
+	if err != nil {
+		return Options{}, err
+	}
+	out.StaticExt = strings.Join(ext, " ")
 	return out, nil
 }
 
@@ -174,11 +187,15 @@ func NginxExtra(o Options, proxy string) (string, error) {
 		b.WriteString("        if ($invalid_referer) {\n")
 		b.WriteString("            return 403;\n")
 		b.WriteString("        }\n")
-		fmt.Fprintf(&b, "        proxy_pass %s;\n", backend)
-		b.WriteString("        proxy_set_header Host $http_host;\n")
-		b.WriteString("        proxy_set_header X-Real-IP $remote_addr;\n")
-		b.WriteString("        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n")
-		b.WriteString("        proxy_set_header X-Forwarded-Proto $scheme;\n")
+		if strings.TrimSpace(proxy) == "" && StaticOn(norm) {
+			b.WriteString("        try_files $uri @siroc_apache;\n")
+		} else {
+			fmt.Fprintf(&b, "        proxy_pass %s;\n", backend)
+			b.WriteString("        proxy_set_header Host $http_host;\n")
+			b.WriteString("        proxy_set_header X-Real-IP $remote_addr;\n")
+			b.WriteString("        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n")
+			b.WriteString("        proxy_set_header X-Forwarded-Proto $scheme;\n")
+		}
 		b.WriteString("    }\n")
 	}
 	return b.String(), nil
