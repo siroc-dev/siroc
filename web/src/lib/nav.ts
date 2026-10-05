@@ -3,6 +3,7 @@ export const ADMIN_ONLY_PATHS = new Set([
   "/software",
   "/security",
   "/tools",
+  "/os",
   "/settings",
   "/monitoring",
   "/apache",

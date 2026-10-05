@@ -13,6 +13,7 @@ import { Software } from "@/pages/Software";
 import { Sites } from "@/pages/Sites";
 import { Backup } from "@/pages/Backup";
 import { Tools } from "@/pages/Tools";
+import { OSUpdates } from "@/pages/OSUpdates";
 import { Databases } from "@/pages/Databases";
 import { Security } from "@/pages/Security";
 import { Logs } from "@/pages/Logs";
@@ -145,6 +146,7 @@ export function App() {
         <Route path="/databases" element={<Databases />} />
         <Route path="/backup" element={<Backup />} />
         <Route path="/tools" element={<AdminOnly admin={admin}><Tools /></AdminOnly>} />
+        <Route path="/os" element={<AdminOnly admin={admin}><OSUpdates /></AdminOnly>} />
         <Route path="/settings" element={<AdminOnly admin={admin}><Settings /></AdminOnly>} />
         <Route path="/monitoring" element={<AdminOnly admin={admin}><Monitoring /></AdminOnly>} />
         <Route path="/apache" element={<AdminOnly admin={admin}><Apache /></AdminOnly>} />

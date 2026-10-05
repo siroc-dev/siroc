@@ -144,6 +144,36 @@ html[data-theme="dark"] body {
   color: #8c8c8c;
 }
 
+html[data-theme="dark"] .site-dash-hero,
+html[data-theme="dark"] .site-dash-tile {
+  background: #171512;
+  border-color: rgba(244, 234, 220, 0.1);
+  color: #f4eadc;
+}
+
+html[data-theme="dark"] .site-dash-hero .ant-typography {
+  color: #f4eadc;
+}
+
+html[data-theme="dark"] .site-dash-hero .ant-typography-secondary,
+html[data-theme="dark"] .site-dash-copy em {
+  color: #a89884;
+}
+
+html[data-theme="dark"] .site-dash-metric,
+html[data-theme="dark"] .site-dash-copy strong {
+  color: #f4eadc;
+}
+
+html[data-theme="dark"] .site-dash-tile:hover {
+  border-color: rgba(226, 120, 58, 0.45);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .site-dash-tile-static:hover {
+  border-color: rgba(244, 234, 220, 0.1);
+}
+
 .cp-overview .ant-card-body {
   padding-bottom: 16px;
 }
@@ -401,6 +431,19 @@ html[data-theme="dark"] body {
   border: 1px solid #f0f0f0;
   border-radius: 10px;
   overflow: hidden;
+}
+
+html[data-theme="dark"] .fm-shell {
+  background: #171512;
+  border-color: rgba(244, 234, 220, 0.1);
+  color: #f4eadc;
+}
+
+html[data-theme="dark"] .fm-tree,
+html[data-theme="dark"] .fm-toolbar,
+html[data-theme="dark"] .fm-crumb {
+  background: #12110f;
+  border-color: rgba(244, 234, 220, 0.1);
 }
 
 .fm-tree {
@@ -688,10 +731,10 @@ html[data-theme="dark"] .cp-header {
   display: block;
 }
 
-.siroc-nav-no {
+.siroc-shell .ant-menu .siroc-nav-no {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 11px;
-  color: #e2783a;
+  color: #e2783a !important;
 }
 
 .siroc-shell .ant-menu-dark.ant-menu-inline .ant-menu-item {
@@ -826,6 +869,21 @@ html[data-theme="dark"] .ant-table-thead > tr > th {
 
 .siroc-login-card .ant-typography:not(.ant-typography-danger) {
   color: #f4eadc;
+}
+
+.os-update-log {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 8px;
+  background: #0a0908;
+  color: #d9cbb8;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .siroc-login .ant-input,

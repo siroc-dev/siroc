@@ -533,6 +533,27 @@ type PanelUpdateReq struct {
 	Path    string `json:"path,omitempty"`
 }
 
+type OSPackage struct {
+	Name      string `json:"name"`
+	Current   string `json:"current"`
+	Available string `json:"available"`
+	Source    string `json:"source,omitempty"`
+}
+
+type OSUpdateStatus struct {
+	OK        bool        `json:"ok"`
+	OS        string      `json:"os,omitempty"`
+	CheckedAt string      `json:"checkedAt,omitempty"`
+	Count     int         `json:"count"`
+	Packages  []OSPackage `json:"packages"`
+	Message   string      `json:"message,omitempty"`
+	Log       string      `json:"log,omitempty"`
+}
+
+type OSUpdateReq struct {
+	Action string `json:"action"`
+}
+
 type HealthResp struct {
 	OK     bool   `json:"ok"`
 	Root   bool   `json:"root"`

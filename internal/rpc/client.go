@@ -383,6 +383,18 @@ func (c *Client) PanelUpdate(in PanelUpdateReq) (*PanelUpdateStatus, error) {
 	return &out, err
 }
 
+func (c *Client) OSUpdates() (*OSUpdateStatus, error) {
+	var out OSUpdateStatus
+	err := c.do(http.MethodGet, "/os/updates", nil, &out)
+	return &out, err
+}
+
+func (c *Client) OSUpdate(action string) (*OSUpdateStatus, error) {
+	var out OSUpdateStatus
+	err := c.do(http.MethodPost, "/os/updates", OSUpdateReq{Action: action}, &out)
+	return &out, err
+}
+
 func (c *Client) SetCLI(name, version string) error {
 	return c.do(http.MethodPost, "/software/cli", CLISetReq{Name: name, Version: version}, nil)
 }

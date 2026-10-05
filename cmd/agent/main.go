@@ -25,6 +25,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/files"
 	"github.com/siroc-dev/siroc/internal/hosting"
 	"github.com/siroc-dev/siroc/internal/monitoring"
+	"github.com/siroc-dev/siroc/internal/osupdate"
 	"github.com/siroc-dev/siroc/internal/pma"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/security"
@@ -62,6 +63,16 @@ func main() {
 			if err := runUpdateApply(os.Args[2:]); err != nil {
 				log.Fatal(err)
 			}
+			return
+		case "os-check":
+			if os.Geteuid() != 0 {
+				log.Fatal("siroc-agent must run as root")
+			}
+			st, err := osupdate.Update()
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("%s %s\n", st.CheckedAt, st.Message)
 			return
 		case "cloudflare-ips":
 			if os.Geteuid() != 0 {
@@ -121,6 +132,9 @@ func main() {
 	if err := update.InstallCheckTimer(); err != nil {
 		log.Printf("update check timer: %v", err)
 	}
+	if err := osupdate.InstallTimer(); err != nil {
+		log.Printf("os update timer: %v", err)
+	}
 	if err := security.EnsureWAF(); err != nil {
 		log.Printf("waf config: %v", err)
 	}
@@ -167,6 +181,33 @@ func main() {
 		}
 		if out.Version == "" {
 			out.Version = version.Current()
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Get("/os/updates", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, osupdate.Saved())
+	})
+	r.Post("/os/updates", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.OSUpdateReq
+		if !decode(w, r, &req) {
+			return
+		}
+		var (
+			out rpc.OSUpdateStatus
+			err error
+		)
+		switch strings.ToLower(strings.TrimSpace(req.Action)) {
+		case "update":
+			out, err = osupdate.Update()
+		case "upgrade":
+			out, err = osupdate.Upgrade()
+		default:
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("action must be update or upgrade"))
+			return
+		}
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
 		}
 		writeJSON(w, http.StatusOK, out)
 	})

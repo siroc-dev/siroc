@@ -225,6 +225,8 @@ func (s *Server) Router() http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(s.requireAuth)
 		r.Use(s.requireAdmin)
+		r.Get("/api/os/updates", s.osUpdateStatus)
+		r.Post("/api/os/updates", s.osUpdate)
 		r.Get("/api/sysops", s.sysopsStatus)
 		r.Post("/api/sysops", s.sysopsApply)
 		r.Get("/api/sysops/disk", s.sysopsDisk)
