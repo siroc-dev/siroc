@@ -22,6 +22,7 @@ type Manager struct {
 
 func (m *Manager) FirewallStatus() (*rpc.FirewallStatus, error) {
 	st := &rpc.FirewallStatus{}
+	st.Whitelist, st.Blacklist = firewallLists()
 	if _, err := exec.LookPath("ufw"); err != nil {
 		return st, nil
 	}
@@ -80,12 +81,7 @@ func ApplyDefaultUFW() {
 
 func (m *Manager) FirewallEnable(enable bool) error {
 	if enable {
-		ApplyDefaultUFW()
-		out, err := exec.Command("ufw", "--force", "enable").CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("ufw enable: %s", strings.TrimSpace(string(out)))
-		}
-		return nil
+		return turnFirewallOn()
 	}
 	out, err := exec.Command("ufw", "disable").CombinedOutput()
 	if err != nil {

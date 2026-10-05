@@ -1283,6 +1283,7 @@ export function Sites() {
       </Modal>
 
       <Modal
+        className="goaccess-mod"
         title={stats ? `GoAccess · ${stats.domain}` : "GoAccess"}
         open={!!stats}
         onCancel={() => setStats(null)}
@@ -1294,18 +1295,15 @@ export function Sites() {
             <Button onClick={() => setStats(null)}>Close</Button>
           </Space>
         }
-        width={1100}
+        width="100vw"
         destroyOnHidden
+        styles={{ body: { padding: 0, overflow: "hidden" } }}
       >
-        {statsErr ? <Alert type="error" showIcon message={statsErr} style={{ marginBottom: 12 }} /> : null}
-        {statsBusy && !statsSrc ? <Typography.Text type="secondary">Building report…</Typography.Text> : null}
-        {statsSrc ? (
-          <iframe
-            title="GoAccess"
-            src={statsSrc}
-            style={{ width: "100%", height: "70vh", border: "1px solid #f0f0f0", borderRadius: 8, background: "#fff" }}
-          />
-        ) : null}
+        <div className="goaccess-body">
+          {statsErr ? <Alert type="error" showIcon message={statsErr} style={{ margin: 12 }} /> : null}
+          {statsBusy && !statsSrc ? <Typography.Text type="secondary">Building report…</Typography.Text> : null}
+          {statsSrc ? <iframe className="goaccess-frame" title="GoAccess" src={statsSrc} /> : null}
+        </div>
       </Modal>
 
       <Modal

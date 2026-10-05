@@ -141,6 +141,9 @@ func main() {
 	if err := security.EnsureFail2ban(); err != nil {
 		log.Printf("fail2ban: %v", err)
 	}
+	if err := security.EnsureFirewall(); err != nil {
+		log.Printf("firewall: %v", err)
+	}
 	hostMgr.FixAllWebPerms()
 	hostMgr.LockOpenBasedir()
 
@@ -719,6 +722,22 @@ func main() {
 			return
 		}
 		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
+	r.Post("/security/firewall/addresses", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.FirewallAddressReq
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := security.SetFirewallAddress(req.List, req.Op, req.Address); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		st, err := secMgr.FirewallStatus()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, st)
 	})
 	r.Post("/security/firewall/rules", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.FirewallRuleReq

@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { spaClick } from "@/lib/nav";
 
 type Rule = { id: number; action: string; port: string; proto: string; source: string };
-type FW = { installed: boolean; active: boolean; defaultIncoming: string; defaultPorts?: string[]; rules: Rule[]; message?: string };
+type FW = { installed: boolean; active: boolean; defaultIncoming: string; defaultPorts?: string[]; rules: Rule[]; whitelist?: string[]; blacklist?: string[]; message?: string };
 type WAFPack = { id: string; title: string; description: string; enabled: boolean; available: boolean };
 type WAF = {
   installed: boolean;
@@ -51,6 +51,8 @@ export function Security() {
   const [scanOut, setScanOut] = useState<ScanResult | null>(null);
   const [fail2ban, setFail2ban] = useState<Fail2ban | null>(null);
   const [whitelist, setWhitelist] = useState("");
+  const [fwAllow, setFwAllow] = useState("");
+  const [fwDeny, setFwDeny] = useState("");
   const [busy, setBusy] = useState("");
 
   async function load() {
@@ -104,7 +106,7 @@ export function Security() {
           Security
         </Typography.Title>
         <Typography.Paragraph type="secondary">
-          Install UFW, ModSecurity, ClamAV, Fail2ban, Nikto, OWASP ZAP, and OpenVAS from Software first. Enabling the firewall always allows SSH 22, FTP 21, HTTP 80, HTTPS 443, and the Siroc web port.
+          UFW and Fail2ban install with the base stack. The firewall turns on once and keeps SSH 22, FTP 21, HTTP 80, HTTPS 443, the panel port, and the FTP passive range open. A whitelist address is always allowed. A blacklist address is denied before those port rules.
         </Typography.Paragraph>
       </div>
 
@@ -128,6 +130,40 @@ export function Security() {
                 Disable
               </Button>
             </Space>
+            <AddressList
+              title="Whitelist"
+              hint="These addresses can reach every port."
+              value={fwAllow}
+              onChange={setFwAllow}
+              rows={fw.whitelist || []}
+              busy={busy}
+              onAdd={() => {
+                const address = fwAllow.trim();
+                if (!address) return;
+                void run("fw-allow", async () => {
+                  await api.post("/api/security/firewall/addresses", { list: "whitelist", op: "add", address });
+                  setFwAllow("");
+                });
+              }}
+              onRemove={(address) => run("fw-allow-del", () => api.post("/api/security/firewall/addresses", { list: "whitelist", op: "del", address }))}
+            />
+            <AddressList
+              title="Blacklist"
+              hint="These addresses are denied before the port rules."
+              value={fwDeny}
+              onChange={setFwDeny}
+              rows={fw.blacklist || []}
+              busy={busy}
+              onAdd={() => {
+                const address = fwDeny.trim();
+                if (!address) return;
+                void run("fw-deny", async () => {
+                  await api.post("/api/security/firewall/addresses", { list: "blacklist", op: "add", address });
+                  setFwDeny("");
+                });
+              }}
+              onRemove={(address) => run("fw-deny-del", () => api.post("/api/security/firewall/addresses", { list: "blacklist", op: "del", address }))}
+            />
             <Space wrap>
               <Typography.Text type="secondary">Default allow:</Typography.Text>
               {(fw.defaultPorts || ["22", "21", "80", "443", "8443"]).map((p) => (
@@ -181,7 +217,7 @@ export function Security() {
             />
           </Space>
         ) : (
-          <Typography.Text type="secondary">Install UFW from Software.</Typography.Text>
+          <Typography.Text type="secondary">UFW installs with the base stack and turns on the first time it is available.</Typography.Text>
         )}
       </Card>
             ),
@@ -255,7 +291,7 @@ export function Security() {
                 }
               >
                 {!fail2ban?.installed ? (
-                  <Typography.Text type="secondary">Install Fail2ban from Software. After install it watches panel login, SSH, FTP, MySQL/MariaDB, Redis, Nginx, and Apache.</Typography.Text>
+                  <Typography.Text type="secondary">Fail2ban installs with the base stack. After install it watches panel login, SSH, FTP, MySQL/MariaDB, Redis, Nginx, and Apache.</Typography.Text>
                 ) : (
                   <Space direction="vertical" style={{ width: "100%" }} size="middle">
                     <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
@@ -732,5 +768,60 @@ function WAFCard({
         <Typography.Text type="secondary">Install ModSecurity WAF from Software (Apache should be installed first). This also installs OWASP CRS.</Typography.Text>
       )}
     </Card>
+  );
+}
+
+function AddressList({
+  title,
+  hint,
+  value,
+  onChange,
+  rows,
+  busy,
+  onAdd,
+  onRemove,
+}: {
+  title: string;
+  hint: string;
+  value: string;
+  onChange: (value: string) => void;
+  rows: string[];
+  busy: string;
+  onAdd: () => void;
+  onRemove: (address: string) => void;
+}) {
+  return (
+    <div>
+      <Typography.Text strong>{title}</Typography.Text>
+      <div>
+        <Typography.Text type="secondary">{hint}</Typography.Text>
+      </div>
+      <Space wrap style={{ marginTop: 8 }}>
+        <Input style={{ width: 240 }} value={value} onChange={(e) => onChange(e.target.value)} placeholder="203.0.113.10 or 203.0.113.0/24" onPressEnter={onAdd} />
+        <Button loading={busy === "fw-allow" || busy === "fw-deny"} onClick={onAdd}>
+          Add
+        </Button>
+      </Space>
+      <Table
+        size="small"
+        style={{ marginTop: 8 }}
+        rowKey="address"
+        pagination={false}
+        dataSource={rows.map((address) => ({ address }))}
+        locale={{ emptyText: "None" }}
+        columns={[
+          { title: "Address", dataIndex: "address" },
+          {
+            title: "",
+            align: "right",
+            render: (_, row) => (
+              <Button size="small" type="link" danger onClick={() => onRemove(row.address)}>
+                Remove
+              </Button>
+            ),
+          },
+        ]}
+      />
+    </div>
   );
 }

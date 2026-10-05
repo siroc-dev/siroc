@@ -239,8 +239,7 @@ func catalog() []spec {
 				return dpkgVersion("ufw")
 			},
 			PostInstall: func(string) error {
-				security.ApplyDefaultUFW()
-				return nil
+				return security.EnsureFirewall()
 			},
 		},
 		{

@@ -137,6 +137,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/api/security/firewall/enable", s.firewallEnable)
 			r.Post("/api/security/firewall/rules", s.firewallAdd)
 			r.Post("/api/security/firewall/delete", s.firewallDelete)
+			r.Post("/api/security/firewall/addresses", s.firewallAddress)
 			r.Get("/api/security/waf", s.wafStatus)
 			r.Get("/api/security/waf/rules", s.wafRules)
 			r.Post("/api/security/waf", s.wafSetMode)
@@ -1121,6 +1122,18 @@ func (s *Server) firewallAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) firewallAddress(w http.ResponseWriter, r *http.Request) {
+	var body rpc.FirewallAddressReq
+	if !decode(w, r, &body) {
+		return
+	}
+	if err := s.Agent.FirewallAddress(body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	s.firewallStatus(w, r)
 }
 
 func (s *Server) firewallDelete(w http.ResponseWriter, r *http.Request) {

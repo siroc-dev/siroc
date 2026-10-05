@@ -574,7 +574,15 @@ type FirewallStatus struct {
 	DefaultIncoming string         `json:"defaultIncoming"`
 	DefaultPorts    []string       `json:"defaultPorts,omitempty"`
 	Rules           []FirewallRule `json:"rules"`
+	Whitelist       []string       `json:"whitelist"`
+	Blacklist       []string       `json:"blacklist"`
 	Message         string         `json:"message,omitempty"`
+}
+
+type FirewallAddressReq struct {
+	List    string `json:"list"`
+	Op      string `json:"op"`
+	Address string `json:"address"`
 }
 
 type FirewallRuleReq struct {

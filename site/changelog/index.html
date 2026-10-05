@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.31">0.2.31</a>
           <a href="#v0.2.30">0.2.30</a>
           <a href="#v0.2.29">0.2.29</a>
           <a href="#v0.2.28">0.2.28</a>
@@ -59,6 +60,19 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.31">
+          <h2><a href="#v0.2.31">0.2.31</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Fail2ban and UFW install with the base stack. The firewall turns on once and allows SSH, FTP, HTTP, HTTPS, the panel port, and the FTP passive range. Turning it off later stays off.</li>
+            <li>Security → Firewall has an address whitelist and blacklist. A whitelisted address is allowed. A blacklisted address is denied ahead of the port rules. The same address cannot be on both lists.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>GoAccess opens in the full window.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.30">
           <h2><a href="#v0.2.30">0.2.30</a></h2>

@@ -459,6 +459,10 @@ func (c *Client) FirewallAdd(in FirewallRuleReq) error {
 	return c.do(http.MethodPost, "/security/firewall/rules", in, nil)
 }
 
+func (c *Client) FirewallAddress(in FirewallAddressReq) error {
+	return c.do(http.MethodPost, "/security/firewall/addresses", in, nil)
+}
+
 func (c *Client) FirewallDelete(id int) error {
 	return c.do(http.MethodPost, "/security/firewall/delete", FirewallDeleteReq{ID: id}, nil)
 }
