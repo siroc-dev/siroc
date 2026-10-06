@@ -40,6 +40,18 @@ function defaultDoc(domain: string) {
   return d ? `domains/${d}/public_html` : "";
 }
 
+function DocRootInput({ user, value, onChange }: { user: string; value?: string; onChange?: (value: string) => void }) {
+  const abs = (value || "").startsWith("/");
+  return (
+    <Input
+      addonBefore={abs ? undefined : homePrefix(user)}
+      value={value}
+      onChange={(e) => onChange?.(e.target.value)}
+      placeholder={abs ? "/mnt/data/site/public_html" : "domains/site.test/public_html"}
+    />
+  );
+}
+
 type Site = {
   id: number;
   username: string;
@@ -1099,8 +1111,8 @@ export function Sites() {
             {() => {
               const user = (form.getFieldValue("username") as string) || "";
               return (
-                <Form.Item name="docRoot" label="Document root" extra={`Relative to ${homePrefix(user)}, or an absolute path on another disk such as /mnt/data/site/public_html.`}>
-                  <Input placeholder="domains/site.test/public_html" />
+                <Form.Item name="docRoot" label="Document root" extra={`Defaults to ${homePrefix(user)}. A path that starts with / uses another disk, such as /mnt/data/site/public_html.`}>
+                  <DocRootInput user={user} />
                 </Form.Item>
               );
             }}
@@ -1404,7 +1416,7 @@ export function Sites() {
                       />
                     ) : null}
                     {app.output ? (
-                      <pre style={{ maxHeight: 240, overflow: "auto", background: "#fafafa", padding: 12, borderRadius: 8 }}>{app.output}</pre>
+                      <pre className="cmd-out">{app.output}</pre>
                     ) : null}
                   </Space>
                 ),
@@ -1421,7 +1433,7 @@ export function Sites() {
                       onRun={(command) => void runApp(appSite, { action: "artisan", artisan: command })}
                     />
                     {app.output ? (
-                      <pre style={{ maxHeight: 320, overflow: "auto", background: "#fafafa", padding: 12, borderRadius: 8, whiteSpace: "pre-wrap" }}>{app.output}</pre>
+                      <pre className="cmd-out">{app.output}</pre>
                     ) : null}
                   </Space>
                 ),
@@ -1444,7 +1456,7 @@ export function Sites() {
                       onUpdate={(name) => void runApp(appSite, { action: "composer", composer: `update ${name}` })}
                     />
                     {app.output ? (
-                      <pre style={{ maxHeight: 240, overflow: "auto", background: "#fafafa", padding: 12, borderRadius: 8 }}>{app.output}</pre>
+                      <pre className="cmd-out">{app.output}</pre>
                     ) : null}
                   </Space>
                 ),
@@ -1468,7 +1480,7 @@ export function Sites() {
                       onUpdate={(name) => void runApp(appSite, { action: "npm", npm: `update ${name}` })}
                     />
                     {app.output ? (
-                      <pre style={{ maxHeight: 240, overflow: "auto", background: "#fafafa", padding: 12, borderRadius: 8 }}>{app.output}</pre>
+                      <pre className="cmd-out">{app.output}</pre>
                     ) : null}
                   </Space>
                 ),
@@ -1538,7 +1550,7 @@ export function Sites() {
                       </Button>
                     </Space.Compact>
                     {app.output ? (
-                      <pre style={{ maxHeight: 240, overflow: "auto", background: "#fafafa", padding: 12, borderRadius: 8, whiteSpace: "pre-wrap" }}>{app.output}</pre>
+                      <pre className="cmd-out">{app.output}</pre>
                     ) : null}
                   </Space>
                 ),
@@ -1555,7 +1567,7 @@ export function Sites() {
                       onRun={(command) => void runApp(appSite, { action: "wpcli", wpcli: command })}
                     />
                     {app.output ? (
-                      <pre style={{ maxHeight: 320, overflow: "auto", background: "#fafafa", padding: 12, borderRadius: 8, whiteSpace: "pre-wrap" }}>{app.output}</pre>
+                      <pre className="cmd-out">{app.output}</pre>
                     ) : null}
                   </Space>
                 ),
@@ -1689,7 +1701,7 @@ export function Sites() {
                       <Typography.Text type="secondary">Click Check updates.</Typography.Text>
                     )}
                     {app.output ? (
-                      <pre style={{ maxHeight: 200, overflow: "auto", background: "#fafafa", padding: 12, borderRadius: 8 }}>{app.output}</pre>
+                      <pre className="cmd-out">{app.output}</pre>
                     ) : null}
                   </Space>
                 ),

@@ -338,9 +338,14 @@ export function SiteSettings({
           {tab === "directory" ? (
             <>
               <Typography.Paragraph type="secondary">
-                Document root for this website. Use a path inside {homePrefix(site.username)}, or an absolute path on another disk such as /mnt/data/{site.domain}/public_html.
+                Defaults to {homePrefix(site.username)}. A path that starts with / uses another disk, such as /mnt/data/{site.domain}/public_html.
               </Typography.Paragraph>
-              <Input value={docRoot} onChange={(e) => setDocRoot(e.target.value)} placeholder={`domains/${site.domain}/public_html`} />
+              <Input
+                addonBefore={docRoot.startsWith("/") ? undefined : homePrefix(site.username)}
+                value={docRoot}
+                onChange={(e) => setDocRoot(e.target.value)}
+                placeholder={docRoot.startsWith("/") ? `/mnt/data/${site.domain}/public_html` : `domains/${site.domain}/public_html`}
+              />
               <Button style={{ marginTop: 12 }} type="primary" loading={busy} onClick={() => onPatch({ docRoot }, "Directory saved")}>
                 Save
               </Button>

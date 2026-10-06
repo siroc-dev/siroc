@@ -42,6 +42,11 @@ type Cron = {
 
 const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+function jobWhen(raw?: string) {
+  if (!raw || raw.startsWith("0001")) return "—";
+  return raw.replace("T", " ").replace(/\.\d+/, "").replace(/Z$/, "");
+}
+
 function cronWhen(c: Cron) {
   const hm = `${String(c.hour).padStart(2, "0")}:${String(c.minute).padStart(2, "0")}`;
   if (c.cycle === "hourly") return `Hourly at :${String(c.minute).padStart(2, "0")}`;
@@ -214,7 +219,8 @@ export function Backup() {
           pagination={false}
           locale={{ emptyText: "No backup jobs yet." }}
           columns={[
-            { title: "Account", dataIndex: "account", width: 110 },
+            { title: "Account", dataIndex: "account", width: 140 },
+            { title: "Created", dataIndex: "createdAt", width: 170, render: (v: string) => jobWhen(v) },
             { title: "Destination", dataIndex: "destName" },
             {
               title: "Status",
