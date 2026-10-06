@@ -19,35 +19,12 @@ const (
 )
 
 func configureVSFTPD(string) error {
-	pasv := os.Getenv("SIROC_FTP_PASV_ADDR")
-	conf := `listen=YES
-listen_ipv6=NO
-anonymous_enable=NO
-local_enable=YES
-write_enable=YES
-local_umask=022
-dirmessage_enable=YES
-use_localtime=YES
-xferlog_enable=YES
-connect_from_port_20=YES
-chroot_local_user=YES
-allow_writeable_chroot=YES
-userlist_enable=YES
-userlist_deny=YES
-userlist_file=/etc/vsftpd.user_list
-secure_chroot_dir=/var/run/vsftpd/empty
-pam_service_name=vsftpd
-vsftpd_log_file=/var/log/vsftpd.log
-dual_log_enable=YES
-pasv_enable=YES
-pasv_min_port=30000
-pasv_max_port=30100
-seccomp_sandbox=NO
-`
-	if pasv != "" {
-		conf += "pasv_address=" + pasv + "\n"
+	if err := os.WriteFile("/etc/pam.d/siroc", []byte(vsftpdPAM()), 0644); err != nil {
+		return err
 	}
-	if err := os.WriteFile(vsftpdConf, []byte(conf), 0644); err != nil {
+	_ = allowFTPShell()
+	changed, err := writeFileIfChanged(vsftpdConf, []byte(vsftpdConfig(os.Getenv("SIROC_FTP_PASV_ADDR"))), 0644)
+	if err != nil {
 		return err
 	}
 	if err := ensureFTPDenyFile(); err != nil {
@@ -56,7 +33,50 @@ seccomp_sandbox=NO
 	_ = exec.Command("systemctl", "stop", "vsftpd.socket").Run()
 	_ = exec.Command("systemctl", "disable", "vsftpd.socket").Run()
 	_ = os.MkdirAll("/var/run/vsftpd/empty", 0755)
-	return exec.Command("systemctl", "enable", "--now", "vsftpd").Run()
+	_ = exec.Command("systemctl", "enable", "vsftpd").Run()
+	if changed {
+		return exec.Command("systemctl", "restart", "vsftpd").Run()
+	}
+	return exec.Command("systemctl", "start", "vsftpd").Run()
+}
+
+// allowFTPShell lists /usr/sbin/nologin in /etc/shells. Ubuntu's stock
+// vsftpd PAM module rejects that shell, and the FTP client reports a bad password.
+func allowFTPShell() error {
+	const shells = "/etc/shells"
+	const want = "/usr/sbin/nologin"
+	b, err := os.ReadFile(shells)
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.TrimSpace(line) == want {
+			return nil
+		}
+	}
+	f, err := os.OpenFile(shells, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if len(b) > 0 && b[len(b)-1] != '\n' {
+		if _, err := f.WriteString("\n"); err != nil {
+			return err
+		}
+	}
+	_, err = f.WriteString(want + "\n")
+	return err
+}
+
+func writeFileIfChanged(path string, body []byte, mode os.FileMode) (bool, error) {
+	old, err := os.ReadFile(path)
+	if err == nil && string(old) == string(body) {
+		return false, nil
+	}
+	if err := os.WriteFile(path, body, mode); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func configureSSH(string) error {
