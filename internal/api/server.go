@@ -505,7 +505,37 @@ func (s *Server) userUsage(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, rpc.UserUsage{User: a.Username})
 	}
+	s.addSiteDisk(out)
 	writeJSON(w, http.StatusOK, out)
+}
+
+// addSiteDisk counts each website document root that lives outside the account home.
+// A root inside the home is already part of the home du.
+func (s *Server) addSiteDisk(users []rpc.UserUsage) {
+	if len(users) == 0 || s.Store == nil || s.Agent == nil {
+		return
+	}
+	sites, err := s.Store.ListSites()
+	if err != nil || len(sites) == 0 {
+		return
+	}
+	items := make([]rpc.SiteDiskItem, 0, len(sites))
+	for _, site := range sites {
+		if site.Username == "" || site.DocRoot == "" {
+			continue
+		}
+		items = append(items, rpc.SiteDiskItem{User: site.Username, Path: site.DocRoot})
+	}
+	if len(items) == 0 {
+		return
+	}
+	extra, err := s.Agent.SiteDisk(rpc.SiteDiskReq{Home: s.Cfg.HomeRoot, Items: items})
+	if err != nil {
+		return
+	}
+	for i := range users {
+		users[i].DiskUsed += extra[users[i].User]
+	}
 }
 
 func (s *Server) systemStats(w http.ResponseWriter, _ *http.Request) {
@@ -514,6 +544,7 @@ func (s *Server) systemStats(w http.ResponseWriter, _ *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	s.addSiteDisk(st.Users)
 	writeJSON(w, http.StatusOK, st)
 }
 

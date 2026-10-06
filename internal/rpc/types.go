@@ -830,6 +830,16 @@ type UserUsage struct {
 	DiskUsed     uint64  `json:"diskUsed"`
 }
 
+type SiteDiskItem struct {
+	User string `json:"user"`
+	Path string `json:"path"`
+}
+
+type SiteDiskReq struct {
+	Home  string         `json:"home"`
+	Items []SiteDiskItem `json:"items"`
+}
+
 type LogStatus struct {
 	RetentionDays      int    `json:"retentionDays"`
 	CloudflarePrefixes int    `json:"cloudflarePrefixes"`

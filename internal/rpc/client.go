@@ -603,6 +603,15 @@ func (c *Client) SystemStats() (*SystemStats, error) {
 	return &out, err
 }
 
+func (c *Client) SiteDisk(in SiteDiskReq) (map[string]uint64, error) {
+	var out map[string]uint64
+	err := c.do(http.MethodPost, "/system/site-disk", in, &out)
+	if out == nil {
+		out = map[string]uint64{}
+	}
+	return out, err
+}
+
 func (c *Client) ApacheStatus() (*ApacheStatus, error) {
 	var out ApacheStatus
 	err := c.do(http.MethodGet, "/apache/status", nil, &out)

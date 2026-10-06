@@ -21,6 +21,14 @@ type Account = {
 type Pkg = { name: string; installedVersions?: string[] };
 
 type FTPRow = { id: number; login: string; home: string; username: string };
+type FTPSite = { id: number; username: string; domain: string; displayName?: string; docRoot: string };
+
+function ftpHomeValue(user: string, abs: string) {
+  const prefix = `/home/${user}/`;
+  if (abs.startsWith(prefix)) return abs.slice(prefix.length);
+  if (abs === `/home/${user}`) return "";
+  return abs;
+}
 
 type UserRedis = {
   username: string;
@@ -64,6 +72,7 @@ export function Accounts() {
   const [ftpCreated, setFtpCreated] = useState("");
   const [ftpForm] = Form.useForm();
   const ftpPath = Form.useWatch("home", ftpForm) as string | undefined;
+  const [ftpSites, setFtpSites] = useState<FTPSite[]>([]);
 
   async function load() {
     const [accounts, pkgs, redisRows] = await Promise.all([
@@ -253,12 +262,27 @@ export function Accounts() {
   async function openFTP(a: Account) {
     setFtpTarget(a);
     setFtpCreated("");
+    setFtpSites([]);
     ftpForm.resetFields();
     try {
-      setFtpRows(await api.get<FTPRow[]>(`/api/ftp?user=${encodeURIComponent(a.username)}`));
+      const [rows, sites] = await Promise.all([
+        api.get<FTPRow[]>(`/api/ftp?user=${encodeURIComponent(a.username)}`),
+        api.get<FTPSite[]>("/api/sites").catch(() => [] as FTPSite[]),
+      ]);
+      setFtpRows(rows);
+      setFtpSites(sites.filter((s) => s.username === a.username && s.docRoot));
     } catch (err) {
       setFtpRows([]);
       message.error(err instanceof Error ? err.message : "Cannot load FTP users");
+    }
+  }
+
+  async function randomFTPPassword() {
+    try {
+      const data = await api.get<{ password: string }>("/api/password/suggest");
+      ftpForm.setFieldValue("password", data.password);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Cannot generate password");
     }
   }
 
@@ -614,14 +638,41 @@ export function Accounts() {
             <Form.Item name="name" label="Name" rules={[{ required: true, pattern: /^[a-z][a-z0-9]{1,15}$/, message: "2–16 letters or digits, starting with a letter" }]}>
               <Input placeholder="shop" autoComplete="off" style={{ width: 140 }} />
             </Form.Item>
-            <Form.Item name="password" label="Password" rules={[{ required: true, min: 8 }]}>
-              <Input.Password autoComplete="new-password" style={{ width: 180 }} />
+            <Form.Item label="Password" required>
+              <Space.Compact>
+                <Form.Item name="password" noStyle rules={[{ required: true, min: 8, message: "At least 8 characters" }]}>
+                  <Input.Password autoComplete="new-password" style={{ width: 180 }} />
+                </Form.Item>
+                <Button htmlType="button" onClick={() => void randomFTPPassword()}>
+                  Random
+                </Button>
+              </Space.Compact>
             </Form.Item>
             <Form.Item name="home" label="Path">
               <Input
                 style={{ width: 280 }}
                 addonBefore={(ftpPath || "").startsWith("/") ? undefined : `/home/${ftpTarget?.username || "user"}/`}
                 placeholder="domains/site.test/public_html"
+              />
+            </Form.Item>
+            <Form.Item label="Website">
+              <Select
+                allowClear
+                placeholder="Use a website path"
+                style={{ width: 280 }}
+                options={ftpSites.map((s) => ({
+                  value: s.id,
+                  label: `${s.displayName || s.domain} · ${ftpHomeValue(ftpTarget?.username || "", s.docRoot) || s.docRoot}`,
+                }))}
+                value={
+                  ftpTarget && (ftpPath || "").trim()
+                    ? ftpSites.find((s) => ftpHomeValue(ftpTarget.username, s.docRoot) === (ftpPath || "").trim())?.id
+                    : undefined
+                }
+                onChange={(id) => {
+                  const site = ftpSites.find((s) => s.id === id);
+                  ftpForm.setFieldValue("home", site && ftpTarget ? ftpHomeValue(ftpTarget.username, site.docRoot) : "");
+                }}
               />
             </Form.Item>
           </Space>

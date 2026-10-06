@@ -854,6 +854,13 @@ func main() {
 	r.Get("/system/stats", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, mon.Stats())
 	})
+	r.Post("/system/site-disk", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.SiteDiskReq
+		if !decode(w, r, &req) {
+			return
+		}
+		writeJSON(w, http.StatusOK, mon.SiteDisk(req.Home, req.Items))
+	})
 	r.Get("/apache/status", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, software.ApacheStatus())
 	})

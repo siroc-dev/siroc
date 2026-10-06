@@ -33,6 +33,10 @@ type Collector struct {
 	diskMu  sync.Mutex
 	diskAt  time.Time
 	diskBy  map[string]uint64
+	pathMu  sync.Mutex
+	pathAt  time.Time
+	pathKey string
+	pathBy  map[string]uint64
 }
 
 type cpuSnap struct {
@@ -842,6 +846,75 @@ func (c *Collector) homeDisks() map[string]uint64 {
 	}
 	c.diskBy = out
 	c.diskAt = time.Now()
+	return out
+}
+
+// SiteDisk adds the size of website document roots that are outside the account home.
+// Paths inside the home are already included by homeDisks. The result is cached for 30s.
+func (c *Collector) SiteDisk(home string, items []rpc.SiteDiskItem) map[string]uint64 {
+	grouped := SiteDiskPaths(home, resolveSitePaths(items))
+	key := siteDiskKey(grouped)
+	c.pathMu.Lock()
+	defer c.pathMu.Unlock()
+	if c.pathBy != nil && c.pathKey == key && time.Since(c.pathAt) < 30*time.Second {
+		return c.pathBy
+	}
+	out := map[string]uint64{}
+	var args []string
+	type owner struct {
+		user string
+		path string
+	}
+	var owners []owner
+	for user, paths := range grouped {
+		for _, p := range paths {
+			args = append(args, p)
+			owners = append(owners, owner{user, p})
+		}
+	}
+	if len(args) == 0 {
+		c.pathBy = out
+		c.pathKey = key
+		c.pathAt = time.Now()
+		return out
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "du", append([]string{"-sb"}, args...)...)
+	b, err := cmd.Output()
+	if ctx.Err() != nil && c.pathBy != nil {
+		return c.pathBy
+	}
+	sizes := parseDu(string(b))
+	if len(sizes) == 0 && err != nil && c.pathBy != nil {
+		return c.pathBy
+	}
+	for _, o := range owners {
+		if n, ok := sizes[slashClean(o.path)]; ok {
+			out[o.user] += n
+		}
+	}
+	c.pathBy = out
+	c.pathKey = key
+	c.pathAt = time.Now()
+	return out
+}
+
+func resolveSitePaths(items []rpc.SiteDiskItem) []rpc.SiteDiskItem {
+	out := make([]rpc.SiteDiskItem, 0, len(items))
+	for _, it := range items {
+		p := strings.TrimSpace(it.Path)
+		if p == "" {
+			continue
+		}
+		if _, err := os.Stat(p); err != nil {
+			continue
+		}
+		if r, err := filepath.EvalSymlinks(p); err == nil && r != "" {
+			p = r
+		}
+		out = append(out, rpc.SiteDiskItem{User: it.User, Path: p})
+	}
 	return out
 }
 
