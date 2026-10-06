@@ -3,6 +3,7 @@ import { Alert, Card, Col, Progress, Row, Statistic, Table, Tag, Typography } fr
 import { api } from "@/lib/api";
 import { formatBytes, type UserUsage } from "@/lib/usage";
 import { RealtimeIO, snapshotIO, type DiskIORow, type IOPoint, type NetRow } from "@/components/RealtimeIO";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Dash = {
   accounts: number;
@@ -98,7 +99,7 @@ export function Dashboard() {
     };
   }, []);
   if (error && !data) return <Alert type="error" message={error} />;
-  if (!data) return <Typography.Text type="secondary">Loading…</Typography.Text>;
+  if (!data) return <PageSkeleton cards={4} rows={5} />;
   const cores = data.cpuCores || 0;
   const loadPct = cores ? Math.min(100, ((data.load1 || 0) / cores) * 100) : 0;
   return (

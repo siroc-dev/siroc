@@ -3,6 +3,7 @@ import { Alert, App, Button, Card, Col, InputNumber, Progress, Row, Space, Switc
 import { api } from "@/lib/api";
 import { formatBytes, type UserUsage } from "@/lib/usage";
 import { RealtimeIO, snapshotIO, type DiskIORow, type IOPoint } from "@/components/RealtimeIO";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type CPU = { cores: number; model?: string; percent: number };
 type Mem = { total: number; used: number; free: number; available?: number; percent: number };
@@ -165,7 +166,7 @@ export function Monitoring() {
   }, [data]);
 
   if (error && !data) return <Alert type="error" message={error} />;
-  if (!data) return <Typography.Text type="secondary">Loading…</Typography.Text>;
+  if (!data) return <PageSkeleton cards={4} rows={6} />;
 
   return (
     <div className="cp-page">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, App, Button, Card, Popconfirm, Space, Table, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type OSPackage = {
   name: string;
@@ -23,13 +24,16 @@ export function OSUpdates() {
   const { message } = App.useApp();
   const [st, setSt] = useState<OSUpdateStatus | null>(null);
   const [busy, setBusy] = useState("");
+  const [ready, setReady] = useState(false);
 
   async function load() {
     setSt(await api.get<OSUpdateStatus>("/api/os/updates"));
   }
 
   useEffect(() => {
-    load().catch((e) => message.error(e.message));
+    load()
+      .catch((e) => message.error(e.message))
+      .finally(() => setReady(true));
   }, []);
 
   async function run(action: "update" | "upgrade") {
@@ -47,6 +51,8 @@ export function OSUpdates() {
   }
 
   const packages = st?.packages || [];
+
+  if (!ready) return <PageSkeleton />;
 
   return (
     <div className="cp-page">

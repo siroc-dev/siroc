@@ -20,6 +20,76 @@ html[data-theme="dark"] body {
   gap: 16px;
 }
 
+.page-skel-title.ant-skeleton-input {
+  width: 200px !important;
+  min-width: 200px;
+  height: 28px !important;
+}
+
+.page-skel-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.page-skel-card,
+.page-skel-table {
+  background: #fff;
+  border: 1px solid #efe6da;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.page-skel-row.ant-skeleton-input {
+  width: 100%;
+  height: 14px !important;
+  margin-bottom: 12px;
+}
+
+.page-skel-table .page-skel-row:last-child {
+  margin-bottom: 0;
+}
+
+html[data-theme="dark"] .page-skel-card,
+html[data-theme="dark"] .page-skel-table,
+html[data-theme="dark"] .boot-skel-side {
+  background: #171512;
+  border-color: #2a241c;
+}
+
+.boot-skel {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
+  background: #f6f1ea;
+}
+
+html[data-theme="dark"] .boot-skel {
+  background: #0c0b0a;
+}
+
+.boot-skel-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 16px;
+  background: #fff;
+  border-right: 1px solid #efe6da;
+}
+
+.boot-skel-main {
+  padding: 24px;
+}
+
+@media (max-width: 720px) {
+  .boot-skel {
+    grid-template-columns: 1fr;
+  }
+  .boot-skel-side {
+    display: none;
+  }
+}
+
 .site-list-toolbar {
   display: flex;
   justify-content: space-between;

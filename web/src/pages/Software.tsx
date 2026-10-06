@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Alert, App, Button, Card, Flex, Input, Modal, Popconfirm, Progress, Select, Space, Table, Tag, Typography } from "antd";
 import { InstallLog } from "@/components/InstallLog";
 import { api } from "@/lib/api";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { elapsed, jobLabel, type InstallJob, type InstallQueue } from "@/lib/jobs";
 import { spaClick } from "@/lib/nav";
 
@@ -37,6 +38,7 @@ export function Software() {
   const [modal, setModal] = useState<{ pkg: Pkg; kind: InstallKind } | null>(null);
   const [modalVer, setModalVer] = useState("");
   const [pinnedLog, setPinnedLog] = useState("");
+  const [ready, setReady] = useState(false);
 
   const titles = Object.fromEntries(list.map((p) => [p.name, p.title]));
   const label = (job: InstallJob) => (job.name === "php-ext" ? jobLabel(job) : `${titles[job.name] || job.name}${job.version ? ` ${job.version}` : ""}`);
@@ -72,8 +74,10 @@ export function Software() {
   }
 
   useEffect(() => {
-    loadPkgs().catch((e) => message.error(e.message));
-    loadJobs().catch((e) => message.error(e.message));
+    Promise.all([
+      loadPkgs().catch((e) => message.error(e.message)),
+      loadJobs().catch((e) => message.error(e.message)),
+    ]).finally(() => setReady(true));
     const t = setInterval(() => {
       loadJobs()
         .then((active) => {
@@ -199,6 +203,8 @@ export function Software() {
     if (!needle) return list;
     return list.filter((p) => `${p.title} ${p.name} ${p.description || ""}`.toLowerCase().includes(needle));
   }, [list, q]);
+
+  if (!ready) return <PageSkeleton />;
 
   return (
     <div className="cp-page">

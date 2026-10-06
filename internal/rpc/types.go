@@ -523,6 +523,7 @@ type PanelUpdateStatus struct {
 	PackageURL string `json:"packageUrl,omitempty"`
 	CheckedAt  string `json:"checkedAt,omitempty"`
 	Restarting bool   `json:"restarting,omitempty"`
+	AutoUpdate bool   `json:"autoUpdate"`
 	Message    string `json:"message,omitempty"`
 }
 
@@ -531,6 +532,7 @@ type PanelUpdateReq struct {
 	Channel string `json:"channel,omitempty"`
 	URL     string `json:"url,omitempty"`
 	Path    string `json:"path,omitempty"`
+	Auto    *bool  `json:"auto,omitempty"`
 }
 
 type OSPackage struct {

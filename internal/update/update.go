@@ -36,9 +36,10 @@ type latestMeta struct {
 
 func Status(channel string) *rpc.PanelUpdateStatus {
 	st := &rpc.PanelUpdateStatus{
-		OK:      true,
-		Version: version.Current(),
-		Channel: ResolveChannel(channel),
+		OK:         true,
+		Version:    version.Current(),
+		Channel:    ResolveChannel(channel),
+		AutoUpdate: AutoEnabled(),
 	}
 	if b, err := os.ReadFile(cacheFile); err == nil {
 		var meta latestMeta
@@ -109,7 +110,7 @@ func CheckApply(channel string) (*rpc.PanelUpdateStatus, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !st.Available {
+	if !AutoEnabled() || !st.Available {
 		return st, nil
 	}
 	return Apply(channel, "", "")

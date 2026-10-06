@@ -3,6 +3,7 @@ import { Alert, Card, Col, Progress, Row, Table, Tag, Typography } from "antd";
 import { GlobalOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { StatusHero, StatusNav, fmtNum, fmtUptime } from "@/components/StatusNav";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Site = { name: string; listen?: string; ssl?: boolean; file?: string };
 type Status = {
@@ -68,7 +69,7 @@ export function Nginx() {
     return (
       <div className="cp-page">
         <StatusNav />
-        <Typography.Text type="secondary">Loading Nginx status…</Typography.Text>
+        <PageSkeleton bare cards={4} rows={5} />
       </div>
     );
   }

@@ -4,6 +4,7 @@ import { CloudServerOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
 import { StatusNav } from "@/components/StatusNav";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Score = { key: string; title: string; count?: number };
 type Worker = {
@@ -144,7 +145,7 @@ export function Apache() {
     return (
       <div className="cp-page">
         <StatusNav />
-        <Typography.Text type="secondary">Loading Apache status…</Typography.Text>
+        <PageSkeleton bare cards={4} rows={5} />
       </div>
     );
   }

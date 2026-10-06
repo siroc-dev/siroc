@@ -19,10 +19,11 @@ func (s *Server) panelUpdateStatus(w http.ResponseWriter, _ *http.Request) {
 	st, err := s.Agent.PanelUpdateStatus()
 	if err != nil {
 		writeJSON(w, http.StatusOK, rpc.PanelUpdateStatus{
-			OK:      true,
-			Version: version.Current(),
-			Channel: channel,
-			Message: "agent offline; showing panel version only",
+			OK:         true,
+			Version:    version.Current(),
+			Channel:    channel,
+			AutoUpdate: true,
+			Message:    "agent offline; showing panel version only",
 		})
 		return
 	}

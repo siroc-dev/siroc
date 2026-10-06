@@ -4,6 +4,7 @@ import { DatabaseOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
 import { StatusHero, StatusNav, fmtNum, fmtUptime } from "@/components/StatusNav";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Proc = { id: number; user?: string; host?: string; db?: string; command?: string; time: number; state?: string; info?: string };
 type Status = {
@@ -76,7 +77,7 @@ export function DatabaseEngine({ engine }: { engine: "mysql" | "mariadb" }) {
     return (
       <div className="cp-page">
         <StatusNav />
-        <Typography.Text type="secondary">Loading {title} status…</Typography.Text>
+        <PageSkeleton bare cards={4} rows={5} />
       </div>
     );
   }

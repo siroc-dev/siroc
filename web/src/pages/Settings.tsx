@@ -10,6 +10,7 @@ import {
 import { App, Button, Card, ColorPicker, Form, Input, Select, Space, Switch, Table, Typography } from "antd";
 import { api } from "@/lib/api";
 import { useBrand } from "@/components/ThemeProvider";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { THEME_COLORS, type Brand, type ThemeColor, type ThemeStyle } from "@/lib/theme";
 
 type Sys = {
@@ -63,6 +64,7 @@ export function Settings() {
   const [tzForm] = Form.useForm();
   const logoInput = useRef<HTMLInputElement>(null);
   const favInput = useRef<HTMLInputElement>(null);
+  const [ready, setReady] = useState(false);
 
   async function loadSys() {
     const data = await api.get<Sys>("/api/sysops");
@@ -75,8 +77,10 @@ export function Settings() {
   }
 
   useEffect(() => {
-    loadSys().catch((e) => message.error(e.message));
-    loadSvc().catch((e) => message.error(e.message));
+    Promise.all([
+      loadSys().catch((e) => message.error(e.message)),
+      loadSvc().catch((e) => message.error(e.message)),
+    ]).finally(() => setReady(true));
   }, []);
 
   async function saveTheme(next: Brand) {
@@ -164,6 +168,8 @@ export function Settings() {
     if (!needle) return svc;
     return svc.filter((s) => `${s.title} ${s.name} ${s.version}`.toLowerCase().includes(needle));
   }, [svc, q]);
+
+  if (!ready) return <PageSkeleton cards={2} rows={6} />;
 
   return (
     <div className="cp-page">

@@ -4,6 +4,7 @@ import { Alert, Card, Col, Row, Space, Table, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { fmtMs, fmtNum } from "@/components/StatusNav";
 import { RedisStatusPanel, type RedisStatusData } from "@/pages/RedisStatus";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type SlowQuery = {
   schema?: string;
@@ -63,7 +64,7 @@ export function DatabaseMonitorPanel() {
   }, []);
 
   if (error && !data) return <Alert type="error" showIcon message={error} />;
-  if (!data) return <Typography.Text type="secondary">Loading database monitor…</Typography.Text>;
+  if (!data) return <PageSkeleton bare cards={2} rows={4} />;
 
   const sql = data.sql;
   const redis = data.redis;

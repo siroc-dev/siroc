@@ -3,6 +3,7 @@ import { useNavigate, useOutletContext } from "react-router-dom";
 import { MoreOutlined } from "@ant-design/icons";
 import { App, Alert, Button, Card, Dropdown, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { formatBytes, type UserUsage } from "@/lib/usage";
 
 type Account = {
@@ -73,6 +74,7 @@ export function Accounts() {
   const [ftpForm] = Form.useForm();
   const ftpPath = Form.useWatch("home", ftpForm) as string | undefined;
   const [ftpSites, setFtpSites] = useState<FTPSite[]>([]);
+  const [ready, setReady] = useState(false);
 
   async function load() {
     const [accounts, pkgs, redisRows] = await Promise.all([
@@ -104,7 +106,9 @@ export function Accounts() {
   }
 
   useEffect(() => {
-    load().catch((e) => message.error(e.message));
+    load()
+      .catch((e) => message.error(e.message))
+      .finally(() => setReady(true));
   }, []);
 
   useEffect(() => {
@@ -323,6 +327,8 @@ export function Accounts() {
   function cliLabel(v?: string) {
     return v || "system";
   }
+
+  if (!ready) return <PageSkeleton />;
 
   return (
     <div className="cp-page">

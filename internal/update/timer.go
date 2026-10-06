@@ -50,8 +50,20 @@ WantedBy=timers.target
 		return err
 	}
 	_ = exec.Command("systemctl", "daemon-reload").Run()
+	if !AutoEnabled() {
+		_ = exec.Command("systemctl", "disable", "--now", checkUnit+".timer").Run()
+		return nil
+	}
 	if err := exec.Command("systemctl", "enable", "--now", checkUnit+".timer").Run(); err != nil {
 		return fmt.Errorf("enable %s.timer: %w", checkUnit, err)
 	}
 	return nil
+}
+
+// SetAutoUpdate remembers the switch and starts or stops the hourly installer.
+func SetAutoUpdate(on bool) error {
+	if err := writeAuto(on); err != nil {
+		return err
+	}
+	return InstallCheckTimer()
 }

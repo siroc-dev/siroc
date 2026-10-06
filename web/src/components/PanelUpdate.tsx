@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Alert, App, Button, Card, Space, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Space, Switch, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type UpdateStatus = {
   ok: boolean;
@@ -11,6 +12,7 @@ type UpdateStatus = {
   packageUrl?: string;
   checkedAt?: string;
   restarting?: boolean;
+  autoUpdate?: boolean;
   message?: string;
 };
 
@@ -20,6 +22,7 @@ export function PanelUpdate() {
   const { message } = App.useApp();
   const [st, setSt] = useState<UpdateStatus | null>(null);
   const [busy, setBusy] = useState("");
+  const [ready, setReady] = useState(false);
 
   async function load() {
     const data = await api.get<UpdateStatus>("/api/panel/update");
@@ -27,8 +30,23 @@ export function PanelUpdate() {
   }
 
   useEffect(() => {
-    load().catch((e) => message.error(e.message));
+    load()
+      .catch((e) => message.error(e.message))
+      .finally(() => setReady(true));
   }, []);
+
+  async function setAuto(on: boolean) {
+    setBusy("auto");
+    try {
+      const data = await api.post<UpdateStatus>("/api/panel/update", { action: "auto", auto: on });
+      setSt(data);
+      message.success(data.message || (on ? "Automatic updates are on" : "Automatic updates are off"));
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function run(action: string) {
     setBusy(action);
@@ -52,6 +70,14 @@ export function PanelUpdate() {
 
   const channel = st?.channel || DEFAULT_CHANNEL;
 
+  if (!ready) {
+    return (
+      <Card title="Siroc updates">
+        <PageSkeleton bare rows={4} />
+      </Card>
+    );
+  }
+
   return (
     <Card title="Siroc updates">
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
@@ -62,9 +88,15 @@ export function PanelUpdate() {
           {st?.checkedAt ? <Typography.Text type="secondary">Checked {st.checkedAt}</Typography.Text> : null}
         </Space>
         {st?.message ? <Alert type={st.available ? "info" : "success"} showIcon message={st.message} /> : null}
+        <Space>
+          <Switch checked={st?.autoUpdate !== false} loading={busy === "auto"} onChange={(on) => void setAuto(on)} />
+          <Typography.Text>Automatic updates</Typography.Text>
+        </Space>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          The panel checks the public channel every hour and installs a newer version automatically. On the server you can also run{" "}
-          <code>sudo siroc update</code> then <code>sudo siroc upgrade</code>.
+          {st?.autoUpdate === false
+            ? "Automatic updates are off. Check for updates and Apply update still work."
+            : "The panel checks the public channel every hour and installs a newer version automatically."}{" "}
+          On the server you can also run <code>sudo siroc update</code> then <code>sudo siroc upgrade</code>.
         </Typography.Paragraph>
         <Typography.Text>
           Channel <code>{channel}</code>

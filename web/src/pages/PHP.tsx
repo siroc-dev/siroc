@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Alert, App, Button, Card, Checkbox, Col, Input, InputNumber, Row, Select, Space, Switch, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { asList } from "@/lib/lists";
 import { jobLabel, type InstallJob, type InstallQueue } from "@/lib/jobs";
 import { formatBytes, type UserUsage } from "@/lib/usage";
@@ -135,8 +136,11 @@ export function PHP() {
     return data.active || 0;
   }
 
+  const [ready, setReady] = useState(false);
   useEffect(() => {
-    loadAccounts().catch((e) => message.error(e.message));
+    loadAccounts()
+      .catch((e) => message.error(e.message))
+      .finally(() => setReady(true));
   }, []);
 
   useEffect(() => {
@@ -233,6 +237,8 @@ export function PHP() {
   }
 
   const installing = activeJobs.length > 0;
+
+  if (!ready) return <PageSkeleton />;
 
   return (
     <div className="cp-page">

@@ -7,6 +7,7 @@ import { formatBytes } from "@/lib/usage";
 import { LogTable } from "@/components/LogTable";
 import { SiteLogs } from "@/components/SiteLogs";
 import { ScanLogs } from "@/pages/ScanLogs";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { filterEntries, logRows, type SiteLogEntry } from "@/components/SiteLogs.parse";
 
 type LogFile = {
@@ -55,6 +56,7 @@ export function Logs() {
   const [raw, setRaw] = useState(false);
   const [sites, setSites] = useState<SiteOpt[]>([]);
   const [siteId, setSiteId] = useState(0);
+  const [ready, setReady] = useState(false);
 
   const shown = useMemo(() => files.filter((f) => f.group === tab), [files, tab]);
 
@@ -80,6 +82,14 @@ export function Logs() {
   }
 
   useEffect(() => {
+    let stop = false;
+    const done = () => {
+      if (!stop) setReady(true);
+    };
+    if (tab === "scan") {
+      done();
+      return;
+    }
     if (tab === "website") {
       api
         .get<SiteOpt[]>("/api/sites")
@@ -87,10 +97,19 @@ export function Logs() {
           setSites(rows || []);
           setSiteId((cur) => cur || rows?.[0]?.id || 0);
         })
-        .catch(() => setSites([]));
-      return;
+        .catch(() => setSites([]))
+        .finally(done);
+      return () => {
+        stop = true;
+      };
     }
-    if (admin && tab !== "scan") void load();
+    if (admin) {
+      void load().finally(done);
+      return () => {
+        stop = true;
+      };
+    }
+    done();
   }, [tab, admin]);
 
   const filtered = useMemo(() => filterEntries(entries, q, []), [entries, q]);
@@ -109,6 +128,8 @@ export function Logs() {
   }));
 
   const site = sites.find((s) => s.id === siteId);
+
+  if (!ready) return <PageSkeleton />;
 
   return (
     <div className="cp-page">

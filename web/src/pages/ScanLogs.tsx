@@ -4,6 +4,7 @@ import { App, Button, Card, Collapse, Select, Space, Table, Tag, Typography } fr
 import { ScanSummary, toolLabel, type ScanResult } from "@/components/ScanSummary";
 import { api } from "@/lib/api";
 import { spaClick } from "@/lib/nav";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 export function ScanLogs({ embedded }: { embedded?: boolean }) {
   const { message } = App.useApp();
@@ -12,6 +13,7 @@ export function ScanLogs({ embedded }: { embedded?: boolean }) {
   const [logs, setLogs] = useState<ScanResult[]>([]);
   const [detail, setDetail] = useState<ScanResult | null>(null);
   const [tool, setTool] = useState<string>("");
+  const [ready, setReady] = useState(false);
 
   async function load() {
     const list = await api.get<ScanResult[]>("/api/security/logs");
@@ -31,7 +33,9 @@ export function ScanLogs({ embedded }: { embedded?: boolean }) {
   }
 
   useEffect(() => {
-    load().catch((e) => message.error(e.message));
+    load()
+      .catch((e) => message.error(e.message))
+      .finally(() => setReady(true));
   }, []);
 
   const rows = useMemo(() => {
@@ -134,6 +138,8 @@ export function ScanLogs({ embedded }: { embedded?: boolean }) {
       ) : null}
     </>
   );
+
+  if (!ready) return <PageSkeleton bare={embedded} />;
 
   if (embedded) return body;
   return (

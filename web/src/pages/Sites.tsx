@@ -3,6 +3,7 @@ import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 
 import { MoreOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Card, Dropdown, Flex, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { asList } from "@/lib/lists";
 import { formatBytes, type UserUsage } from "@/lib/usage";
 import { SiteDash, type SiteDashAction } from "@/components/SiteDash";
@@ -342,6 +343,7 @@ export function Sites() {
   const [wafBusy, setWafBusy] = useState("");
   const [rulesOpen, setRulesOpen] = useState(false);
   const [ruleSiteId, setRuleSiteId] = useState(0);
+  const [ready, setReady] = useState(false);
 
   async function load() {
     const [a, s, p, u] = await Promise.all([
@@ -410,8 +412,10 @@ export function Sites() {
   }
 
   useEffect(() => {
-    load().catch((e) => message.error(e.message));
-    loadLE().catch((e) => message.error(e.message));
+    Promise.all([
+      load().catch((e) => message.error(e.message)),
+      loadLE().catch((e) => message.error(e.message)),
+    ]).finally(() => setReady(true));
   }, []);
 
   function leBody(v: { email?: string; server: string; directory?: string; key: string; eabKid?: string; eabHmac?: string; noVerify?: boolean }) {
@@ -979,6 +983,8 @@ export function Sites() {
     </Card>
     </Space>
   );
+
+  if (!ready) return <PageSkeleton />;
 
   return (
     <div className="cp-page">

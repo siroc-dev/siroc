@@ -3,6 +3,7 @@ import { Alert, App, Button, Card, Form, Input, InputNumber, Select, Space, Swit
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
 import { PanelUpdate } from "@/components/PanelUpdate";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { Fail2banBans, type Fail2banBan } from "@/components/Fail2banBans";
 
 type Status = {
@@ -52,6 +53,7 @@ export function Tools() {
   const [mntForm] = Form.useForm();
   const [ffForm] = Form.useForm();
   const [mcForm] = Form.useForm();
+  const [ready, setReady] = useState(false);
 
   async function load() {
     const data = await api.get<Status>("/api/sysops");
@@ -62,7 +64,9 @@ export function Tools() {
     mcForm.setFieldsValue({ memoryMB: data.memcached?.memoryMB || 64, listen: data.memcached?.listen, port: data.memcached?.port });
   }
   useEffect(() => {
-    load().catch((e) => message.error(e.message));
+    load()
+      .catch((e) => message.error(e.message))
+      .finally(() => setReady(true));
   }, []);
 
   async function apply(body: Record<string, unknown>) {
@@ -85,6 +89,8 @@ export function Tools() {
       message.error(err instanceof Error ? err.message : "Failed");
     }
   }
+
+  if (!ready) return <PageSkeleton cards={2} rows={6} />;
 
   return (
     <div className="cp-page">

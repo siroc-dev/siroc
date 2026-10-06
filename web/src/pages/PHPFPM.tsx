@@ -3,6 +3,7 @@ import { Alert, Card, Col, Progress, Row, Table, Tag, Typography } from "antd";
 import { CodeOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { StatusHero, StatusNav, fmtNum, fmtUptime } from "@/components/StatusNav";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Proc = { pid: number; state?: string; method?: string; uri?: string; user?: string; script?: string; duration?: number; pool?: string };
 type Pool = {
@@ -80,7 +81,7 @@ export function PHPFPM() {
     return (
       <div className="cp-page">
         <StatusNav />
-        <Typography.Text type="secondary">Loading PHP-FPM status…</Typography.Text>
+        <PageSkeleton bare cards={4} rows={5} />
       </div>
     );
   }

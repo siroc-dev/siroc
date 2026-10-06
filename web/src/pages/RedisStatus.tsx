@@ -4,6 +4,7 @@ import { ThunderboltOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
 import { StatusHero, StatusNav, fmtNum, fmtUptime, fmtUs } from "@/components/StatusNav";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 export type RedisSlow = { id: number; time?: string; durationUs: number; command?: string; client?: string };
 export type RedisStatusData = {
@@ -161,7 +162,7 @@ export function Redis() {
     return (
       <div className="cp-page">
         <StatusNav />
-        <Typography.Text type="secondary">Loading Redis status…</Typography.Text>
+        <PageSkeleton bare cards={4} rows={5} />
       </div>
     );
   }

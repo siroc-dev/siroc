@@ -3,6 +3,7 @@ import { useOutletContext, useSearchParams } from "react-router-dom";
 import { App, Button, Select, Space, Typography } from "antd";
 import { api } from "@/lib/api";
 import { SSHTerminal } from "@/components/SSHTerminal";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Account = { username: string };
 
@@ -14,6 +15,7 @@ export function TerminalPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [user, setUser] = useState("");
   const [session, setSession] = useState(0);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     api
@@ -24,13 +26,16 @@ export function TerminalPage() {
         else if (a[0]) setUser(a[0].username);
         else if (admin) setUser("root");
       })
-      .catch((e) => message.error(e.message));
+      .catch((e) => message.error(e.message))
+      .finally(() => setReady(true));
   }, [admin, message, wantUser]);
 
   const options = [
     ...(admin ? [{ value: "root", label: "System (root)" }] : []),
     ...accounts.map((a) => ({ value: a.username, label: a.username })),
   ];
+
+  if (!ready) return <PageSkeleton rows={10} />;
 
   return (
     <div className="cp-page" style={{ height: "calc(100vh - 112px)", minHeight: 480 }}>

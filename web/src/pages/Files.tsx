@@ -45,6 +45,7 @@ import {
   UploadOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/api";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { languageFromPath } from "@/lib/fileLang";
 import { isSystemPath, joinPath, moveDestinations, normalizeFileJump } from "@/lib/filePaths";
 import { editorWorkspace, formatBytes } from "@/lib/usage";
@@ -127,6 +128,7 @@ export function Files() {
   const wantPath = (search.get("path") || "").trim() || "/";
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [user, setUser] = useState("");
+  const [ready, setReady] = useState(false);
   const [listing, setListing] = useState<Listing>({ path: "/", entries: [] });
   const [editPath, setEditPath] = useState("");
   const [absPath, setAbsPath] = useState("");
@@ -214,13 +216,22 @@ export function Files() {
   }
 
   useEffect(() => {
-    api.get<Account[]>("/api/accounts").then((a) => {
-      setAccounts(a);
-      const allowed = wantUser === "root" ? !!admin : !wantUser || a.some((x) => x.username === wantUser);
-      if (wantUser && allowed) setUser(wantUser);
-      else if (a[0]) setUser(a[0].username);
-      else if (admin) setUser("root");
-    });
+    api
+      .get<Account[]>("/api/accounts")
+      .then((a) => {
+        setAccounts(a);
+        const allowed = wantUser === "root" ? !!admin : !wantUser || a.some((x) => x.username === wantUser);
+        let next = "";
+        if (wantUser && allowed) next = wantUser;
+        else if (a[0]) next = a[0].username;
+        else if (admin) next = "root";
+        if (next) setUser(next);
+        else setReady(true);
+      })
+      .catch((e) => {
+        message.error(e.message);
+        setReady(true);
+      });
   }, [admin, wantUser]);
 
   useEffect(() => {
@@ -229,7 +240,9 @@ export function Files() {
     setExpanded(["/"]);
     const start = pendingJump.current ?? (wantUser && user === wantUser ? wantPath : "/");
     pendingJump.current = null;
-    load(start).catch((e) => message.error(e.message));
+    load(start)
+      .catch((e) => message.error(e.message))
+      .finally(() => setReady(true));
   }, [user, wantUser, wantPath]);
 
   useEffect(() => {
@@ -904,6 +917,8 @@ export function Files() {
     setCtxPoint({ x: ev.clientX, y: ev.clientY });
     setCtxOpen(true);
   }
+
+  if (!ready) return <PageSkeleton rows={10} />;
 
   return (
     <div className="cp-page">

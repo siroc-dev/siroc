@@ -31,7 +31,7 @@
         <p class="lead">
           Siroc is a Linux hosting panel. Hosting accounts are real system users.
           This page covers install, first admin, command-line password reset, and upgrades.
-          Current version <strong id="version">0.2.35</strong>.
+          Current version <strong id="version">0.2.36</strong>.
         </p>
         <nav class="doc-toc">
           <a href="#install">Install</a>
@@ -106,7 +106,7 @@ sudo siroc upgrade --path /var/lib/siroc/updates/siroc-linux-amd64.tar.gz</pre>
           <code>siroc upgrade</code> runs <code>siroc-agent upgrade</code>, replaces
           <code>siroc-panel</code> and <code>siroc-agent</code>, then restarts the services.
         </p>
-        <p>You can also check and apply updates in the panel under <strong>System tools → Updates</strong>. The agent checks the public channel every hour and installs a newer version automatically.</p>
+        <p>You can also check and apply updates in the panel under <strong>System tools → Updates</strong>. When automatic updates are on, the agent checks the public channel every hour and installs a newer version. The same page can turn that off. Check and Apply still work either way.</p>
         <p>Print the installed version:</p>
         <div class="cmd">
           <div class="cmd-top"><span>Version</span><button class="copy" type="button" data-copy>Copy</button></div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, App, Button, Card, Form, Input, InputNumber, Popconfirm, Select, Space, Switch, Typography } from "antd";
 import { api } from "@/lib/api";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 export type RedisSettings = {
   installed: boolean;
@@ -112,7 +113,7 @@ export function RedisConfigPanel() {
   }
 
   if (err && !st) return <Alert type="error" showIcon message={err} />;
-  if (!st) return <Typography.Text type="secondary">Loading Redis config…</Typography.Text>;
+  if (!st) return <PageSkeleton bare rows={5} />;
   if (!st.installed) return <Alert type="info" showIcon message="Install Redis from Software first." />;
 
   return (

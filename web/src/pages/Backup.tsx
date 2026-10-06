@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { formatBytes } from "@/lib/usage";
 
 type Account = { username: string };
@@ -70,6 +71,7 @@ export function Backup() {
   const [cronForm] = Form.useForm();
   const kind = Form.useWatch("kind", form);
   const cronCycle = Form.useWatch("cycle", cronForm);
+  const [ready, setReady] = useState(false);
 
   async function load() {
     const [a, d, j, crons] = await Promise.all([
@@ -84,7 +86,9 @@ export function Backup() {
     setCrons(crons);
   }
   useEffect(() => {
-    load().catch((e) => message.error(e.message));
+    load()
+      .catch((e) => message.error(e.message))
+      .finally(() => setReady(true));
   }, []);
 
   async function saveDest(values: Record<string, unknown>) {
@@ -139,6 +143,8 @@ export function Backup() {
       setBusy(false);
     }
   }
+
+  if (!ready) return <PageSkeleton />;
 
   return (
     <div className="cp-page">

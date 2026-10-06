@@ -174,6 +174,21 @@ func main() {
 			out, err = update.Check(channel)
 		case "apply":
 			out, err = update.Apply(channel, req.URL, req.Path)
+		case "auto":
+			if req.Auto == nil {
+				writeErr(w, http.StatusBadRequest, fmt.Errorf("auto is required"))
+				return
+			}
+			if err = update.SetAutoUpdate(*req.Auto); err != nil {
+				writeErr(w, http.StatusBadRequest, err)
+				return
+			}
+			out = update.Status(channel)
+			if *req.Auto {
+				out.Message = "Automatic updates are on"
+			} else {
+				out.Message = "Automatic updates are off"
+			}
 		default:
 			writeErr(w, http.StatusBadRequest, fmt.Errorf("unknown update action"))
 			return

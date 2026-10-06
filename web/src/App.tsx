@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { Spin } from "antd";
+import { BootSkeleton } from "@/components/PageSkeleton";
 import { api } from "@/lib/api";
 import { Layout } from "@/components/Layout";
 import { AuthForm } from "@/pages/AuthForm";
@@ -76,15 +76,7 @@ export function App() {
     boot().catch(() => setReady(true));
   }, []);
 
-  if (!ready) {
-    return (
-      <div style={{ display: "grid", placeItems: "center", minHeight: "100vh" }}>
-        <Spin size="large" tip="Loading…">
-          <div style={{ padding: 80 }} />
-        </Spin>
-      </div>
-    );
-  }
+  if (!ready) return <BootSkeleton />;
   if (needed) {
     if (!setupOK) {
       return <SetupLocked invalidToken={!!setupToken} />;

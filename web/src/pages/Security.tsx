@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Alert, App, AutoComplete, Button, Card, Checkbox, Col, Input, Popconfirm, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
+import { PageSkeleton } from "@/components/PageSkeleton";
 import { ScanSummary, type ScanResult } from "@/components/ScanSummary";
 import { Fail2banBans, type Fail2banBan } from "@/components/Fail2banBans";
 import { useNavigate } from "react-router-dom";
@@ -54,6 +55,7 @@ export function Security() {
   const [fwAllow, setFwAllow] = useState("");
   const [fwDeny, setFwDeny] = useState("");
   const [busy, setBusy] = useState("");
+  const [ready, setReady] = useState(false);
 
   async function load() {
     const [f, w, a, sc, siteList, ops] = await Promise.all([
@@ -75,7 +77,9 @@ export function Security() {
     }
   }
   useEffect(() => {
-    load().catch((e) => message.error(e.message));
+    load()
+      .catch((e) => message.error(e.message))
+      .finally(() => setReady(true));
   }, []);
 
   async function addWhitelist() {
@@ -98,6 +102,8 @@ export function Security() {
       setBusy("");
     }
   }
+
+  if (!ready) return <PageSkeleton cards={3} rows={6} />;
 
   return (
     <div className="cp-page">

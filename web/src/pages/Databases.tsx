@@ -8,6 +8,7 @@ import { InstallLog } from "@/components/InstallLog";
 import { DatabaseMonitorPanel } from "@/pages/DatabaseMonitor";
 import { RedisConfigPanel } from "@/pages/RedisConfig";
 import { RedisStatusPanel, type RedisStatusData } from "@/pages/RedisStatus";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Account = { username: string };
 type DB = { id: number; username: string; dbName: string; dbUser: string; engine: string; hasPassword?: boolean; size?: number };
@@ -61,6 +62,7 @@ export function Databases() {
   const [importLive, setImportLive] = useState(false);
   const [importErr, setImportErr] = useState("");
   const [importOk, setImportOk] = useState("");
+  const [ready, setReady] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [logToken, setLogToken] = useState(0);
 
@@ -105,7 +107,9 @@ export function Databases() {
   }
 
   useEffect(() => {
-    load().catch((err) => message.error(err.message));
+    load()
+      .catch((err) => message.error(err.message))
+      .finally(() => setReady(true));
   }, []);
 
   async function loadRedis() {
@@ -523,7 +527,7 @@ export function Databases() {
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       {redisErr ? <Alert type="error" showIcon message={redisErr} /> : null}
       {!redis ? (
-        <Typography.Text type="secondary">Loading Redis status…</Typography.Text>
+        <PageSkeleton bare cards={2} rows={3} />
       ) : !redis.installed ? (
         <Alert type="info" showIcon message={redis.message || "Install Redis from Software first"} />
       ) : !redis.active || !redis.ready ? (
@@ -544,6 +548,8 @@ export function Databases() {
       <RedisConfigPanel />
     </Space>
   );
+
+  if (!ready) return <PageSkeleton />;
 
   return (
     <div className="cp-page">
