@@ -1,10 +1,24 @@
 package siteopts
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/url"
+	"path"
 	"strings"
 )
+
+const (
+	DefaultProxyCachePath = "/var/cache/nginx/siroc"
+	DefaultProxyCacheZone = "siroc_cache"
+)
+
+var deniedCachePaths = []string{
+	"/bin", "/boot", "/dev", "/etc", "/lib", "/lib32", "/lib64", "/libx32",
+	"/proc", "/root", "/run", "/sbin", "/snap", "/sys", "/tmp", "/usr", "/home",
+	"/var/backups", "/var/lib", "/var/lock", "/var/log", "/var/run", "/var/spool",
+}
 
 // Proxy is the aaPanel-style reverse proxy for one site.
 type Proxy struct {
@@ -21,6 +35,7 @@ type Proxy struct {
 	Config         string         `json:"config,omitempty"`
 	Replacements   []ProxyReplace `json:"replacements,omitempty"`
 	Cache          bool           `json:"cache,omitempty"`
+	CachePath      string         `json:"cachePath,omitempty"`
 	Gzip           bool           `json:"gzip,omitempty"`
 	Black          []string       `json:"black,omitempty"`
 	White          []string       `json:"white,omitempty"`
@@ -118,6 +133,10 @@ func normalizeProxy(in *Proxy) (*Proxy, error) {
 			return nil, fmt.Errorf("at most 20 content replacements")
 		}
 	}
+	out.CachePath, err = normalizeCachePath(in.CachePath)
+	if err != nil {
+		return nil, err
+	}
 	out.Black, err = proxyIPs(in.Black)
 	if err != nil {
 		return nil, err
@@ -134,7 +153,7 @@ func normalizeProxy(in *Proxy) (*Proxy, error) {
 
 func proxyEmpty(p *Proxy) bool {
 	return p.Target == "" && p.Host == "" && len(p.Rewrites) == 0 && p.Remark == "" && p.Config == "" &&
-		len(p.Replacements) == 0 && !p.Cache && !p.Gzip && len(p.Black) == 0 && len(p.White) == 0 &&
+		len(p.Replacements) == 0 && !p.Cache && p.CachePath == "" && !p.Gzip && len(p.Black) == 0 && len(p.White) == 0 &&
 		p.Path == "/" && !p.ShowPath && !p.Websocket && p.ConnectTimeout == 60 && p.SendTimeout == 600 && p.ReadTimeout == 600
 }
 
@@ -202,6 +221,51 @@ func proxyConfig(raw string) (string, error) {
 		}
 	}
 	return strings.Join(lines, "\n"), nil
+}
+
+func normalizeCachePath(raw string) (string, error) {
+	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if raw == "" || raw == DefaultProxyCachePath {
+		return "", nil
+	}
+	if !strings.HasPrefix(raw, "/") || strings.ContainsAny(raw, " \t\r\n;{}'\"`$") {
+		return "", fmt.Errorf("cache path must be an absolute directory")
+	}
+	abs := path.Clean(raw)
+	if !strings.HasPrefix(abs, "/") || abs == "/" {
+		return "", fmt.Errorf("cache path must be a directory")
+	}
+	if strings.Count(strings.Trim(abs, "/"), "/") < 1 {
+		return "", fmt.Errorf("cache path must be a directory on the disk, not the disk itself")
+	}
+	for _, prefix := range deniedCachePaths {
+		if abs == prefix || strings.HasPrefix(abs, prefix+"/") {
+			return "", fmt.Errorf("cache path cannot be under %s", prefix)
+		}
+	}
+	return abs, nil
+}
+
+// ProxyCacheZone is the nginx keys_zone for a cache directory.
+// The shared default path keeps the name siroc_cache.
+func ProxyCacheZone(cachePath string) string {
+	if cachePath == "" || cachePath == DefaultProxyCachePath {
+		return DefaultProxyCacheZone
+	}
+	sum := sha256.Sum256([]byte(cachePath))
+	return "siroc_c_" + hex.EncodeToString(sum[:8])
+}
+
+// ProxyCache reports the cache directory and zone when this site caches proxy responses.
+func ProxyCache(o Options) (cachePath, zone string, on bool) {
+	if o.Proxy == nil || !o.Proxy.Cache {
+		return "", "", false
+	}
+	cachePath = o.Proxy.CachePath
+	if cachePath == "" {
+		cachePath = DefaultProxyCachePath
+	}
+	return cachePath, ProxyCacheZone(cachePath), true
 }
 
 func parseProxyTarget(target string) (*url.URL, error) {
@@ -282,7 +346,11 @@ func NginxProxyLocation(o Options, fallback string) (string, error) {
 	fmt.Fprintf(&b, "        proxy_send_timeout %ds;\n", p.SendTimeout)
 	fmt.Fprintf(&b, "        proxy_read_timeout %ds;\n", p.ReadTimeout)
 	if p.Cache {
-		b.WriteString("        proxy_cache siroc_cache;\n")
+		cachePath := p.CachePath
+		if cachePath == "" {
+			cachePath = DefaultProxyCachePath
+		}
+		fmt.Fprintf(&b, "        proxy_cache %s;\n", ProxyCacheZone(cachePath))
 		b.WriteString("        proxy_cache_key $scheme$host$request_uri;\n")
 		b.WriteString("        proxy_cache_valid 200 301 302 1h;\n")
 		b.WriteString("        proxy_ignore_headers Set-Cookie Cache-Control Expires X-Accel-Expires;\n")

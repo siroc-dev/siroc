@@ -63,7 +63,7 @@ export function PanelUpdate() {
         </Space>
         {st?.message ? <Alert type={st.available ? "info" : "success"} showIcon message={st.message} /> : null}
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          The panel checks the public channel every day at 04:00 (server timezone). On the server you can also run{" "}
+          The panel checks the public channel every hour and installs a newer version automatically. On the server you can also run{" "}
           <code>sudo siroc update</code> then <code>sudo siroc upgrade</code>.
         </Typography.Paragraph>
         <Typography.Text>

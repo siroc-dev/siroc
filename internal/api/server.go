@@ -1429,7 +1429,7 @@ func (s *Server) createSite(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	doc, err := validate.AccountPath(s.Cfg.HomeRoot, acc.Username, body.DocRoot, body.Domain)
+	doc, err := validate.DocRoot(s.Cfg.HomeRoot, acc.Username, body.DocRoot, body.Domain)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -1544,7 +1544,7 @@ func (s *Server) updateSite(w http.ResponseWriter, r *http.Request) {
 	}
 	doc := st.DocRoot
 	if body.DocRoot != nil {
-		doc, err = validate.AccountPath(s.Cfg.HomeRoot, st.Username, *body.DocRoot, st.Domain)
+		doc, err = validate.DocRoot(s.Cfg.HomeRoot, st.Username, *body.DocRoot, st.Domain)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return

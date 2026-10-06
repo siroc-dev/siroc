@@ -1348,12 +1348,27 @@ func printUpdateStatus(st *rpc.PanelUpdateStatus) {
 
 func runUpdateCheck(args []string) error {
 	channel, _, _ := parseUpdateArgs(args)
-	st, err := update.Check(channel)
+	var st *rpc.PanelUpdateStatus
+	var err error
+	if updateApplyFlag(args) {
+		st, err = update.CheckApply(channel)
+	} else {
+		st, err = update.Check(channel)
+	}
 	if err != nil {
 		return err
 	}
 	printUpdateStatus(st)
 	return nil
+}
+
+func updateApplyFlag(args []string) bool {
+	for _, a := range args {
+		if a == "--apply" {
+			return true
+		}
+	}
+	return false
 }
 
 func runUpdateApply(args []string) error {

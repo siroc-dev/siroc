@@ -95,7 +95,8 @@ function homePrefix(user: string) {
 function toRel(user: string, abs: string) {
   const p = homePrefix(user);
   if (abs.startsWith(p)) return abs.slice(p.length);
-  return abs.replace(/^\/+/, "");
+  if (abs.startsWith("/")) return abs;
+  return abs;
 }
 
 function addedAt(raw?: string) {
@@ -270,7 +271,7 @@ export function SiteSettings({
             <>
               <div className="site-mod-domain-top">
                 <div className="site-mod-hint">
-                  One domain per line. The default ports are 80 and 443.
+                  One domain per line, up to 99 aliases. The default ports are 80 and 443.
                   <br />
                   Wildcard domain format: *.domain.com
                   <br />
@@ -336,8 +337,10 @@ export function SiteSettings({
 
           {tab === "directory" ? (
             <>
-              <Typography.Paragraph type="secondary">Document root for this website. It must stay inside the account home.</Typography.Paragraph>
-              <Input addonBefore={homePrefix(site.username)} value={docRoot} onChange={(e) => setDocRoot(e.target.value)} />
+              <Typography.Paragraph type="secondary">
+                Document root for this website. Use a path inside {homePrefix(site.username)}, or an absolute path on another disk such as /mnt/data/{site.domain}/public_html.
+              </Typography.Paragraph>
+              <Input value={docRoot} onChange={(e) => setDocRoot(e.target.value)} placeholder={`domains/${site.domain}/public_html`} />
               <Button style={{ marginTop: 12 }} type="primary" loading={busy} onClick={() => onPatch({ docRoot }, "Directory saved")}>
                 Save
               </Button>

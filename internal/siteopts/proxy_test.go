@@ -64,6 +64,23 @@ func TestProxyLocation(t *testing.T) {
 			t.Fatalf("missing %s\n%s", want, loc)
 		}
 	}
+	custom, err := Normalize(Options{Proxy: &Proxy{Target: "http://127.0.0.1:3000/", Cache: true, CachePath: "/mnt/data/nginx-cache"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if custom.Proxy.CachePath != "/mnt/data/nginx-cache" {
+		t.Fatalf("path %s", custom.Proxy.CachePath)
+	}
+	loc, err = NginxProxyLocation(custom, "")
+	if err != nil || !contains(loc, "proxy_cache "+ProxyCacheZone("/mnt/data/nginx-cache")+";") {
+		t.Fatalf("custom cache %v\n%s", err, loc)
+	}
+	if _, err := Normalize(Options{Proxy: &Proxy{Target: "http://127.0.0.1:3000/", Cache: true, CachePath: "/etc/nginx"}}); err == nil {
+		t.Fatal("system cache path should be rejected")
+	}
+	if _, err := Normalize(Options{Proxy: &Proxy{Target: "http://127.0.0.1:3000/", Cache: true, CachePath: "/mnt"}}); err == nil {
+		t.Fatal("disk root should be rejected")
+	}
 	legacy, err := NginxProxyLocation(Options{}, "http://127.0.0.1:3000/")
 	if err != nil || !contains(legacy, "proxy_pass http://127.0.0.1:3000/;") || !contains(legacy, "proxy_read_timeout 300s;") {
 		t.Fatalf("legacy %v\n%s", err, legacy)

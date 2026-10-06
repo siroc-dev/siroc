@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.32">0.2.32</a>
           <a href="#v0.2.31">0.2.31</a>
           <a href="#v0.2.30">0.2.30</a>
           <a href="#v0.2.29">0.2.29</a>
@@ -60,6 +61,17 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.32">
+          <h2><a href="#v0.2.32">0.2.32</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>A website document root can be an absolute path on another mounted disk, such as /mnt/data/site/public_html. A relative path still stays inside the account home.</li>
+            <li>Reverse proxy cache can use its own directory. Leave the path empty to keep the shared cache at /var/cache/nginx/siroc.</li>
+            <li>The panel checks the public channel every hour and installs a newer version automatically.</li>
+            <li>A website can have 99 domain aliases. The primary name plus those aliases stay within one Let's Encrypt certificate.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.31">
           <h2><a href="#v0.2.31">0.2.31</a></h2>

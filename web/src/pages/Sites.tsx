@@ -27,7 +27,8 @@ function toRel(user: string, abs: string) {
   const p = homePrefix(user);
   if (abs.startsWith(p)) return abs.slice(p.length);
   if (user && abs === `/home/${user}`) return "";
-  return abs.replace(/^\/+/, "");
+  if (abs.startsWith("/")) return abs;
+  return abs;
 }
 
 function siteLabel(s: { domain: string; displayName?: string }) {
@@ -1090,7 +1091,7 @@ export function Sites() {
               onChange={(e) => {
                 const d = e.target.value;
                 const cur = form.getFieldValue("docRoot") as string | undefined;
-                if (!cur || cur.startsWith("domains/")) form.setFieldsValue({ docRoot: defaultDoc(d) });
+                if (!cur || (cur.startsWith("domains/") && !cur.startsWith("/"))) form.setFieldsValue({ docRoot: defaultDoc(d) });
               }}
             />
           </Form.Item>
@@ -1098,8 +1099,8 @@ export function Sites() {
             {() => {
               const user = (form.getFieldValue("username") as string) || "";
               return (
-                <Form.Item name="docRoot" label="Document root" extra={`Must stay inside ${homePrefix(user)}`}>
-                  <Input addonBefore={homePrefix(user)} placeholder="domains/site.test/public_html" />
+                <Form.Item name="docRoot" label="Document root" extra={`Relative to ${homePrefix(user)}, or an absolute path on another disk such as /mnt/data/site/public_html.`}>
+                  <Input placeholder="domains/site.test/public_html" />
                 </Form.Item>
               );
             }}

@@ -17,6 +17,7 @@ export type ProxySettingsValue = {
   config?: string;
   replacements?: ProxyReplace[];
   cache?: boolean;
+  cachePath?: string;
   gzip?: boolean;
   black?: string[];
   white?: string[];
@@ -64,6 +65,7 @@ export function ProxySettings({
   const [repTo, setRepTo] = useState("");
   const [repRule, setRepRule] = useState("g");
   const [cache, setCache] = useState(false);
+  const [cachePath, setCachePath] = useState("");
   const [gzip, setGzip] = useState(false);
   const [black, setBlack] = useState("");
   const [white, setWhite] = useState("");
@@ -85,6 +87,7 @@ export function ProxySettings({
     setConfig(p.config || "");
     setReplacements(p.replacements || []);
     setCache(!!p.cache);
+    setCachePath(p.cachePath || "");
     setGzip(!!p.gzip);
     setBlack((p.black || []).join("\n"));
     setWhite((p.white || []).join("\n"));
@@ -105,6 +108,7 @@ export function ProxySettings({
       config,
       replacements,
       cache,
+      cachePath: cachePath.trim(),
       gzip,
       black: black.split(/\s+/).map((s) => s.trim()).filter(Boolean),
       white: white.split(/\s+/).map((s) => s.trim()).filter(Boolean),
@@ -254,6 +258,20 @@ export function ProxySettings({
               <Typography.Paragraph type="secondary">
                 Caches successful responses for one hour. Set-Cookie, Cache-Control, Expires, and X-Accel-Expires from the backend are ignored. Requests with Authorization are not cached.
               </Typography.Paragraph>
+              {cache ? (
+                <div style={{ marginTop: 12 }}>
+                  <Typography.Text>Cache path</Typography.Text>
+                  <Input
+                    style={{ marginTop: 8 }}
+                    value={cachePath}
+                    onChange={(e) => setCachePath(e.target.value)}
+                    placeholder="/var/cache/nginx/siroc"
+                  />
+                  <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+                    Leave empty for the shared cache at /var/cache/nginx/siroc. An absolute path such as /mnt/data/nginx-cache stores this site on that disk.
+                  </Typography.Paragraph>
+                </div>
+              ) : null}
               {saveBtn}
             </>
           ),

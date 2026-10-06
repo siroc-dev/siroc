@@ -103,6 +103,18 @@ func Check(channel string) (*rpc.PanelUpdateStatus, error) {
 	return st, nil
 }
 
+// CheckApply checks the channel and installs when a newer version is published.
+func CheckApply(channel string) (*rpc.PanelUpdateStatus, error) {
+	st, err := Check(channel)
+	if err != nil {
+		return nil, err
+	}
+	if !st.Available {
+		return st, nil
+	}
+	return Apply(channel, "", "")
+}
+
 func Apply(channel, srcURL, srcPath string) (*rpc.PanelUpdateStatus, error) {
 	if err := os.MkdirAll(workDir, 0750); err != nil {
 		return nil, err

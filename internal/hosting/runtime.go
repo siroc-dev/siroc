@@ -45,7 +45,7 @@ func (m *Manager) writeApp(req rpc.SiteWriteReq) error {
 	if strings.TrimSpace(doc) == "" {
 		doc = filepath.Join(m.HomeRoot, req.Username, "domains", req.Domain, "public_html")
 	} else {
-		doc, err = validate.AccountPath(m.HomeRoot, req.Username, req.DocRoot, req.Domain)
+		doc, err = validate.DocRoot(m.HomeRoot, req.Username, req.DocRoot, req.Domain)
 		if err != nil {
 			return err
 		}

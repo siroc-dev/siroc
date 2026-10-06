@@ -11,7 +11,7 @@ import (
 
 const (
 	checkUnit = "siroc-update-check"
-	checkCal  = "*-*-* 04:00:00"
+	checkCal  = "hourly"
 )
 
 func InstallCheckTimer() error {
@@ -31,10 +31,10 @@ After=network-online.target
 Type=oneshot
 Environment=HOME=/root
 Environment=SIROC_UPDATE_URL=%s
-ExecStart=%s update
+ExecStart=%s update --apply
 `, DefaultChannel, bin)
 	timer := `[Unit]
-Description=Daily Siroc update check at 04:00
+Description=Hourly Siroc update check and install
 
 [Timer]
 OnCalendar=` + checkCal + `

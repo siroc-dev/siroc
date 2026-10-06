@@ -273,7 +273,7 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 	if _, err := os.Stat(filepath.Join("/etc/php", req.PHPVersion, "fpm")); err != nil {
 		return fmt.Errorf("PHP %s-FPM is not installed", req.PHPVersion)
 	}
-	doc, err := validate.AccountPath(m.HomeRoot, req.Username, req.DocRoot, req.Domain)
+	doc, err := validate.DocRoot(m.HomeRoot, req.Username, req.DocRoot, req.Domain)
 	if err != nil {
 		return err
 	}
@@ -433,6 +433,11 @@ func applyGuards(data *siteData, opt siteopts.Options, proxy string) error {
 		if err := ensureProxySupport(loc); err != nil {
 			return err
 		}
+		if cachePath, zone, on := siteopts.ProxyCache(opt); on {
+			if err := ensureProxyCache(cachePath, zone); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -447,19 +452,26 @@ func ensureProxySupport(loc string) error {
 			return err
 		}
 	}
-	if strings.Contains(loc, "proxy_cache siroc_cache") {
-		if err := os.MkdirAll("/var/cache/nginx/siroc", 0755); err != nil {
-			return err
-		}
-		body := "proxy_cache_path /var/cache/nginx/siroc levels=1:2 keys_zone=siroc_cache:10m max_size=1g inactive=1d use_temp_path=off;\n"
-		if err := os.MkdirAll("/etc/nginx/conf.d", 0755); err != nil {
-			return err
-		}
-		if err := os.WriteFile("/etc/nginx/conf.d/siroc-proxy-cache.conf", []byte(body), 0644); err != nil {
-			return err
-		}
-	}
 	return nil
+}
+
+func ensureProxyCache(cachePath, zone string) error {
+	if cachePath == "" || zone == "" {
+		return nil
+	}
+	if err := os.MkdirAll(cachePath, 0755); err != nil {
+		return err
+	}
+	_ = exec.Command("chown", "www-data:www-data", cachePath).Run()
+	body := fmt.Sprintf("proxy_cache_path %s levels=1:2 keys_zone=%s:10m max_size=1g inactive=1d use_temp_path=off;\n", cachePath, zone)
+	name := "siroc-proxy-cache.conf"
+	if zone != siteopts.DefaultProxyCacheZone {
+		name = "siroc-cache-" + zone + ".conf"
+	}
+	if err := os.MkdirAll("/etc/nginx/conf.d", 0755); err != nil {
+		return err
+	}
+	return os.WriteFile("/etc/nginx/conf.d/"+name, []byte(body), 0644)
 }
 
 func (m *Manager) writeProxy(req rpc.SiteWriteReq) error {
@@ -474,7 +486,7 @@ func (m *Manager) writeProxy(req rpc.SiteWriteReq) error {
 	if strings.TrimSpace(doc) == "" {
 		doc = filepath.Join(m.HomeRoot, req.Username, "domains", req.Domain, "public_html")
 	} else {
-		doc, err = validate.AccountPath(m.HomeRoot, req.Username, req.DocRoot, req.Domain)
+		doc, err = validate.DocRoot(m.HomeRoot, req.Username, req.DocRoot, req.Domain)
 		if err != nil {
 			return err
 		}

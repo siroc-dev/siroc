@@ -1,6 +1,9 @@
 package validate
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestDomainAliasesWildcard(t *testing.T) {
 	got, err := DomainAliases("strawbandco.shop", []string{"*.strawbandco.shop", "www.strawbandco.shop", " *.strawbandco.shop "})
@@ -41,5 +44,20 @@ func TestIDNDomain(t *testing.T) {
 	}
 	if DisplayDomain(got[0]) != "*.münchen.de" {
 		t.Fatalf("wild display %q", DisplayDomain(got[0]))
+	}
+}
+
+func TestDomainAliasLimit(t *testing.T) {
+	names := make([]string, MaxDomainAliases)
+	for i := range names {
+		names[i] = fmt.Sprintf("a%d.example.com", i)
+	}
+	got, err := DomainAliases("example.com", names)
+	if err != nil || len(got) != MaxDomainAliases {
+		t.Fatalf("%v len %d", err, len(got))
+	}
+	names = append(names, "extra.example.com")
+	if _, err := DomainAliases("example.com", names); err == nil {
+		t.Fatal("over the limit")
 	}
 }

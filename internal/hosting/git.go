@@ -46,7 +46,7 @@ func (m *Manager) GitDeploy(req rpc.GitDeployReq) (*rpc.GitDeployResp, error) {
 	if err != nil {
 		return nil, err
 	}
-	abs, err := validate.AccountPath(m.HomeRoot, req.Username, req.Path, "")
+	abs, err := validate.DocRoot(m.HomeRoot, req.Username, req.Path, "")
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (m *Manager) GitHead(username, rel string) (*rpc.GitCommit, error) {
 	if err := validate.LinuxUser(username); err != nil {
 		return nil, err
 	}
-	abs, err := validate.AccountPath(m.HomeRoot, username, rel, "")
+	abs, err := validate.DocRoot(m.HomeRoot, username, rel, "")
 	if err != nil {
 		return nil, err
 	}

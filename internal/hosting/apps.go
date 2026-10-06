@@ -175,7 +175,7 @@ func (m *Manager) SiteApp(req rpc.SiteAppReq) (*rpc.SiteAppResp, error) {
 	if err := validate.Domain(req.Domain); err != nil {
 		return nil, err
 	}
-	doc, err := validate.AccountPath(m.HomeRoot, req.Username, req.DocRoot, req.Domain)
+	doc, err := validate.DocRoot(m.HomeRoot, req.Username, req.DocRoot, req.Domain)
 	if err != nil {
 		return nil, err
 	}

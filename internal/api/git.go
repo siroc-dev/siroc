@@ -78,7 +78,7 @@ func (s *Server) putSiteGit(w http.ResponseWriter, r *http.Request) {
 	if path == "" {
 		path = validate.RelHome(s.Cfg.HomeRoot, st.Username, st.DocRoot)
 	}
-	if _, err := validate.AccountPath(s.Cfg.HomeRoot, st.Username, path, ""); err != nil {
+	if _, err := validate.DocRoot(s.Cfg.HomeRoot, st.Username, path, ""); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}

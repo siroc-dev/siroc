@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -141,6 +142,10 @@ func DomainOrWildcardAlias(name string) error {
 	return Domain(n)
 }
 
+// MaxDomainAliases is how many extra names one website can have.
+// Let's Encrypt allows 100 names on a certificate, including the primary domain.
+const MaxDomainAliases = 99
+
 func DomainAliases(primary string, aliases []string) ([]string, error) {
 	var err error
 	primary, err = ASCIIHost(primary)
@@ -164,8 +169,8 @@ func DomainAliases(primary string, aliases []string) ([]string, error) {
 		seen[n] = struct{}{}
 		out = append(out, n)
 	}
-	if len(out) > 20 {
-		return nil, fmt.Errorf("at most 20 domain aliases")
+	if len(out) > MaxDomainAliases {
+		return nil, fmt.Errorf("at most %d domain aliases", MaxDomainAliases)
 	}
 	if out == nil {
 		out = []string{}
@@ -560,6 +565,94 @@ func AccountPath(homeRoot, username, raw, domain string) (string, error) {
 		return "", fmt.Errorf("path must stay inside the account home")
 	}
 	return abs, nil
+}
+
+var deniedDocRoots = []string{
+	"/bin", "/boot", "/dev", "/etc", "/lib", "/lib32", "/lib64", "/libx32",
+	"/proc", "/root", "/run", "/sbin", "/snap", "/sys", "/tmp", "/usr",
+	"/var/backups", "/var/cache", "/var/lib", "/var/lock", "/var/log", "/var/run", "/var/spool",
+}
+
+// DocRoot accepts a path inside the account home, or an absolute directory on another disk.
+// System locations and other accounts stay rejected.
+func DocRoot(homeRoot, username, raw, domain string) (string, error) {
+	if err := LinuxUser(username); err != nil {
+		return "", err
+	}
+	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if strings.ContainsRune(raw, 0) {
+		return "", fmt.Errorf("invalid document root")
+	}
+	if raw == "" || !strings.HasPrefix(raw, "/") {
+		return AccountPath(homeRoot, username, raw, domain)
+	}
+	abs := path.Clean(raw)
+	if !strings.HasPrefix(abs, "/") || abs == "/" {
+		return "", fmt.Errorf("document root must be a directory")
+	}
+	resolved, err := resolveDocRoot(abs)
+	if err != nil {
+		return "", err
+	}
+	if err := safeDocRoot(homeRoot, username, resolved); err != nil {
+		return "", err
+	}
+	return resolved, nil
+}
+
+func safeDocRoot(homeRoot, username, abs string) error {
+	abs = path.Clean(abs)
+	if !strings.HasPrefix(abs, "/") || abs == "/" {
+		return fmt.Errorf("document root must be a directory")
+	}
+	root := path.Clean(strings.ReplaceAll(homeRoot, "\\", "/"))
+	if !strings.HasPrefix(root, "/") || root == "/" {
+		root = "/home"
+	}
+	own := path.Clean(root + "/" + username)
+	insideOwn := abs == own || strings.HasPrefix(abs, own+"/")
+	if abs == root || (strings.HasPrefix(abs, root+"/") && !insideOwn) {
+		return fmt.Errorf("path must stay inside this account or on another mounted disk")
+	}
+	if !insideOwn && strings.Count(strings.Trim(abs, "/"), "/") < 1 {
+		return fmt.Errorf("document root must be a directory on the mounted disk, not the disk itself")
+	}
+	for _, prefix := range deniedDocRoots {
+		if abs == prefix || strings.HasPrefix(abs, prefix+"/") {
+			return fmt.Errorf("document root cannot be under %s", prefix)
+		}
+	}
+	return nil
+}
+
+func resolveDocRoot(abs string) (string, error) {
+	cur := abs
+	var tail []string
+	for {
+		if cur == "/" {
+			return abs, nil
+		}
+		if _, err := os.Lstat(cur); err == nil {
+			resolved, err := filepath.EvalSymlinks(cur)
+			if err != nil {
+				return "", fmt.Errorf("document root: %w", err)
+			}
+			resolved = path.Clean(filepath.ToSlash(resolved))
+			if !strings.HasPrefix(resolved, "/") {
+				resolved = "/" + resolved
+			}
+			if len(tail) > 0 {
+				resolved = path.Clean(resolved + "/" + path.Join(tail...))
+			}
+			return resolved, nil
+		}
+		parent := path.Dir(cur)
+		if parent == cur {
+			return abs, nil
+		}
+		tail = append([]string{path.Base(cur)}, tail...)
+		cur = parent
+	}
 }
 
 func RelHome(homeRoot, username, abs string) string {

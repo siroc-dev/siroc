@@ -57,7 +57,7 @@ sudo siroc upgrade             # download, install, restart
 
 Or open **System tools → Updates**. The current version is shown in the sidebar.
 
-- **Check for updates** reads `latest.json` from an HTTPS channel (`SIROC_UPDATE_URL` or the channel field). The agent also runs this check every day at 04:00 (server timezone).
+- **Check for updates** reads `latest.json` from an HTTPS channel (`SIROC_UPDATE_URL` or the channel field). The agent checks every hour and installs a newer version automatically.
 - **Apply update** installs a `siroc-linux-amd64.tar.gz` from that URL, or from a local path such as `/var/lib/siroc/updates/…`.
 - Sites, accounts, and `/var/lib/siroc` are kept. The agent replaces binaries and the web UI, then restarts the services.
 
@@ -65,8 +65,8 @@ Example `latest.json` (published to Cloudflare R2 by CI):
 
 ```json
 {
-  "version": "0.2.31",
-  "url": "https://get.siroc.dev/0.2.31/siroc-linux-amd64.tar.gz",
+  "version": "0.2.32",
+  "url": "https://get.siroc.dev/0.2.32/siroc-linux-amd64.tar.gz",
   "sha256": "optional"
 }
 ```

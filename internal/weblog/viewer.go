@@ -218,12 +218,21 @@ func resolveSiteLogPath(req rpc.SiteLogReq, group, name string) string {
 	return ""
 }
 
+func laravelJail(user, docRoot string) string {
+	home := filepath.Join("/home", user)
+	doc := filepath.Clean(docRoot)
+	if doc == "" || doc == "." || InHome(home, doc) {
+		return home
+	}
+	return doc
+}
+
 func laravelLogDir(user, docRoot string) string {
 	doc := filepath.Clean(docRoot)
 	if doc == "" || doc == "." {
 		return ""
 	}
-	home := filepath.Join("/home", user)
+	home := laravelJail(user, doc)
 	if !InHome(home, doc) {
 		return ""
 	}

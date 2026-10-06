@@ -13,22 +13,23 @@ import (
 func chmodWebTree(home, root string) {
 	home = filepath.Clean(home)
 	root = filepath.Clean(root)
+	jail := home
 	if root != home && !withinHome(home, root) {
-		return
+		jail = root
 	}
 	seen := map[string]struct{}{}
 	var walk func(string)
 	walk = func(dir string) {
 		dir = filepath.Clean(dir)
-		if dir != home && !withinHome(home, dir) {
+		if dir != jail && !withinHome(jail, dir) {
 			return
 		}
 		if _, ok := seen[dir]; ok {
 			return
 		}
 		seen[dir] = struct{}{}
-		if dir != home {
-			chmodAncestors(home, dir)
+		if dir != jail {
+			chmodAncestors(jail, dir)
 		}
 		ents, err := os.ReadDir(dir)
 		if err != nil {
@@ -38,7 +39,7 @@ func chmodWebTree(home, root string) {
 			path := filepath.Join(dir, e.Name())
 			if e.Type()&os.ModeSymlink != 0 {
 				target, err := filepath.EvalSymlinks(path)
-				if err != nil || !withinHome(home, target) {
+				if err != nil || !withinHome(jail, target) {
 					continue
 				}
 				st, err := os.Stat(target)

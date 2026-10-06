@@ -110,8 +110,8 @@ func clearLaravelDir(req rpc.SiteLogReq, only string) error {
 			return fmt.Errorf("unknown log")
 		}
 		path := filepath.Join(dir, only)
-		if !InHome(filepath.Join("/home", req.Username), path) {
-			return fmt.Errorf("log is outside the account home")
+		if !InHome(laravelJail(req.Username, req.DocRoot), path) {
+			return fmt.Errorf("log is outside the site directory")
 		}
 		return truncateLog(path)
 	}
@@ -127,7 +127,7 @@ func clearLaravelDir(req rpc.SiteLogReq, only string) error {
 			continue
 		}
 		path := filepath.Join(dir, e.Name())
-		if !InHome(filepath.Join("/home", req.Username), path) {
+		if !InHome(laravelJail(req.Username, req.DocRoot), path) {
 			continue
 		}
 		if err := truncateLog(path); err != nil {

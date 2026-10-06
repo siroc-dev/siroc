@@ -283,6 +283,10 @@ func fillSiteFPM(data *siteData, homeRoot string, req rpc.SiteWriteReq) error {
 		return err
 	}
 	data.OpenBasedir = home + string(os.PathSeparator)
+	doc := filepath.Clean(req.DocRoot)
+	if doc != "" && doc != "." && !withinHome(home, doc) {
+		data.OpenBasedir += ":" + doc + string(os.PathSeparator)
+	}
 	data.Home = home
 	data.UserTmp = tmp
 	if custom {
