@@ -5,15 +5,17 @@ export type Captcha = { id: string; image: string };
 export class RequestError extends Error {
   captchaRequired?: boolean;
   captcha?: Captcha;
+  log?: string;
 }
 
 async function parse<T>(res: Response): Promise<T> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const payload = data as ApiError & { captchaRequired?: boolean; captcha?: Captcha };
+    const payload = data as ApiError & { captchaRequired?: boolean; captcha?: Captcha; log?: string };
     const err = new RequestError(payload.error || res.statusText);
     err.captchaRequired = payload.captchaRequired;
     err.captcha = payload.captcha;
+    err.log = payload.log;
     throw err;
   }
   return data as T;

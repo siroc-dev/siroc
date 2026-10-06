@@ -31,7 +31,7 @@
         <p class="lead">
           Siroc is a Linux hosting panel. Hosting accounts are real system users.
           This page covers install, first admin, command-line password reset, and upgrades.
-          Current version <strong id="version">0.2.36</strong>.
+          Current version <strong id="version">0.2.37</strong>.
         </p>
         <nav class="doc-toc">
           <a href="#install">Install</a>
@@ -123,6 +123,8 @@ sudo siroc upgrade --path /var/lib/siroc/updates/siroc-linux-amd64.tar.gz</pre>
         <p>
           New sites get a local HTTPS certificate. Issue Let's Encrypt later for public domains.
           Port 80 must be reachable from the internet for HTTP-01.
+          Issued certificates renew twice a day, at 03:17 and 15:17, from <code>/etc/cron.d/siroc-ssl</code>.
+          Nginx and Apache reload only after a certificate is actually replaced.
         </p>
 
         <h2 id="hosting">Hosting</h2>

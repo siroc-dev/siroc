@@ -132,6 +132,9 @@ func main() {
 	if err := update.InstallCheckTimer(); err != nil {
 		log.Printf("update check timer: %v", err)
 	}
+	if err := software.InstallSSLRenew(); err != nil {
+		log.Printf("ssl renew cron: %v", err)
+	}
 	if err := osupdate.InstallTimer(); err != nil {
 		log.Printf("os update timer: %v", err)
 	}
@@ -572,6 +575,13 @@ func main() {
 		}
 		out, err := hostMgr.IssueSSL(req)
 		if err != nil {
+			if out != nil && (out.Log != "" || out.Message != "") {
+				if out.Message == "" {
+					out.Message = err.Error()
+				}
+				writeJSON(w, http.StatusOK, out)
+				return
+			}
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}

@@ -145,6 +145,7 @@ export function SiteSettings({
   onClose,
   onPatch,
   onIssueSSL,
+  sslLog,
   onLocalSSL,
   onDisableSSL,
   onGit,
@@ -160,6 +161,7 @@ export function SiteSettings({
   onClose: () => void;
   onPatch: (body: Record<string, unknown>, ok: string) => Promise<void>;
   onIssueSSL: () => void;
+  sslLog?: string;
   onLocalSSL: () => void;
   onDisableSSL: () => void;
   onGit: () => void;
@@ -476,6 +478,7 @@ ${site.ssl ? "listen 443 ssl;\n" : ""}${phpSite ? `php ${site.phpVersion};\n` : 
                   </Button>
                 ) : null}
               </Space>
+              {sslLog ? <pre className="cmd-out">{sslLog}</pre> : null}
             </>
           ) : null}
 

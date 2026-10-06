@@ -1747,15 +1747,30 @@ func (s *Server) issueSiteSSL(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	if out == nil || !out.OK {
+		msg := "Let's Encrypt failed"
+		log := ""
+		if out != nil {
+			if out.Message != "" {
+				msg = out.Message
+			}
+			log = out.Log
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg, "log": log})
+		return
+	}
 	req.SSL = true
 	req.SSLKind = "letsencrypt"
 	if err := s.Agent.SiteWrite(req); err != nil {
-		writeErr(w, http.StatusBadRequest, err)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error(), "log": out.Log})
 		return
 	}
 	_ = s.Store.UpdateSite(st.ID, st.PHPVersion, st.DocRoot, st.Enabled, st.Aliases, true, out.Expiry, "letsencrypt", st.Rewrite)
 	st, _ = s.Store.GetSite(id)
-	writeJSON(w, http.StatusOK, st)
+	writeJSON(w, http.StatusOK, struct {
+		*store.Site
+		Log string `json:"log,omitempty"`
+	}{Site: st, Log: out.Log})
 }
 
 func (s *Server) disableSiteSSL(w http.ResponseWriter, r *http.Request) {

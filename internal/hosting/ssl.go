@@ -207,17 +207,25 @@ func (m *Manager) IssueSSL(req rpc.SiteSSLReq) (*rpc.SiteSSLResp, error) {
 		args = append(args, "-d", a)
 	}
 	out, err := exec.Command("certbot", args...).CombinedOutput()
+	log := clipLog(string(out))
+	resp := &rpc.SiteSSLResp{Log: log}
 	if err != nil {
-		msg := strings.TrimSpace(string(out))
+		msg := log
 		if msg == "" {
 			msg = err.Error()
 		}
-		return nil, fmt.Errorf("Let's Encrypt: %s", tailOut(msg))
+		resp.Message = "Let's Encrypt: " + tailOut(msg)
+		return resp, fmt.Errorf("%s", resp.Message)
 	}
 	if !leExists(req.Domain) {
-		return nil, fmt.Errorf("Let's Encrypt finished but certificate is missing")
+		resp.Message = "Let's Encrypt finished but certificate is missing"
+		return resp, fmt.Errorf("%s", resp.Message)
 	}
-	return &rpc.SiteSSLResp{OK: true, Kind: "letsencrypt", Expiry: certExpiryPath(liveCert(req.Domain)), Cert: liveCert(req.Domain)}, nil
+	resp.OK = true
+	resp.Kind = "letsencrypt"
+	resp.Expiry = certExpiryPath(liveCert(req.Domain))
+	resp.Cert = liveCert(req.Domain)
+	return resp, nil
 }
 
 func (m *Manager) RegisterLEAccount(req rpc.LEAccountReq) (*rpc.LEAccountResp, error) {
@@ -358,6 +366,15 @@ func publicACMEName(name string) bool {
 		return false
 	}
 	return len(tld) >= 2
+}
+
+func clipLog(s string) string {
+	s = strings.TrimSpace(s)
+	const max = 48 * 1024
+	if len(s) <= max {
+		return s
+	}
+	return s[len(s)-max:]
 }
 
 func tailOut(s string) string {

@@ -830,14 +830,7 @@ func addLaunchpadPPA(owner, name string) error {
 }
 
 func configureCertbot(string) error {
-	if err := os.MkdirAll("/var/www/letsencrypt/.well-known/acme-challenge", 0755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll("/etc/letsencrypt/renewal-hooks/deploy", 0755); err != nil {
-		return err
-	}
-	hook := "#!/bin/sh\nsystemctl reload nginx >/dev/null 2>&1 || true\n"
-	if err := os.WriteFile("/etc/letsencrypt/renewal-hooks/deploy/cp-reload-nginx.sh", []byte(hook), 0755); err != nil {
+	if err := InstallSSLRenew(); err != nil {
 		return err
 	}
 	_ = exec.Command("systemctl", "enable", "--now", "certbot.timer").Run()

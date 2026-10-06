@@ -232,10 +232,12 @@ type LEAccountResp struct {
 }
 
 type SiteSSLResp struct {
-	OK     bool   `json:"ok"`
-	Kind   string `json:"kind,omitempty"`
-	Expiry string `json:"expiry,omitempty"`
-	Cert   string `json:"cert,omitempty"`
+	OK      bool   `json:"ok"`
+	Kind    string `json:"kind,omitempty"`
+	Expiry  string `json:"expiry,omitempty"`
+	Cert    string `json:"cert,omitempty"`
+	Log     string `json:"log,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 type SiteAppReq struct {

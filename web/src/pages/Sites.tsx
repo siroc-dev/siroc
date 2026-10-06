@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import { MoreOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Card, Dropdown, Flex, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
-import { api } from "@/lib/api";
+import { api, RequestError } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { asList } from "@/lib/lists";
 import { formatBytes, type UserUsage } from "@/lib/usage";
@@ -341,6 +341,7 @@ export function Sites() {
   const [runtime, setRuntime] = useState<AppRuntime | null>(null);
   const [runtimeBusy, setRuntimeBusy] = useState(false);
   const [wafBusy, setWafBusy] = useState("");
+  const [sslLog, setSslLog] = useState("");
   const [rulesOpen, setRulesOpen] = useState(false);
   const [ruleSiteId, setRuleSiteId] = useState(0);
   const [ready, setReady] = useState(false);
@@ -482,6 +483,7 @@ export function Sites() {
   }
 
   function openEdit(s: Site, section: SiteSection = "domain") {
+    setSslLog("");
     setSettingsSection(section);
     setEdit(s);
   }
@@ -561,12 +563,15 @@ export function Sites() {
   async function issueSSL() {
     if (!edit) return;
     setBusy(true);
+    setSslLog("");
     try {
-      const st = await api.post<Site>(`/api/sites/${edit.id}/ssl`, {});
+      const st = await api.post<Site & { log?: string }>(`/api/sites/${edit.id}/ssl`, {});
+      setSslLog(st.log || "");
       message.success(`Let's Encrypt issued for ${siteLabel(edit)}`);
       setEdit(st);
       await load();
     } catch (err) {
+      if (err instanceof RequestError && err.log) setSslLog(err.log);
       message.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setBusy(false);
@@ -1179,6 +1184,7 @@ export function Sites() {
           onClose={() => setEdit(null)}
           onPatch={patchSite}
           onIssueSSL={issueSSL}
+          sslLog={sslLog}
           onLocalSSL={useLocalSSL}
           onDisableSSL={disableSSL}
           onGit={() => setGitSite(edit)}
