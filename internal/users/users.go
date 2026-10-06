@@ -221,23 +221,15 @@ func (m *Manager) CreateFTP(owner, name, password, homeRel string) (*rpc.FTPUser
 	if err != nil {
 		return nil, fmt.Errorf("owner account not found")
 	}
-	if homeRel == "" {
-		homeRel = "domains"
-	}
-	homeRel = filepath.ToSlash(filepath.Clean(homeRel))
-	homeRel = strings.TrimPrefix(homeRel, "/")
-	if homeRel == ".." || strings.HasPrefix(homeRel, "../") || strings.Contains(homeRel, "/../") {
-		return nil, fmt.Errorf("invalid home path")
-	}
-	home := filepath.Join(m.HomeRoot, owner, filepath.FromSlash(homeRel))
-	root := filepath.Join(m.HomeRoot, owner)
-	if home != root && !strings.HasPrefix(home, root+string(os.PathSeparator)) {
-		return nil, fmt.Errorf("ftp home must stay inside the account")
-	}
-	if err := os.MkdirAll(home, 0750); err != nil {
+	home, err := validate.FTPHome(m.HomeRoot, owner, homeRel)
+	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command("useradd", "-M", "-d", home, "-s", "/usr/sbin/nologin", "-g", ownerU.Gid, login)
+	if err := os.MkdirAll(home, 0755); err != nil {
+		return nil, err
+	}
+	_ = exec.Command("chown", owner+":"+owner, home).Run()
+	cmd := exec.Command("useradd", "-o", "-u", ownerU.Uid, "-g", ownerU.Gid, "-M", "-d", home, "-s", "/usr/sbin/nologin", login)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("useradd: %s: %w", strings.TrimSpace(string(out)), err)
 	}
@@ -247,7 +239,6 @@ func (m *Manager) CreateFTP(owner, name, password, homeRel string) (*rpc.FTPUser
 		exec.Command("userdel", login).Run()
 		return nil, fmt.Errorf("chpasswd: %s: %w", strings.TrimSpace(string(out)), err)
 	}
-	_ = exec.Command("chown", owner+":"+owner, home).Run()
 	return &rpc.FTPUserResp{Login: login, Home: home}, nil
 }
 

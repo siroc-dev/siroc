@@ -47,6 +47,27 @@ func TestIDNDomain(t *testing.T) {
 	}
 }
 
+func TestFTPHome(t *testing.T) {
+	got, err := FTPHome("/home", "alice", "")
+	if err != nil || got != "/home/alice" {
+		t.Fatalf("default %s %v", got, err)
+	}
+	got, err = FTPHome("/home", "alice", "domains/a.test/public_html")
+	if err != nil || got != "/home/alice/domains/a.test/public_html" {
+		t.Fatalf("rel %s %v", got, err)
+	}
+	got, err = FTPHome("/home", "alice", "/mnt/data/alice")
+	if err != nil || got != "/mnt/data/alice" {
+		t.Fatalf("disk %s %v", got, err)
+	}
+	if _, err := FTPHome("/home", "alice", "../bob"); err == nil {
+		t.Fatal("escape should fail")
+	}
+	if _, err := FTPHome("/home", "alice", "/etc/nginx"); err == nil {
+		t.Fatal("system path should fail")
+	}
+}
+
 func TestDomainAliasLimit(t *testing.T) {
 	names := make([]string, MaxDomainAliases)
 	for i := range names {

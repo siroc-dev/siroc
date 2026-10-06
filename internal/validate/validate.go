@@ -38,6 +38,36 @@ func FTPName(name string) error {
 	return nil
 }
 
+// FTPHome is the directory an extra FTP login is jailed to.
+// An empty path is the account home. A relative path stays inside that home.
+// A path that starts with / may be on another disk.
+func FTPHome(homeRoot, owner, raw string) (string, error) {
+	if err := LinuxUser(owner); err != nil {
+		return "", err
+	}
+	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	root := path.Clean(strings.ReplaceAll(homeRoot, "\\", "/"))
+	if !strings.HasPrefix(root, "/") || root == "/" {
+		root = "/home"
+	}
+	own := path.Clean(root + "/" + owner)
+	if raw == "" || raw == "." || raw == "/" {
+		return own, nil
+	}
+	if strings.HasPrefix(raw, "/") {
+		return DocRoot(homeRoot, owner, raw, "")
+	}
+	rel := path.Clean(raw)
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", fmt.Errorf("invalid home path")
+	}
+	home := path.Clean(own + "/" + rel)
+	if home != own && !strings.HasPrefix(home, own+"/") {
+		return "", fmt.Errorf("ftp home must stay inside the account")
+	}
+	return home, nil
+}
+
 func FTPLogin(owner, name string) (string, error) {
 	if err := LinuxUser(owner); err != nil {
 		return "", err

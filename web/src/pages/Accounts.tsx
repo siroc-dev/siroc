@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { MoreOutlined } from "@ant-design/icons";
-import { App, Alert, Button, Card, Dropdown, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tag, Typography } from "antd";
+import { App, Alert, Button, Card, Dropdown, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { formatBytes, type UserUsage } from "@/lib/usage";
 
@@ -19,6 +19,8 @@ type Account = {
 };
 
 type Pkg = { name: string; installedVersions?: string[] };
+
+type FTPRow = { id: number; login: string; home: string; username: string };
 
 type UserRedis = {
   username: string;
@@ -57,6 +59,11 @@ export function Accounts() {
   const [newPass, setNewPass] = useState("");
   const [usage, setUsage] = useState<Record<string, UserUsage>>({});
   const [wafBusy, setWafBusy] = useState("");
+  const [ftpTarget, setFtpTarget] = useState<Account | null>(null);
+  const [ftpRows, setFtpRows] = useState<FTPRow[]>([]);
+  const [ftpCreated, setFtpCreated] = useState("");
+  const [ftpForm] = Form.useForm();
+  const ftpPath = Form.useWatch("home", ftpForm) as string | undefined;
 
   async function load() {
     const [accounts, pkgs, redisRows] = await Promise.all([
@@ -243,6 +250,52 @@ export function Accounts() {
     }
   }
 
+  async function openFTP(a: Account) {
+    setFtpTarget(a);
+    setFtpCreated("");
+    ftpForm.resetFields();
+    try {
+      setFtpRows(await api.get<FTPRow[]>(`/api/ftp?user=${encodeURIComponent(a.username)}`));
+    } catch (err) {
+      setFtpRows([]);
+      message.error(err instanceof Error ? err.message : "Cannot load FTP users");
+    }
+  }
+
+  async function addFTP(values: { name: string; password: string; home?: string }) {
+    if (!ftpTarget) return;
+    setBusy(true);
+    try {
+      const out = await api.post<{ user: FTPRow; password: string }>("/api/ftp", {
+        username: ftpTarget.username,
+        name: values.name.trim(),
+        password: values.password,
+        home: (values.home || "").trim(),
+      });
+      setFtpCreated(`${out.user.login}  ${out.password}`);
+      ftpForm.resetFields();
+      setFtpRows(await api.get<FTPRow[]>(`/api/ftp?user=${encodeURIComponent(ftpTarget.username)}`));
+      message.success("FTP user created");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteFTP(row: FTPRow) {
+    if (!ftpTarget) return;
+    setBusy(true);
+    try {
+      await api.delete(`/api/ftp/${row.id}`);
+      setFtpRows(await api.get<FTPRow[]>(`/api/ftp?user=${encodeURIComponent(ftpTarget.username)}`));
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function cliLabel(v?: string) {
     return v || "system";
   }
@@ -334,6 +387,7 @@ export function Accounts() {
                       { key: "php", label: "PHP-FPM" },
                       { key: "quota", label: "Quota" },
                       { key: "redis", label: "Redis" },
+                      { key: "ftp", label: "FTP users" },
                       { key: "suspend", label: a.suspended ? "Unsuspend" : "Suspend" },
                       { type: "divider" },
                       { key: "delete", label: "Delete", danger: true },
@@ -348,6 +402,7 @@ export function Accounts() {
                         quotaForm.setFieldsValue({ limitMB: a.diskQuotaMB || 0 });
                       }
                       if (key === "redis") void openRedis(a);
+                      if (key === "ftp") void openFTP(a);
                       if (key === "suspend") void act(a.username, a.suspended ? "unsuspend" : "suspend", "POST");
                       if (key === "delete") {
                         modal.confirm({
@@ -541,6 +596,72 @@ export function Accounts() {
             </>
           ) : null}
         </Space>
+      </Modal>
+
+      <Modal
+        title={ftpTarget ? `FTP users · ${ftpTarget.username}` : "FTP users"}
+        open={!!ftpTarget}
+        onCancel={() => setFtpTarget(null)}
+        footer={<Button onClick={() => setFtpTarget(null)}>Close</Button>}
+        destroyOnHidden
+        width={720}
+      >
+        <Typography.Paragraph type="secondary">
+          Each login is jailed to its path. Leave the path empty to use /home/{ftpTarget?.username || "user"}. A path that starts with / can be on another disk.
+        </Typography.Paragraph>
+        <Form form={ftpForm} layout="vertical" onFinish={addFTP} requiredMark={false}>
+          <Space align="start" wrap>
+            <Form.Item name="name" label="Name" rules={[{ required: true, pattern: /^[a-z][a-z0-9]{1,15}$/, message: "2–16 letters or digits, starting with a letter" }]}>
+              <Input placeholder="shop" autoComplete="off" style={{ width: 140 }} />
+            </Form.Item>
+            <Form.Item name="password" label="Password" rules={[{ required: true, min: 8 }]}>
+              <Input.Password autoComplete="new-password" style={{ width: 180 }} />
+            </Form.Item>
+            <Form.Item name="home" label="Path">
+              <Input
+                style={{ width: 280 }}
+                addonBefore={(ftpPath || "").startsWith("/") ? undefined : `/home/${ftpTarget?.username || "user"}/`}
+                placeholder="domains/site.test/public_html"
+              />
+            </Form.Item>
+          </Space>
+          <Button type="primary" htmlType="submit" loading={busy}>
+            Add FTP user
+          </Button>
+        </Form>
+        {ftpCreated ? (
+          <Alert
+            style={{ marginTop: 12 }}
+            type="success"
+            showIcon
+            message="Login and password"
+            description={<Typography.Text copyable>{ftpCreated}</Typography.Text>}
+          />
+        ) : null}
+        <Table
+          style={{ marginTop: 16 }}
+          size="small"
+          rowKey="id"
+          pagination={false}
+          dataSource={ftpRows}
+          locale={{ emptyText: "No extra FTP users yet." }}
+          columns={[
+            { title: "Login", dataIndex: "login" },
+            { title: "Path", dataIndex: "home", ellipsis: true },
+            {
+              title: "",
+              width: 90,
+              align: "right",
+              render: (_, row) => (
+                <Popconfirm title={`Delete ${row.login}?`} onConfirm={() => void deleteFTP(row)}>
+                  <Button size="small" type="link" danger>
+                    Delete
+                  </Button>
+                </Popconfirm>
+              ),
+            },
+          ]}
+        />
       </Modal>
     </div>
   );

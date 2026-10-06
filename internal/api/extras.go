@@ -1261,8 +1261,11 @@ func ftpHomeRel(owner, home string) string {
 	if strings.HasPrefix(home, prefix) {
 		return strings.TrimPrefix(home, prefix)
 	}
-	if home == "/home/"+owner {
+	if home == "/home/"+owner || home == "" {
 		return ""
+	}
+	if strings.HasPrefix(home, "/") {
+		return home
 	}
 	return strings.TrimPrefix(home, "/")
 }
