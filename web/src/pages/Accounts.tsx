@@ -72,6 +72,9 @@ export function Accounts() {
   const [ftpRows, setFtpRows] = useState<FTPRow[]>([]);
   const [ftpCreated, setFtpCreated] = useState("");
   const [ftpForm] = Form.useForm();
+  const [ftpPassForm] = Form.useForm();
+  const [ftpPassTarget, setFtpPassTarget] = useState<FTPRow | null>(null);
+  const [ftpNewPass, setFtpNewPass] = useState("");
   const ftpPath = Form.useWatch("home", ftpForm) as string | undefined;
   const [ftpSites, setFtpSites] = useState<FTPSite[]>([]);
   const [ready, setReady] = useState(false);
@@ -263,9 +266,58 @@ export function Accounts() {
     }
   }
 
+  function openFTPReset(row: FTPRow) {
+    setFtpPassTarget(row);
+    setFtpNewPass("");
+    ftpPassForm.resetFields();
+  }
+
+  async function randomFTPResetPassword() {
+    try {
+      const data = await api.get<{ password: string }>("/api/password/suggest");
+      ftpPassForm.setFieldValue("password", data.password);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Cannot generate password");
+    }
+  }
+
+  async function resetFTPPassword(values: { password: string }) {
+    if (!ftpPassTarget) return;
+    setBusy(true);
+    try {
+      const out = await api.put<{ password: string }>(`/api/ftp/${ftpPassTarget.id}/password`, {
+        password: values.password,
+      });
+      setFtpNewPass(out.password || values.password);
+      message.success(`FTP password reset for ${ftpPassTarget.login}`);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function showFTPPassword(row: FTPRow) {
+    try {
+      const out = await api.get<{ password: string }>(`/api/ftp/${row.id}/password`);
+      modal.info({
+        title: `FTP password · ${row.login}`,
+        content: (
+          <Typography.Paragraph copyable style={{ marginBottom: 0 }}>
+            {out.password}
+          </Typography.Paragraph>
+        ),
+      });
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Password is not stored");
+    }
+  }
+
   async function openFTP(a: Account) {
     setFtpTarget(a);
     setFtpCreated("");
+    setFtpPassTarget(null);
+    setFtpNewPass("");
     setFtpSites([]);
     ftpForm.resetFields();
     try {
@@ -631,7 +683,10 @@ export function Accounts() {
       <Modal
         title={ftpTarget ? `FTP users · ${ftpTarget.username}` : "FTP users"}
         open={!!ftpTarget}
-        onCancel={() => setFtpTarget(null)}
+        onCancel={() => {
+          setFtpTarget(null);
+          setFtpPassTarget(null);
+        }}
         footer={<Button onClick={() => setFtpTarget(null)}>Close</Button>}
         destroyOnHidden
         width={720}
@@ -707,18 +762,65 @@ export function Accounts() {
             { title: "Path", dataIndex: "home", ellipsis: true },
             {
               title: "",
-              width: 90,
+              width: 200,
               align: "right",
               render: (_, row) => (
-                <Popconfirm title={`Delete ${row.login}?`} onConfirm={() => void deleteFTP(row)}>
-                  <Button size="small" type="link" danger>
-                    Delete
+                <Space size={0}>
+                  <Button size="small" type="link" onClick={() => void showFTPPassword(row)}>
+                    Show
                   </Button>
-                </Popconfirm>
+                  <Button size="small" type="link" onClick={() => openFTPReset(row)}>
+                    Reset
+                  </Button>
+                  <Popconfirm title={`Delete ${row.login}?`} onConfirm={() => void deleteFTP(row)}>
+                    <Button size="small" type="link" danger>
+                      Delete
+                    </Button>
+                  </Popconfirm>
+                </Space>
               ),
             },
           ]}
         />
+      </Modal>
+
+      <Modal
+        title={ftpPassTarget ? `Reset FTP password · ${ftpPassTarget.login}` : "Reset FTP password"}
+        open={!!ftpPassTarget}
+        onCancel={() => {
+          setFtpPassTarget(null);
+          setFtpNewPass("");
+        }}
+        onOk={() => (ftpNewPass ? setFtpPassTarget(null) : ftpPassForm.submit())}
+        confirmLoading={busy}
+        destroyOnHidden
+        okText={ftpNewPass ? "Done" : "Reset password"}
+      >
+        <Form form={ftpPassForm} layout="vertical" onFinish={resetFTPPassword} requiredMark={false} style={{ marginTop: 8 }}>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="This changes only this extra FTP login. The account password stays the same."
+          />
+          {ftpNewPass ? (
+            <>
+              <Typography.Text type="secondary">New password</Typography.Text>
+              <Typography.Paragraph copyable style={{ marginBottom: 0 }}>
+                {ftpNewPass}
+              </Typography.Paragraph>
+            </>
+          ) : (
+            <>
+              <Form.Item name="password" label="New password" rules={[{ required: true, min: 8 }]}>
+                <Input.Password autoComplete="new-password" />
+              </Form.Item>
+              <Button htmlType="button" onClick={() => void randomFTPResetPassword()}>
+                Random password
+              </Button>
+            </>
+          )}
+        </Form>
       </Modal>
     </div>
   );

@@ -345,7 +345,7 @@ func (s *Server) setFTPPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.UpdateFTPPassword(row.ID, enc)
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "login": row.Login, "password": body.Password})
 }
 
 func (s *Server) deleteFTP(w http.ResponseWriter, r *http.Request) {
