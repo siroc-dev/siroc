@@ -128,6 +128,7 @@ func main() {
 	dbMgr := &dbmgmt.Manager{}
 	secMgr := &security.Manager{HomeRoot: cfg.HomeRoot}
 	mon := &monitoring.Collector{}
+	mon.StartDisk()
 	weblog.Ensure()
 	if err := update.InstallCheckTimer(); err != nil {
 		log.Printf("update check timer: %v", err)

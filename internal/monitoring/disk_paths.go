@@ -5,9 +5,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
 )
+
+// diskInterval is how long a finished user-disk scan is reused.
+// The agent refreshes it in the background, so page loads do not run du.
+const diskInterval = time.Hour
 
 // SiteDiskPaths returns document roots that sit outside each account home.
 // A path already inside that home is omitted, because du of the home counts it.
@@ -42,22 +47,26 @@ func SiteDiskPaths(homeRoot string, items []rpc.SiteDiskItem) map[string][]strin
 	return out
 }
 
-func siteDiskKey(grouped map[string][]string) string {
-	users := make([]string, 0, len(grouped))
-	for u := range grouped {
-		users = append(users, u)
-	}
-	sort.Strings(users)
-	var b strings.Builder
-	for _, u := range users {
-		for _, p := range grouped[u] {
-			b.WriteString(u)
-			b.WriteByte('\t')
-			b.WriteString(p)
-			b.WriteByte('\n')
+// siteDiskRequestKey identifies the path list the panel asked to measure.
+// It does not touch the filesystem, so a usage poll can compare it cheaply.
+func siteDiskRequestKey(home string, items []rpc.SiteDiskItem) string {
+	home = slashClean(home)
+	lines := make([]string, 0, len(items))
+	for _, it := range items {
+		user := strings.TrimSpace(it.User)
+		p := slashClean(it.Path)
+		if user == "" || p == "" {
+			continue
 		}
+		lines = append(lines, user+"\t"+p)
 	}
-	return b.String()
+	sort.Strings(lines)
+	return home + "\n" + strings.Join(lines, "\n")
+}
+
+// diskCacheFresh reports whether a background scan is still inside the hour.
+func diskCacheFresh(at, now time.Time) bool {
+	return !at.IsZero() && now.Sub(at) < diskInterval
 }
 
 // parseDu reads GNU du -sb lines ("bytes<tab>path") into cleaned path -> bytes.

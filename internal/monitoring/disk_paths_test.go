@@ -3,6 +3,7 @@ package monitoring
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
 )
@@ -36,5 +37,35 @@ func TestParseDu(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %#v", got)
+	}
+}
+
+func TestDiskCacheFresh(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	if diskCacheFresh(time.Time{}, now) {
+		t.Fatal("zero time is not a finished scan")
+	}
+	if !diskCacheFresh(now.Add(-30*time.Minute), now) {
+		t.Fatal("a scan from this hour should be reused")
+	}
+	if diskCacheFresh(now.Add(-diskInterval), now) {
+		t.Fatal("a scan an hour old should refresh")
+	}
+}
+
+func TestSiteDiskRequestKey(t *testing.T) {
+	a := siteDiskRequestKey("/home", []rpc.SiteDiskItem{
+		{User: "bob", Path: "/mnt/b"},
+		{User: "alice", Path: "/mnt/a"},
+	})
+	b := siteDiskRequestKey("/home/", []rpc.SiteDiskItem{
+		{User: "alice", Path: "/mnt/a"},
+		{User: "bob", Path: "/mnt/b"},
+	})
+	if a != b {
+		t.Fatalf("key not stable: %q vs %q", a, b)
+	}
+	if a == siteDiskRequestKey("/home", []rpc.SiteDiskItem{{User: "alice", Path: "/mnt/other"}}) {
+		t.Fatal("different paths should not share a key")
 	}
 }

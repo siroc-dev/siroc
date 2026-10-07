@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -23,20 +24,42 @@ import (
 )
 
 type Collector struct {
-	mu      sync.Mutex
-	cpu     cpuSnap
-	net     map[string]netSnap
-	diskIO  map[string]diskSnap
-	procs   map[int]procSnap
-	users   map[string]string
-	sampled bool
-	diskMu  sync.Mutex
-	diskAt  time.Time
-	diskBy  map[string]uint64
-	pathMu  sync.Mutex
-	pathAt  time.Time
-	pathKey string
-	pathBy  map[string]uint64
+	mu         sync.Mutex
+	cpu        cpuSnap
+	net        map[string]netSnap
+	diskIO     map[string]diskSnap
+	procs      map[int]procSnap
+	users      map[string]string
+	sampled    bool
+	diskMu     sync.Mutex
+	diskRun    sync.Mutex
+	diskAt     time.Time
+	diskBy     map[string]uint64
+	pathMu     sync.Mutex
+	pathRun    sync.Mutex
+	pathAt     time.Time
+	pathBy     map[string]uint64
+	pathHome   string
+	pathItems  []rpc.SiteDiskItem
+	pathReqKey string
+}
+
+const diskScanLimit = 10 * time.Minute
+
+// StartDisk measures each account in the background, then again every hour.
+// Usage reads the last result and does not wait on du.
+func (c *Collector) StartDisk() {
+	go c.diskLoop()
+}
+
+func (c *Collector) diskLoop() {
+	c.scanHomeDisk()
+	t := time.NewTicker(diskInterval)
+	defer t.Stop()
+	for range t.C {
+		c.scanHomeDisk()
+		c.scanSiteDisk()
+	}
 }
 
 type cpuSnap struct {
@@ -822,43 +845,99 @@ func (c *Collector) userUsage(rows []procRow, memTotal uint64) []rpc.UserUsage {
 func (c *Collector) homeDisks() map[string]uint64 {
 	c.diskMu.Lock()
 	defer c.diskMu.Unlock()
-	if c.diskBy != nil && time.Since(c.diskAt) < 30*time.Second {
-		return c.diskBy
+	if c.diskBy == nil {
+		return map[string]uint64{}
 	}
-	out := map[string]uint64{}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	return c.diskBy
+}
+
+func (c *Collector) scanHomeDisk() {
+	if !c.diskRun.TryLock() {
+		return
+	}
+	defer c.diskRun.Unlock()
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), diskScanLimit)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "du", "-b", "--max-depth=1", "/home")
 	b, err := cmd.Output()
-	if err == nil {
-		for _, line := range strings.Split(string(b), "\n") {
-			fields := strings.Fields(line)
-			if len(fields) < 2 {
-				continue
-			}
-			n, _ := strconv.ParseUint(fields[0], 10, 64)
-			p := filepath.Clean(fields[1])
-			if p == "/home" {
-				continue
-			}
-			out[filepath.Base(p)] = n
-		}
+	if err != nil && (ctx.Err() != nil || len(b) == 0) {
+		log.Printf("user disk: home scan: %v", err)
+		return
 	}
+	sizes := parseDu(string(b))
+	out := map[string]uint64{}
+	for p, n := range sizes {
+		if p == "/home" {
+			continue
+		}
+		out[filepath.Base(p)] = n
+	}
+	c.diskMu.Lock()
 	c.diskBy = out
 	c.diskAt = time.Now()
-	return out
+	c.diskMu.Unlock()
+	log.Printf("user disk: %d homes in %s", len(out), time.Since(start).Round(time.Second))
 }
 
 // SiteDisk adds the size of website document roots that are outside the account home.
-// Paths inside the home are already included by homeDisks. The result is cached for 30s.
+// Paths inside the home are already included by the home scan. The size comes from
+// the hourly background scan; this returns that result without waiting on du.
 func (c *Collector) SiteDisk(home string, items []rpc.SiteDiskItem) map[string]uint64 {
-	grouped := SiteDiskPaths(home, resolveSitePaths(items))
-	key := siteDiskKey(grouped)
+	key := siteDiskRequestKey(home, items)
 	c.pathMu.Lock()
-	defer c.pathMu.Unlock()
-	if c.pathBy != nil && c.pathKey == key && time.Since(c.pathAt) < 30*time.Second {
-		return c.pathBy
+	changed := key != c.pathReqKey
+	c.pathHome = home
+	c.pathItems = append([]rpc.SiteDiskItem(nil), items...)
+	c.pathReqKey = key
+	fresh := !changed && diskCacheFresh(c.pathAt, time.Now())
+	out := c.pathBy
+	c.pathMu.Unlock()
+	if !fresh {
+		go c.scanSiteDisk()
 	}
+	if out == nil {
+		return map[string]uint64{}
+	}
+	return out
+}
+
+func (c *Collector) scanSiteDisk() {
+	if !c.pathRun.TryLock() {
+		return
+	}
+	defer c.pathRun.Unlock()
+	for {
+		c.pathMu.Lock()
+		home := c.pathHome
+		items := append([]rpc.SiteDiskItem(nil), c.pathItems...)
+		reqKey := c.pathReqKey
+		c.pathMu.Unlock()
+		if reqKey == "" {
+			return
+		}
+		start := time.Now()
+		grouped := SiteDiskPaths(home, resolveSitePaths(items))
+		measured, ok := measureSiteDisk(grouped)
+		c.pathMu.Lock()
+		changed := c.pathReqKey != reqKey
+		if ok {
+			c.pathBy = measured
+		}
+		if changed {
+			c.pathMu.Unlock()
+			continue
+		}
+		c.pathAt = time.Now()
+		c.pathMu.Unlock()
+		if ok {
+			log.Printf("user disk: site paths in %s", time.Since(start).Round(time.Second))
+		}
+		return
+	}
+}
+
+func measureSiteDisk(grouped map[string][]string) (map[string]uint64, bool) {
 	out := map[string]uint64{}
 	var args []string
 	type owner struct {
@@ -873,31 +952,27 @@ func (c *Collector) SiteDisk(home string, items []rpc.SiteDiskItem) map[string]u
 		}
 	}
 	if len(args) == 0 {
-		c.pathBy = out
-		c.pathKey = key
-		c.pathAt = time.Now()
-		return out
+		return out, true
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), diskScanLimit)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "du", append([]string{"-sb"}, args...)...)
 	b, err := cmd.Output()
-	if ctx.Err() != nil && c.pathBy != nil {
-		return c.pathBy
+	if ctx.Err() != nil {
+		log.Printf("user disk: site scan: %v", ctx.Err())
+		return nil, false
 	}
 	sizes := parseDu(string(b))
-	if len(sizes) == 0 && err != nil && c.pathBy != nil {
-		return c.pathBy
+	if len(sizes) == 0 && err != nil {
+		log.Printf("user disk: site scan: %v", err)
+		return nil, false
 	}
 	for _, o := range owners {
 		if n, ok := sizes[slashClean(o.path)]; ok {
 			out[o.user] += n
 		}
 	}
-	c.pathBy = out
-	c.pathKey = key
-	c.pathAt = time.Now()
-	return out
+	return out, true
 }
 
 func resolveSitePaths(items []rpc.SiteDiskItem) []rpc.SiteDiskItem {
