@@ -1311,6 +1311,10 @@ html[data-theme="dark"] .log-list button.is-on {
   background: #111;
 }
 
+.ant-modal.site-create-mod {
+  max-width: calc(100vw - 32px);
+}
+
 .site-mod .ant-modal-body {
   padding: 0;
 }

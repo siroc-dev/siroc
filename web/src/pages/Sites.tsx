@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import { MoreOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Card, Dropdown, Flex, Form, Input, InputNumber, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Col, Dropdown, Flex, Form, Input, InputNumber, Modal, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api, RequestError } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { asList } from "@/lib/lists";
@@ -1095,82 +1095,90 @@ export function Sites() {
         onOk={() => form.submit()}
         confirmLoading={busy}
         destroyOnHidden
+        className="site-create-mod"
+        width={880}
         okText="Create vhost"
         okButtonProps={{ disabled: phps.length === 0 && !APP_KINDS.has(form.getFieldValue("kind")) && form.getFieldValue("kind") !== "proxy" }}
       >
         <Form form={form} layout="vertical" onFinish={create} requiredMark={false} style={{ marginTop: 8 }}>
-          <Form.Item name="username" label="Account" rules={[{ required: true }]}>
-            <Select
-              options={accounts.map((a) => ({ value: a.username, label: a.username }))}
-              onChange={() => {
-                const d = form.getFieldValue("domain");
-                if (d) form.setFieldsValue({ docRoot: defaultDoc(d) });
-              }}
-            />
-          </Form.Item>
-          <Form.Item name="domain" label="Domain" rules={[{ required: true }]}>
-            <Input
-              placeholder="site.test"
-              onChange={(e) => {
-                const d = e.target.value;
-                const cur = form.getFieldValue("docRoot") as string | undefined;
-                if (!cur || (cur.startsWith("domains/") && !cur.startsWith("/"))) form.setFieldsValue({ docRoot: defaultDoc(d) });
-              }}
-            />
-          </Form.Item>
-          <Form.Item noStyle shouldUpdate>
-            {() => {
-              const user = (form.getFieldValue("username") as string) || "";
-              return (
-                <Form.Item name="docRoot" label="Document root" extra={`Defaults to ${homePrefix(user)}. A path that starts with / uses another disk, such as /mnt/data/site/public_html.`}>
-                  <DocRootInput user={user} />
-                </Form.Item>
-              );
-            }}
-          </Form.Item>
-          <Form.Item name="aliases" label="Aliases" extra="www.site.test or *.site.test for every subdomain">
-            <Select mode="tags" tokenSeparators={[",", " "]} placeholder="www.site.test, *.site.test" />
-          </Form.Item>
-          <Form.Item name="kind" label="Type" initialValue="php">
-            <Select
-              options={SITE_KINDS}
-              onChange={(v) => {
-                if (APP_KINDS.has(v) && !form.getFieldValue("appCmd")) {
-                  form.setFieldsValue({ appCmd: defaultAppCmd(v) });
-                }
-              }}
-            />
-          </Form.Item>
-          <Form.Item noStyle shouldUpdate>
-            {() => {
-              const kind = form.getFieldValue("kind") as string;
-              if (kind === "proxy") {
-                return (
-                  <Form.Item name="proxyPass" label="Proxy URL" rules={[{ required: true }]} extra="Example: http://127.0.0.1:3000/">
-                    <Input placeholder="http://127.0.0.1:3000/" />
-                  </Form.Item>
-                );
-              }
-              if (APP_KINDS.has(kind)) {
-                return (
-                  <>
-                    <Form.Item name="appCmd" label="Start command" extra="Runs as the Linux user. PORT is set automatically.">
-                      <Input placeholder={defaultAppCmd(kind)} />
+          <Row gutter={[16, 0]}>
+            <Col xs={24} md={12}>
+              <Form.Item name="username" label="Account" rules={[{ required: true }]}>
+                <Select
+                  options={accounts.map((a) => ({ value: a.username, label: a.username }))}
+                  onChange={() => {
+                    const d = form.getFieldValue("domain");
+                    if (d) form.setFieldsValue({ docRoot: defaultDoc(d) });
+                  }}
+                />
+              </Form.Item>
+              <Form.Item name="domain" label="Domain" rules={[{ required: true }]}>
+                <Input
+                  placeholder="site.test"
+                  onChange={(e) => {
+                    const d = e.target.value;
+                    const cur = form.getFieldValue("docRoot") as string | undefined;
+                    if (!cur || (cur.startsWith("domains/") && !cur.startsWith("/"))) form.setFieldsValue({ docRoot: defaultDoc(d) });
+                  }}
+                />
+              </Form.Item>
+              <Form.Item noStyle shouldUpdate>
+                {() => {
+                  const user = (form.getFieldValue("username") as string) || "";
+                  return (
+                    <Form.Item name="docRoot" label="Document root" extra={`Defaults to ${homePrefix(user)}. A path that starts with / uses another disk, such as /mnt/data/site/public_html.`}>
+                      <DocRootInput user={user} />
                     </Form.Item>
-                    <Form.Item name="appPort" label="Port" extra="Leave empty to assign 30000+ automatically. nginx proxies to 127.0.0.1:port.">
-                      <InputNumber min={1024} max={65535} style={{ width: "100%" }} placeholder="auto" />
+                  );
+                }}
+              </Form.Item>
+              <Form.Item name="aliases" label="Aliases" extra="www.site.test or *.site.test for every subdomain">
+                <Select mode="tags" tokenSeparators={[",", " "]} placeholder="www.site.test, *.site.test" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="kind" label="Type" initialValue="php">
+                <Select
+                  options={SITE_KINDS}
+                  onChange={(v) => {
+                    if (APP_KINDS.has(v) && !form.getFieldValue("appCmd")) {
+                      form.setFieldsValue({ appCmd: defaultAppCmd(v) });
+                    }
+                  }}
+                />
+              </Form.Item>
+              <Form.Item noStyle shouldUpdate>
+                {() => {
+                  const kind = form.getFieldValue("kind") as string;
+                  if (kind === "proxy") {
+                    return (
+                      <Form.Item name="proxyPass" label="Proxy URL" rules={[{ required: true }]} extra="Example: http://127.0.0.1:3000/">
+                        <Input placeholder="http://127.0.0.1:3000/" />
+                      </Form.Item>
+                    );
+                  }
+                  if (APP_KINDS.has(kind)) {
+                    return (
+                      <>
+                        <Form.Item name="appCmd" label="Start command" extra="Runs as the Linux user. PORT is set automatically.">
+                          <Input placeholder={defaultAppCmd(kind)} />
+                        </Form.Item>
+                        <Form.Item name="appPort" label="Port" extra="Leave empty to assign 30000+ automatically. nginx proxies to 127.0.0.1:port.">
+                          <InputNumber min={1024} max={65535} style={{ width: "100%" }} placeholder="auto" />
+                        </Form.Item>
+                      </>
+                    );
+                  }
+                  return (
+                    <Form.Item name="phpVersion" label="PHP" rules={[{ required: true }]}>
+                      <Select options={phpOptions()} />
                     </Form.Item>
-                  </>
-                );
-              }
-              return (
-                <Form.Item name="phpVersion" label="PHP" rules={[{ required: true }]}>
-                  <Select options={phpOptions()} />
-                </Form.Item>
-              );
-            }}
-          </Form.Item>
-          <RewriteBlock form={form} />
+                  );
+                }}
+              </Form.Item>
+              <RewriteBlock form={form} />
+            </Col>
+          </Row>
         </Form>
       </Modal>
 

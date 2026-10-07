@@ -77,6 +77,27 @@ describe("Sites page", () => {
     unmount();
   });
 
+  it("opens the new website form in two columns", async () => {
+    vi.mocked(api.get).mockImplementation(async (url: string) => {
+      if (url === "/api/accounts") return [{ username: "a01" }];
+      if (url === "/api/software/php-versions") return ["8.3", "8.4"];
+      return [];
+    });
+    const { unmount } = renderSites();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Add domain" })).toBeTruthy();
+    });
+    screen.getByRole("button", { name: "Add domain" }).click();
+    await waitFor(() => {
+      expect(screen.getByText("New website")).toBeTruthy();
+    });
+    const cols = document.querySelectorAll(".site-create-mod .ant-col-md-12");
+    expect(cols.length).toBe(2);
+    expect(screen.getByText("Document root")).toBeTruthy();
+    expect(screen.getByText("Nginx rewrite")).toBeTruthy();
+    unmount();
+  });
+
   it("opens a Plesk-style site dashboard from the domain name", async () => {
     vi.mocked(api.get).mockImplementation(async (url: string) => {
       if (url === "/api/accounts") return [{ username: "a01", wafEnabled: true }];
