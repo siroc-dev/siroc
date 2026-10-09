@@ -123,7 +123,7 @@ func Apply(req rpc.SysopsReq) (*rpc.SysopsStatus, error) {
 	case "swap":
 		err = setSwap(req.SwapMB)
 	case "ip-add":
-		err = addIP(req.Interface, req.Address)
+		err = addIP(req.Interface, req.Address, req.VLAN)
 	case "ip-del":
 		err = delIP(req.Interface, req.Address)
 	case "route":
@@ -507,6 +507,7 @@ func ifaces() []string {
 }
 
 func addrs() []rpc.NetAddr {
+	vlans := vlanDevices()
 	ifaces, _ := net.Interfaces()
 	var out []rpc.NetAddr
 	for _, ifi := range ifaces {
@@ -516,7 +517,12 @@ func addrs() []rpc.NetAddr {
 			if strings.Contains(a.String(), ":") && !strings.Contains(a.String(), ".") {
 				fam = "inet6"
 			}
-			out = append(out, rpc.NetAddr{Iface: ifi.Name, Address: a.String(), Family: fam})
+			row := rpc.NetAddr{Iface: ifi.Name, Address: a.String(), Family: fam}
+			if v, ok := vlans[ifi.Name]; ok {
+				row.VLAN = v.id
+				row.Parent = v.parent
+			}
+			out = append(out, row)
 		}
 	}
 	return out
@@ -533,27 +539,104 @@ func routes() []string {
 	return out
 }
 
-func addIP(iface, addr string) error {
+func addIP(iface, addr string, vlan int) error {
 	if iface == "" || addr == "" {
 		return fmt.Errorf("interface and CIDR address required")
+	}
+	if err := validIface(iface); err != nil {
+		return err
 	}
 	if _, _, err := net.ParseCIDR(addr); err != nil {
 		return fmt.Errorf("address must be CIDR, e.g. 192.168.1.10/24")
 	}
-	if out, err := exec.Command("ip", "addr", "add", addr, "dev", iface).CombinedOutput(); err != nil {
+	dev := iface
+	if vlan > 0 {
+		name, err := vlanIfaceName(iface, vlan)
+		if err != nil {
+			return err
+		}
+		if err := ensureVLAN(iface, name, vlan); err != nil {
+			return err
+		}
+		if err := linkUp(iface); err != nil {
+			return err
+		}
+		if err := linkUp(name); err != nil {
+			return err
+		}
+		dev = name
+	}
+	if out, err := exec.Command("ip", "addr", "add", addr, "dev", dev).CombinedOutput(); err != nil {
 		return fmt.Errorf("ip add: %s", strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+func ensureVLAN(parent, name string, id int) error {
+	if cur, ok := vlanDevices()[name]; ok {
+		if cur.id != id || cur.parent != parent {
+			return fmt.Errorf("interface %s is already VLAN %d on %s", name, cur.id, cur.parent)
+		}
+		return nil
+	}
+	if _, err := os.Stat("/sys/class/net/" + name); err == nil {
+		return fmt.Errorf("interface %s already exists", name)
+	}
+	out, err := exec.Command("ip", "link", "add", "link", parent, "name", name, "type", "vlan", "id", strconv.Itoa(id)).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("vlan: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func linkUp(iface string) error {
+	out, err := exec.Command("ip", "link", "set", iface, "up").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("link up: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func vlanDevices() map[string]vlanDev {
+	b, err := os.ReadFile("/proc/net/vlan/config")
+	if err != nil {
+		return nil
+	}
+	return parseVLANConfig(string(b))
 }
 
 func delIP(iface, addr string) error {
 	if iface == "" || addr == "" {
 		return fmt.Errorf("interface and address required")
 	}
+	if err := validIface(iface); err != nil {
+		return err
+	}
 	if out, err := exec.Command("ip", "addr", "del", addr, "dev", iface).CombinedOutput(); err != nil {
 		return fmt.Errorf("ip del: %s", strings.TrimSpace(string(out)))
 	}
+	if _, ok := vlanDevices()[iface]; ok && !hasRoutableAddr(iface) {
+		if out, err := exec.Command("ip", "link", "delete", iface).CombinedOutput(); err != nil {
+			return fmt.Errorf("vlan delete: %s", strings.TrimSpace(string(out)))
+		}
+	}
 	return nil
+}
+
+func hasRoutableAddr(iface string) bool {
+	ifi, err := net.InterfaceByName(iface)
+	if err != nil {
+		return false
+	}
+	as, _ := ifi.Addrs()
+	for _, a := range as {
+		ip, _, err := net.ParseCIDR(a.String())
+		if err != nil || ip == nil || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func setGateway(gw, iface string) error {

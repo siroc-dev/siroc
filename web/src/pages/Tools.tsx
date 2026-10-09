@@ -15,7 +15,7 @@ type Status = {
   dns?: string[];
   search?: string;
   swap?: { totalMB: number; usedMB: number; file?: string };
-  ips?: { iface: string; address: string; family: string }[];
+  ips?: { iface: string; address: string; family: string; vlan?: number; parent?: string }[];
   routes?: string[];
   ifaces?: string[];
   mounts?: { device: string; mountPoint: string; fsType: string; size?: string; used?: string; avail?: string; usePct?: string }[];
@@ -181,7 +181,8 @@ export function Tools() {
                     pagination={false}
                     dataSource={st?.ips || []}
                     columns={[
-                      { title: "Interface", dataIndex: "iface", width: 120 },
+                      { title: "Interface", dataIndex: "iface", width: 140, render: (_, row) => row.parent || row.iface },
+                      { title: "VLAN", dataIndex: "vlan", width: 80, render: (v: number) => (v ? String(v) : "") },
                       { title: "Address", dataIndex: "address" },
                       {
                         title: "",
@@ -195,9 +196,23 @@ export function Tools() {
                       },
                     ]}
                   />
-                  <Form form={ipForm} layout="inline" style={{ marginTop: 12 }} onFinish={(v) => apply({ action: "ip-add", ...v })}>
+                  <Form
+                    form={ipForm}
+                    layout="inline"
+                    style={{ marginTop: 12 }}
+                    onFinish={(v) => apply({ action: "ip-add", interface: v.interface, address: v.address, vlan: v.vlan || undefined })}
+                  >
                     <Form.Item name="interface" rules={[{ required: true }]}>
-                      <Select placeholder="iface" style={{ width: 140 }} options={(st?.ifaces || []).map((i) => ({ value: i, label: i }))} />
+                      <Select
+                        placeholder="iface"
+                        style={{ width: 140 }}
+                        options={(st?.ifaces || [])
+                          .filter((i) => !(st?.ips || []).some((row) => row.vlan && row.iface === i))
+                          .map((i) => ({ value: i, label: i }))}
+                      />
+                    </Form.Item>
+                    <Form.Item name="vlan">
+                      <InputNumber min={1} max={4094} placeholder="VLAN" style={{ width: 100 }} />
                     </Form.Item>
                     <Form.Item name="address" rules={[{ required: true }]}>
                       <Input placeholder="10.0.0.5/24" style={{ width: 200 }} />
@@ -206,6 +221,9 @@ export function Tools() {
                       Add
                     </Button>
                   </Form>
+                  <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+                    Leave VLAN empty for the interface itself. A VLAN ID creates that VLAN, brings it up, and puts the address on it.
+                  </Typography.Paragraph>
                   <Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>
                     {(st?.routes || []).join(" · ") || "No routes"}
                   </Typography.Paragraph>

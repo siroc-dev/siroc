@@ -1389,6 +1389,7 @@ type SysopsReq struct {
 	SwapMB       int      `json:"swapMB,omitempty"`
 	Interface    string   `json:"interface,omitempty"`
 	Address      string   `json:"address,omitempty"`
+	VLAN         int      `json:"vlan,omitempty"`
 	Gateway      string   `json:"gateway,omitempty"`
 	Device       string   `json:"device,omitempty"`
 	MountPoint   string   `json:"mountPoint,omitempty"`
@@ -1437,6 +1438,8 @@ type NetAddr struct {
 	Iface   string `json:"iface"`
 	Address string `json:"address"`
 	Family  string `json:"family"`
+	VLAN    int    `json:"vlan,omitempty"`
+	Parent  string `json:"parent,omitempty"`
 }
 
 type MountInfo struct {
