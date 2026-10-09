@@ -100,6 +100,7 @@ const NAV: { key: SiteSection; label: string }[] = [
 
 const KINDS = [
   { value: "php", label: "PHP / Apache" },
+  { value: "nginx", label: "Direct nginx" },
   { value: "proxy", label: "Reverse proxy" },
   { value: "nodejs", label: "Node.js" },
   { value: "python", label: "Python" },
@@ -302,7 +303,7 @@ export function SiteSettings({
     return onPatch({ options: { ...baseOpts(site), ...partial } }, ok);
   }
 
-  const phpSite = !APP.has(kind) && kind !== "proxy";
+  const phpSite = !APP.has(kind) && kind !== "proxy" && kind !== "nginx";
 
   return (
     <Modal className="site-mod" width={980} title={title} open onCancel={onClose} footer={null} destroyOnHidden>
@@ -588,7 +589,11 @@ ${site.ssl ? "listen 443 ssl;\n" : ""}${phpSite ? `php ${site.phpVersion};\n` : 
                 </div>
               </>
             ) : (
-              <Typography.Paragraph>This site is {kind}. PHP-FPM is not in front of it. Change the runtime under Reverse proxy.</Typography.Paragraph>
+              <Typography.Paragraph>
+                {kind === "nginx"
+                  ? "Nginx serves this document root directly. PHP is not used."
+                  : `This site is ${kind}. PHP-FPM is not in front of it. Change the runtime under Reverse proxy.`}
+              </Typography.Paragraph>
             )
           ) : null}
 
@@ -623,6 +628,10 @@ ${site.ssl ? "listen 443 ssl;\n" : ""}${phpSite ? `php ${site.phpVersion};\n` : 
                   Save
                 </Button>
               </>
+            ) : kind === "nginx" ? (
+              <Typography.Paragraph>
+                Nginx serves files from the document root. A missing file returns 404, and PHP files are not executed.
+              </Typography.Paragraph>
             ) : (
               <Typography.Paragraph>
                 Nginx listens on ports 80 and 443 and proxies this site to {site.proxyPass || "the app port"}.
@@ -758,7 +767,7 @@ ${site.ssl ? "listen 443 ssl;\n" : ""}${phpSite ? `php ${site.phpVersion};\n` : 
                         appCmd: APP.has(kind) ? appCmd : "",
                         appPort: APP.has(kind) && appPort ? Number(appPort) : 0,
                       },
-                      "Proxy saved",
+                      kind === "nginx" ? "Direct nginx saved" : "Proxy saved",
                     )
                   }
                 >

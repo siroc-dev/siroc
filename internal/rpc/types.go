@@ -1321,6 +1321,36 @@ type BackupResp struct {
 	Manifest    *BackupManifest `json:"manifest,omitempty"`
 }
 
+type RcloneRemote struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+type RcloneStatus struct {
+	Installed bool           `json:"installed"`
+	Version   string         `json:"version,omitempty"`
+	Remotes   []RcloneRemote `json:"remotes,omitempty"`
+	Message   string         `json:"message,omitempty"`
+}
+
+type RcloneRemoteReq struct {
+	Name   string            `json:"name"`
+	Type   string            `json:"type"`
+	Params map[string]string `json:"params,omitempty"`
+}
+
+type RcloneRunReq struct {
+	Action string `json:"action"`
+	Source string `json:"source"`
+	Dest   string `json:"dest,omitempty"`
+}
+
+type RcloneRunResp struct {
+	OK      bool   `json:"ok"`
+	Output  string `json:"output,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
 type BackupManifest struct {
 	Version   int              `json:"version"`
 	Username  string           `json:"username"`

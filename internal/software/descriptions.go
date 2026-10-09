@@ -13,6 +13,7 @@ var descriptions = map[string]string{
 	"rust":       "Rustc and Cargo for Rust application sites.",
 	"docker":     "Docker Engine and Compose for containerized sites.",
 	"certbot":    "Let's Encrypt client. Issues and renews public HTTPS certificates.",
+	"rclone":     "Sync, copy, and move files between local disks and remotes such as S3, B2, SFTP, FTP, and WebDAV.",
 	"ufw":        "Host firewall. Opens only the ports the panel needs by default.",
 	"waf":        "ModSecurity with OWASP CRS on Apache. Can scan HTTP and file-manager uploads with ClamAV.",
 	"clamav":     "Antivirus scanner for files on the server. Used by WAF upload virus scan.",

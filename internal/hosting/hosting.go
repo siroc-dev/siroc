@@ -67,6 +67,7 @@ type siteData struct {
 	Access            string
 	Index             string
 	Static            string
+	Direct            bool
 }
 
 const nginxTmpl = `server {
@@ -93,7 +94,16 @@ const nginxTmpl = `server {
     }
 {{- else}}
 {{.Extra}}{{.Access}}
-{{- if .ProxyLoc}}
+{{- if .Direct}}
+{{.RewriteServer}}
+    index {{if .Index}}{{.Index}}{{else}}index.html index.htm{{end}};
+{{- if not .SkipRoot}}
+    location / {
+        try_files $uri $uri/ =404;
+    }
+{{- end}}
+    location ~ \.php$ { return 404; }
+{{- else if .ProxyLoc}}
 {{.ProxyLoc}}
 {{- else}}
 {{.RewriteServer}}
@@ -141,7 +151,16 @@ server {
     include /etc/nginx/snippets/siroc-xmlrpc-{{.Domain}}.conf;
     include /etc/nginx/snippets/siroc-uploads-php-{{.Domain}}.conf;
 {{.Extra}}{{.Access}}
-{{- if .ProxyLoc}}
+{{- if .Direct}}
+{{.RewriteServer}}
+    index {{if .Index}}{{.Index}}{{else}}index.html index.htm{{end}};
+{{- if not .SkipRoot}}
+    location / {
+        try_files $uri $uri/ =404;
+    }
+{{- end}}
+    location ~ \.php$ { return 404; }
+{{- else if .ProxyLoc}}
 {{.ProxyLoc}}
 {{- else}}
 {{.RewriteServer}}
@@ -264,6 +283,9 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 		return m.writeApp(req)
 	}
 	dropApp(req.Username, req.Domain)
+	if strings.EqualFold(strings.TrimSpace(req.Kind), "nginx") {
+		return m.writeDirect(req)
+	}
 	if strings.EqualFold(strings.TrimSpace(req.Kind), "proxy") || strings.TrimSpace(req.ProxyPass) != "" {
 		return m.writeProxy(req)
 	}
@@ -474,6 +496,101 @@ func ensureProxyCache(cachePath, zone string) error {
 		return err
 	}
 	return os.WriteFile("/etc/nginx/conf.d/"+name, []byte(body), 0644)
+}
+
+func (m *Manager) writeDirect(req rpc.SiteWriteReq) error {
+	if req.PHPVersion == "" {
+		req.PHPVersion = "8.3"
+	}
+	doc := req.DocRoot
+	var err error
+	if strings.TrimSpace(doc) == "" {
+		doc = filepath.Join(m.HomeRoot, req.Username, "domains", req.Domain, "public_html")
+	} else {
+		doc, err = validate.DocRoot(m.HomeRoot, req.Username, req.DocRoot, req.Domain)
+		if err != nil {
+			return err
+		}
+	}
+	if err := os.MkdirAll(doc, 0755); err != nil {
+		return err
+	}
+	idx := filepath.Join(doc, "index.html")
+	if _, err := os.Stat(idx); os.IsNotExist(err) {
+		_ = os.WriteFile(idx, []byte("<!doctype html><meta charset=\"utf-8\"><title>"+req.Domain+"</title>\n"), 0644)
+	}
+	_ = exec.Command("chown", "-R", req.Username+":"+req.Username, filepath.Join(m.HomeRoot, req.Username, "domains", req.Domain)).Run()
+	_ = exec.Command("chown", "-R", req.Username+":"+req.Username, doc).Run()
+	aliases, err := validate.DomainAliases(req.Domain, req.Aliases)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll("/var/www/letsencrypt/.well-known/acme-challenge", 0755); err != nil {
+		return err
+	}
+	if wantLocalCert(req.SSL, req.SSLKind) {
+		if err := ensureLocalCert(req.Domain, aliases); err != nil {
+			return err
+		}
+	}
+	kind, cert, key := resolveCerts(req.Domain, req.SSLKind)
+	ssl := req.SSL && cert != ""
+	serverRewrite, innerRewrite, skipRoot, err := validate.SplitNginxRewrite(req.Rewrite)
+	if err != nil {
+		return err
+	}
+	data := siteData{
+		Username:      req.Username,
+		Domain:        req.Domain,
+		DocRoot:       doc,
+		Enabled:       req.Enabled,
+		AllNames:      strings.Join(append([]string{req.Domain}, aliases...), " "),
+		AliasLine:     strings.Join(aliases, " "),
+		SSL:           ssl,
+		SSLRedirect:   sslRedirect(ssl, kind),
+		SSLCert:       cert,
+		SSLKey:        key,
+		Direct:        true,
+		Rewrite:       innerRewrite,
+		RewriteServer: serverRewrite,
+		SkipRoot:      skipRoot,
+		PostMaxSize:   "64M",
+	}
+	if err := applyGuards(&data, req.Options, ""); err != nil {
+		return err
+	}
+	data.Direct = true
+	data.Static = ""
+	if err := weblog.TouchSiteLogs(req.Domain); err != nil {
+		return err
+	}
+	if err := ensureXMLRPCSnippet(req.Domain); err != nil {
+		return err
+	}
+	if err := ensureUploadsPHPSnippet(req.Domain); err != nil {
+		return err
+	}
+	if err := writeTemplate(filepath.Join("/etc/nginx/sites-available", req.Domain+".conf"), nginxTmpl, data, 0644); err != nil {
+		return err
+	}
+	_ = os.Remove(filepath.Join("/etc/apache2/sites-available", req.Domain+".conf"))
+	_ = exec.Command("a2dissite", req.Domain+".conf").Run()
+	dropSitePools(req.Username, req.Domain, "")
+	if req.Enabled {
+		_ = os.MkdirAll("/etc/nginx/sites-enabled", 0755)
+		_ = os.Remove(filepath.Join("/etc/nginx/sites-enabled", req.Domain+".conf"))
+		if err := os.Symlink(filepath.Join("/etc/nginx/sites-available", req.Domain+".conf"), filepath.Join("/etc/nginx/sites-enabled", req.Domain+".conf")); err != nil && !os.IsExist(err) {
+			return err
+		}
+	} else {
+		_ = os.Remove(filepath.Join("/etc/nginx/sites-enabled", req.Domain+".conf"))
+	}
+	if err := testReload("nginx", "nginx", "-t"); err != nil {
+		return err
+	}
+	_ = testReload("apache2", "apache2ctl", "configtest")
+	security.SyncLocalVhostHosts(req.Domain)
+	return nil
 }
 
 func (m *Manager) writeProxy(req rpc.SiteWriteReq) error {

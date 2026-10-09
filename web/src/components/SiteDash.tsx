@@ -65,6 +65,7 @@ const APP_KINDS = new Set(["nodejs", "python", "go", "rust", "docker"]);
 function kindLabel(kind?: string, php?: string) {
   if (APP_KINDS.has(kind || "")) return kind || "App";
   if (kind === "proxy") return "Reverse proxy";
+  if (kind === "nginx") return "Direct nginx";
   return php ? `PHP ${php}` : "PHP";
 }
 
@@ -110,7 +111,7 @@ export function SiteDash({
   onWaf: (enabled: boolean) => void;
   onRules?: () => void;
 }) {
-  const phpSite = !APP_KINDS.has(site.kind || "") && site.kind !== "proxy";
+  const phpSite = !APP_KINDS.has(site.kind || "") && site.kind !== "proxy" && site.kind !== "nginx";
   const files: Tile[] = [
     { key: "files", title: "File manager", desc: "Browse and edit the site root", icon: <FolderOutlined />, color: "#52c41a" },
     { key: "databases", title: "Databases", desc: "MySQL / MariaDB for this account", icon: <DatabaseOutlined />, color: "#1677ff" },

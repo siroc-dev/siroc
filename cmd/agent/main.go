@@ -27,6 +27,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/monitoring"
 	"github.com/siroc-dev/siroc/internal/osupdate"
 	"github.com/siroc-dev/siroc/internal/pma"
+	"github.com/siroc-dev/siroc/internal/rclone"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/security"
 	"github.com/siroc-dev/siroc/internal/software"
@@ -1193,6 +1194,52 @@ func main() {
 			return
 		}
 		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
+	r.Get("/rclone", func(w http.ResponseWriter, r *http.Request) {
+		out, err := rclone.Status()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/rclone/remotes", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.RcloneRemoteReq
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := rclone.Create(req); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
+	r.Post("/rclone/remotes/delete", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.RcloneRemoteReq
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := rclone.Delete(req.Name); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
+	r.Post("/rclone/run", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.RcloneRunReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := rclone.Run(req)
+		if err != nil {
+			if out != nil && out.Output != "" {
+				writeJSON(w, http.StatusOK, out)
+				return
+			}
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
 	})
 	r.Post("/backup/run", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.BackupReq

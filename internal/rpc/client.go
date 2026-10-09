@@ -773,6 +773,26 @@ func (c *Client) QuotaSet(username string, limitMB int64) (*QuotaInfo, error) {
 	return &out, err
 }
 
+func (c *Client) RcloneStatus() (*RcloneStatus, error) {
+	var out RcloneStatus
+	err := c.do(http.MethodGet, "/rclone", nil, &out)
+	return &out, err
+}
+
+func (c *Client) RcloneCreate(in RcloneRemoteReq) error {
+	return c.do(http.MethodPost, "/rclone/remotes", in, nil)
+}
+
+func (c *Client) RcloneDelete(name string) error {
+	return c.do(http.MethodPost, "/rclone/remotes/delete", RcloneRemoteReq{Name: name}, nil)
+}
+
+func (c *Client) RcloneRun(in RcloneRunReq) (*RcloneRunResp, error) {
+	var out RcloneRunResp
+	err := c.do(http.MethodPost, "/rclone/run", in, &out)
+	return &out, err
+}
+
 func (c *Client) BackupRun(in BackupReq) (*BackupResp, error) {
 	var out BackupResp
 	err := c.do(http.MethodPost, "/backup/run", in, &out)

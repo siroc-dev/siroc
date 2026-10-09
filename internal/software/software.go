@@ -231,6 +231,14 @@ func catalog() []spec {
 			PostInstall: configureCertbot,
 		},
 		{
+			Name:   "rclone",
+			Title:  "rclone",
+			AptPkg: "rclone",
+			Installed: func() (bool, string) {
+				return binVersion("rclone")
+			},
+		},
+		{
 			Name:    "ufw",
 			Title:   "UFW firewall",
 			Service: "",

@@ -217,6 +217,10 @@ func (s *Server) Router() http.Handler {
 		r.Delete("/api/backup/crons/{id}", s.deleteBackupCron)
 		r.Post("/api/backup/restore", s.restoreBackup)
 		r.Get("/api/backup/inspect", s.inspectBackup)
+		r.Get("/api/rclone", s.rcloneStatus)
+		r.Post("/api/rclone/remotes", s.rcloneCreate)
+		r.Delete("/api/rclone/remotes/{name}", s.rcloneDelete)
+		r.Post("/api/rclone/run", s.rcloneRun)
 		r.Put("/api/accounts/{username}/quota", s.setAccountQuota)
 		r.Get("/api/quota", s.listQuota)
 		r.Get("/api/accounts/redis", s.listAccountRedis)
@@ -1452,6 +1456,10 @@ func (s *Server) createSite(w http.ResponseWriter, r *http.Request) {
 		}
 		appPort = 0
 		appCmd = ""
+	} else if kind == "nginx" {
+		body.ProxyPass = ""
+		appPort = 0
+		appCmd = ""
 	} else {
 		kind = "php"
 		body.ProxyPass = ""
@@ -1544,7 +1552,7 @@ func (s *Server) updateSite(w http.ResponseWriter, r *http.Request) {
 		}
 		nextKind = k
 	}
-	if body.PHPVersion != "" && !validate.IsAppKind(nextKind) && nextKind != "proxy" {
+	if body.PHPVersion != "" && !validate.IsAppKind(nextKind) && nextKind != "proxy" && nextKind != "nginx" {
 		if err := s.requirePHPInstalled(body.PHPVersion); err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return
@@ -1667,6 +1675,10 @@ func (s *Server) updateSite(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
+	} else if st.Kind == "nginx" {
+		st.ProxyPass = ""
+		st.AppCmd = ""
+		st.AppPort = 0
 	} else {
 		st.Kind = "php"
 		st.ProxyPass = ""

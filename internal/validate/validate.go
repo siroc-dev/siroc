@@ -734,7 +734,7 @@ func SiteKind(kind string) (string, error) {
 	switch k {
 	case "", "php":
 		return "php", nil
-	case "proxy", "nodejs", "python", "go", "rust", "docker":
+	case "proxy", "nginx", "nodejs", "python", "go", "rust", "docker":
 		return k, nil
 	default:
 		return "", fmt.Errorf("unknown site type %q", kind)

@@ -5,7 +5,7 @@ import "testing"
 func TestDescriptionCoversCatalog(t *testing.T) {
 	names := []string{
 		"nginx", "apache", "php", "mysql", "mariadb", "redis", "python", "nodejs",
-		"golang", "rust", "docker", "certbot", "ufw", "waf", "clamav", "openssh",
+		"golang", "rust", "docker", "certbot", "rclone", "ufw", "waf", "clamav", "openssh",
 		"vsftpd", "goaccess", "supervisor", "git", "composer", "wp-cli", "nikto", "zap",
 		"openvas", "memcached", "ffmpeg", "fail2ban", "phpmyadmin", "quota",
 	}

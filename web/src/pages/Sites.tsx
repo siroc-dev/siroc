@@ -78,6 +78,7 @@ type Site = {
 
 const SITE_KINDS = [
   { value: "php", label: "PHP / Apache" },
+  { value: "nginx", label: "Direct nginx" },
   { value: "proxy", label: "Reverse proxy" },
   { value: "nodejs", label: "Node.js" },
   { value: "python", label: "Python" },
@@ -795,6 +796,8 @@ export function Sites() {
                 <Tag color="blue">{kindLabel(s.kind)}{s.appPort ? ` :${s.appPort}` : ""}</Tag>
               ) : s.kind === "proxy" ? (
                 <Tag>Proxy</Tag>
+              ) : s.kind === "nginx" ? (
+                <Tag>Direct nginx</Tag>
               ) : (
                 <Tag>PHP {s.phpVersion}</Tag>
               ),
@@ -837,7 +840,7 @@ export function Sites() {
                     { key: "edit", label: "Settings" },
                     { key: "rename", label: "Rename" },
                     ...(APP_KINDS.has(s.kind || "") ? [{ key: "app", label: "App" }] : []),
-                    ...(!APP_KINDS.has(s.kind || "") && s.kind !== "proxy"
+                    ...(!APP_KINDS.has(s.kind || "") && s.kind !== "proxy" && s.kind !== "nginx"
                       ? [
                           { key: "laravel", label: "Laravel" },
                           { key: "wordpress", label: "WordPress" },
@@ -1099,7 +1102,7 @@ export function Sites() {
             </div>
             <div>
               <Typography.Text type="secondary">Type</Typography.Text>
-              <div>{kindLabel(infoSite.kind)}{infoSite.phpVersion && !APP_KINDS.has(infoSite.kind || "") && infoSite.kind !== "proxy" ? ` ${infoSite.phpVersion}` : ""}</div>
+              <div>{kindLabel(infoSite.kind)}{infoSite.phpVersion && !APP_KINDS.has(infoSite.kind || "") && infoSite.kind !== "proxy" && infoSite.kind !== "nginx" ? ` ${infoSite.phpVersion}` : ""}</div>
             </div>
           </Space>
         ) : null}
@@ -1115,7 +1118,7 @@ export function Sites() {
         className="site-create-mod"
         width={880}
         okText="Create vhost"
-        okButtonProps={{ disabled: phps.length === 0 && !APP_KINDS.has(form.getFieldValue("kind")) && form.getFieldValue("kind") !== "proxy" }}
+        okButtonProps={{ disabled: phps.length === 0 && !APP_KINDS.has(form.getFieldValue("kind")) && form.getFieldValue("kind") !== "proxy" && form.getFieldValue("kind") !== "nginx" }}
       >
         <Form form={form} layout="vertical" onFinish={create} requiredMark={false} style={{ marginTop: 8 }}>
           <Row gutter={[16, 0]}>
@@ -1167,6 +1170,9 @@ export function Sites() {
               <Form.Item noStyle shouldUpdate>
                 {() => {
                   const kind = form.getFieldValue("kind") as string;
+                  if (kind === "nginx") {
+                    return <Typography.Paragraph type="secondary">Nginx serves the document root itself. PHP and Apache are not used.</Typography.Paragraph>;
+                  }
                   if (kind === "proxy") {
                     return (
                       <Form.Item name="proxyPass" label="Proxy URL" rules={[{ required: true }]} extra="Example: http://127.0.0.1:3000/">
