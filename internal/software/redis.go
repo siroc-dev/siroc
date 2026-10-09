@@ -273,6 +273,7 @@ func GetRedis() (*rpc.RedisSettings, error) {
 		MaxMemoryPolicy: "noeviction",
 		Databases:       16,
 		MaxMemory:       "0",
+		SaveToDisk:      true,
 	}
 	ok, ver := redisInstalled()
 	st.Installed = ok
@@ -347,6 +348,7 @@ func mergeRedisConf(st *rpc.RedisSettings, conf string) {
 			}
 		}
 	}
+	st.SaveToDisk = redisSaves(conf) || st.AppendOnly
 }
 
 func ApplyRedis(in rpc.RedisSettings) error {
@@ -404,11 +406,9 @@ func ApplyRedis(in rpc.RedisSettings) error {
 	}
 	conf = setRedisLine(conf, "maxmemory", mem)
 	conf = setRedisLine(conf, "maxmemory-policy", policy)
-	if in.AppendOnly {
-		conf = setRedisLine(conf, "appendonly", "yes")
-	} else {
-		conf = setRedisLine(conf, "appendonly", "no")
-	}
+	saveToDisk := in.SaveToDisk
+	appendOnly := in.AppendOnly && saveToDisk
+	conf = applyRedisPersistence(conf, saveToDisk, appendOnly)
 	conf = setRedisLine(conf, "timeout", strconv.Itoa(in.Timeout))
 	conf = setRedisLine(conf, "databases", strconv.Itoa(in.Databases))
 	if in.ClearPassword {
@@ -429,7 +429,8 @@ func ApplyRedis(in rpc.RedisSettings) error {
 		ProtectedMode:   in.ProtectedMode,
 		MaxMemory:       mem,
 		MaxMemoryPolicy: policy,
-		AppendOnly:      in.AppendOnly,
+		AppendOnly:      appendOnly,
+		SaveToDisk:      saveToDisk,
 		Timeout:         in.Timeout,
 		Databases:       in.Databases,
 		HasPassword:     !in.ClearPassword && (strings.TrimSpace(in.Password) != "" || cur.HasPassword),
@@ -463,6 +464,7 @@ func ApplyRedisConf(conf string) error {
 		MaxMemory:       st.MaxMemory,
 		MaxMemoryPolicy: st.MaxMemoryPolicy,
 		AppendOnly:      st.AppendOnly,
+		SaveToDisk:      st.SaveToDisk,
 		Timeout:         st.Timeout,
 		Databases:       st.Databases,
 		HasPassword:     redisConfHasPassword(conf),

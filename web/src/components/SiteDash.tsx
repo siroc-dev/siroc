@@ -71,6 +71,7 @@ function kindLabel(kind?: string, php?: string) {
 function sslLabel(s: SiteDashSite) {
   if (!s.ssl) return "HTTP only";
   if (s.sslKind === "letsencrypt") return "Let's Encrypt";
+  if (s.sslKind === "custom") return "Custom certificate";
   return "Local HTTPS";
 }
 

@@ -240,6 +240,29 @@ type SiteSSLResp struct {
 	Message string `json:"message,omitempty"`
 }
 
+type CertInfo struct {
+	OK        bool     `json:"ok"`
+	Kind      string   `json:"kind,omitempty"`
+	Subject   string   `json:"subject,omitempty"`
+	Issuer    string   `json:"issuer,omitempty"`
+	NotBefore string   `json:"notBefore,omitempty"`
+	NotAfter  string   `json:"notAfter,omitempty"`
+	DNSNames  []string `json:"dnsNames,omitempty"`
+	Serial    string   `json:"serial,omitempty"`
+	Message   string   `json:"message,omitempty"`
+}
+
+type SiteSSLInfoReq struct {
+	Domain string `json:"domain"`
+	Kind   string `json:"kind,omitempty"`
+}
+
+type SiteCustomSSLReq struct {
+	Domain string `json:"domain"`
+	Cert   string `json:"cert"`
+	Key    string `json:"key"`
+}
+
 type SiteAppReq struct {
 	Username   string            `json:"username"`
 	Domain     string            `json:"domain"`
@@ -680,6 +703,7 @@ type RedisSettings struct {
 	MaxMemory       string `json:"maxMemory"`
 	MaxMemoryPolicy string `json:"maxMemoryPolicy"`
 	AppendOnly      bool   `json:"appendOnly"`
+	SaveToDisk      bool   `json:"saveToDisk"`
 	Timeout         int    `json:"timeout"`
 	Databases       int    `json:"databases"`
 	ConfPath        string `json:"confPath,omitempty"`

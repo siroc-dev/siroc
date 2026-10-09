@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, App, Button, Input, Modal, Select, Space, Switch, Table, Typography } from "antd";
 import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/lib/nginxRewrites";
 import { ProxySettings, type ProxySettingsValue } from "@/components/ProxySettings";
+import { api } from "@/lib/api";
 
 export type SiteOptions = {
   index?: string[];
@@ -35,6 +36,30 @@ export type SiteSettingsSite = {
   createdAt?: string;
   options?: SiteOptions;
 };
+
+export type CertInfo = {
+  ok?: boolean;
+  kind?: string;
+  subject?: string;
+  issuer?: string;
+  notBefore?: string;
+  notAfter?: string;
+  dnsNames?: string[];
+  serial?: string;
+  message?: string;
+};
+
+function certDate(v?: string) {
+  if (!v) return "—";
+  return v.replace("T", " ").replace(/\.\d+/, "").replace("Z", " UTC");
+}
+
+function sslKindLabel(site: SiteSettingsSite) {
+  if (!site.ssl) return "HTTP only";
+  if (site.sslKind === "letsencrypt") return "Let's Encrypt";
+  if (site.sslKind === "custom") return "Custom certificate";
+  return "Local HTTPS";
+}
 
 export type SiteSection =
   | "domain"
@@ -148,6 +173,7 @@ export function SiteSettings({
   sslLog,
   onLocalSSL,
   onDisableSSL,
+  onCustomSSL,
   onGit,
   onLogs,
   onSSH,
@@ -164,6 +190,7 @@ export function SiteSettings({
   sslLog?: string;
   onLocalSSL: () => void;
   onDisableSSL: () => void;
+  onCustomSSL?: (cert: string, key: string) => Promise<void>;
   onGit: () => void;
   onLogs: () => void;
   onSSH: () => void;
@@ -175,6 +202,9 @@ export function SiteSettings({
   const [docRoot, setDocRoot] = useState("");
   const [rewrite, setRewrite] = useState("");
   const [php, setPhp] = useState("");
+  const [sslInfo, setSslInfo] = useState<CertInfo | null>(null);
+  const [certPEM, setCertPEM] = useState("");
+  const [keyPEM, setKeyPEM] = useState("");
   const [kind, setKind] = useState("php");
   const [proxyPass, setProxyPass] = useState("");
   const [appCmd, setAppCmd] = useState("");
@@ -195,6 +225,22 @@ export function SiteSettings({
   useEffect(() => {
     setTab(section);
   }, [section, site.id]);
+
+  useEffect(() => {
+    if (tab !== "ssl") return;
+    let stop = false;
+    api
+      .get<CertInfo>(`/api/sites/${site.id}/ssl`)
+      .then((info) => {
+        if (!stop) setSslInfo(info);
+      })
+      .catch(() => {
+        if (!stop) setSslInfo(null);
+      });
+    return () => {
+      stop = true;
+    };
+  }, [tab, site.id, site.ssl, site.sslKind]);
 
   useEffect(() => {
     const o = baseOpts(site);
@@ -446,21 +492,36 @@ ${site.ssl ? "listen 443 ssl;\n" : ""}${phpSite ? `php ${site.phpVersion};\n` : 
           {tab === "ssl" ? (
             <>
               <Space wrap>
-                <Typography.Text>
-                  {site.ssl ? (site.sslKind === "letsencrypt" ? "Let's Encrypt" : "Local HTTPS") : "HTTP only"}
-                </Typography.Text>
+                <Typography.Text>{sslKindLabel(site)}</Typography.Text>
                 {site.ssl && site.sslExpiry ? <Typography.Text type="secondary">{site.sslExpiry}</Typography.Text> : null}
               </Space>
               <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-                Local certificates are self-signed. Let's Encrypt needs a public name. HTTP stays available while the certificate is local.
+                A new site starts on HTTP. Issue Let's Encrypt, use a local certificate, or paste your own certificate and private key.
               </Typography.Paragraph>
+              {sslInfo?.ok ? (
+                <Typography.Paragraph>
+                  Subject: {sslInfo.subject || "—"}
+                  <br />
+                  Issuer: {sslInfo.issuer || "—"}
+                  <br />
+                  Valid from: {certDate(sslInfo.notBefore)}
+                  <br />
+                  Valid until: {certDate(sslInfo.notAfter)}
+                  <br />
+                  Names: {(sslInfo.dnsNames || []).join(", ") || "—"}
+                  <br />
+                  Serial: {sslInfo.serial || "—"}
+                </Typography.Paragraph>
+              ) : sslInfo?.message ? (
+                <Typography.Paragraph type="secondary">{sslInfo.message}</Typography.Paragraph>
+              ) : null}
               {!publicName ? (
                 <Alert
                   type="warning"
                   showIcon
                   style={{ marginBottom: 12 }}
                   message={`${label} is not a public TLD`}
-                  description="Let's Encrypt will refuse this name. Use local HTTPS, or set a custom ACME server."
+                  description="Let's Encrypt will refuse this name. Use local HTTPS, paste a certificate, or set a custom ACME server."
                 />
               ) : null}
               <Space wrap>
@@ -478,6 +539,40 @@ ${site.ssl ? "listen 443 ssl;\n" : ""}${phpSite ? `php ${site.phpVersion};\n` : 
                   </Button>
                 ) : null}
               </Space>
+              <Typography.Paragraph strong style={{ marginTop: 16 }}>
+                Your certificate
+              </Typography.Paragraph>
+              <Input.TextArea
+                value={certPEM}
+                onChange={(e) => setCertPEM(e.target.value)}
+                placeholder={"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}
+                autoSize={{ minRows: 5, maxRows: 10 }}
+                spellCheck={false}
+              />
+              <Input.TextArea
+                style={{ marginTop: 8 }}
+                value={keyPEM}
+                onChange={(e) => setKeyPEM(e.target.value)}
+                placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
+                autoSize={{ minRows: 4, maxRows: 8 }}
+                spellCheck={false}
+              />
+              <Button
+                style={{ marginTop: 8 }}
+                loading={busy}
+                disabled={!certPEM.trim() || !keyPEM.trim()}
+                onClick={() => {
+                  if (!onCustomSSL) return;
+                  void onCustomSSL(certPEM, keyPEM)
+                    .then(() => {
+                      setCertPEM("");
+                      setKeyPEM("");
+                    })
+                    .catch(() => undefined);
+                }}
+              >
+                Install certificate
+              </Button>
               {sslLog ? <pre className="cmd-out">{sslLog}</pre> : null}
             </>
           ) : null}

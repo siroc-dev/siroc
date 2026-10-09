@@ -588,6 +588,30 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Post("/sites/ssl/info", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.SiteSSLInfoReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := hostMgr.CertInfo(req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/sites/ssl/custom", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.SiteCustomSSLReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := hostMgr.InstallCustomSSL(req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Post("/ssl/letsencrypt/account", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.LEAccountReq
 		if !decode(w, r, &req) {

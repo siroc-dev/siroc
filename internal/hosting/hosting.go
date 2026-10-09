@@ -307,8 +307,10 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 	if err := os.MkdirAll("/var/www/letsencrypt/.well-known/acme-challenge", 0755); err != nil {
 		return err
 	}
-	if err := ensureLocalCert(req.Domain, aliases); err != nil {
-		return err
+	if wantLocalCert(req.SSL, req.SSLKind) {
+		if err := ensureLocalCert(req.Domain, aliases); err != nil {
+			return err
+		}
 	}
 	kind, cert, key := resolveCerts(req.Domain, req.SSLKind)
 	ssl := req.SSL && cert != ""
@@ -322,7 +324,7 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 		AllNames:      strings.Join(append([]string{req.Domain}, aliases...), " "),
 		AliasLine:     strings.Join(aliases, " "),
 		SSL:           ssl,
-		SSLRedirect:   ssl && kind == "letsencrypt",
+		SSLRedirect:   sslRedirect(ssl, kind),
 		SSLCert:       cert,
 		SSLKey:        key,
 		Rewrite:       innerRewrite,
@@ -503,8 +505,10 @@ func (m *Manager) writeProxy(req rpc.SiteWriteReq) error {
 	if err := os.MkdirAll("/var/www/letsencrypt/.well-known/acme-challenge", 0755); err != nil {
 		return err
 	}
-	if err := ensureLocalCert(req.Domain, aliases); err != nil {
-		return err
+	if wantLocalCert(req.SSL, req.SSLKind) {
+		if err := ensureLocalCert(req.Domain, aliases); err != nil {
+			return err
+		}
 	}
 	kind, cert, key := resolveCerts(req.Domain, req.SSLKind)
 	ssl := req.SSL && cert != ""
@@ -517,7 +521,7 @@ func (m *Manager) writeProxy(req rpc.SiteWriteReq) error {
 		AllNames:    strings.Join(append([]string{req.Domain}, aliases...), " "),
 		AliasLine:   strings.Join(aliases, " "),
 		SSL:         ssl,
-		SSLRedirect: ssl && kind == "letsencrypt",
+		SSLRedirect: sslRedirect(ssl, kind),
 		SSLCert:     cert,
 		SSLKey:      key,
 		ProxyPass:   pass,

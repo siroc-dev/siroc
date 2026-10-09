@@ -174,6 +174,8 @@ func (s *Server) Router() http.Handler {
 		r.Patch("/api/sites/{id}", s.updateSite)
 		r.Post("/api/sites/{id}/rename", s.renameSite)
 		r.Post("/api/sites/{id}/ssl", s.issueSiteSSL)
+		r.Get("/api/sites/{id}/ssl", s.siteSSLInfo)
+		r.Post("/api/sites/{id}/ssl/custom", s.installCustomSSL)
 		r.Delete("/api/sites/{id}/ssl", s.disableSiteSSL)
 		r.Post("/api/sites/{id}/app", s.siteApp)
 		r.Post("/api/sites/{id}/runtime", s.siteRuntime)
@@ -1479,8 +1481,8 @@ func (s *Server) createSite(w http.ResponseWriter, r *http.Request) {
 		PHPVersion: body.PHPVersion,
 		Enabled:    true,
 		Aliases:    aliases,
-		SSL:        true,
-		SSLKind:    "local",
+		SSL:        false,
+		SSLKind:    "",
 		Rewrite:    rewrite,
 		FPM:        s.accountFPMPtr(acc),
 		Kind:       kind,
@@ -1593,6 +1595,9 @@ func (s *Server) updateSite(w http.ResponseWriter, r *http.Request) {
 		case "letsencrypt":
 			ssl = true
 			kind = "letsencrypt"
+		case "custom":
+			ssl = true
+			kind = "custom"
 		case "":
 			ssl = false
 			kind = ""
@@ -1795,6 +1800,79 @@ func (s *Server) disableSiteSSL(w http.ResponseWriter, r *http.Request) {
 	_ = s.Store.UpdateSite(st.ID, st.PHPVersion, st.DocRoot, st.Enabled, st.Aliases, false, st.SSLExpiry, "", st.Rewrite)
 	st, _ = s.Store.GetSite(id)
 	writeJSON(w, http.StatusOK, st)
+}
+
+func (s *Server) siteSSLInfo(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
+		return
+	}
+	st, err := s.Store.GetSite(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, fmt.Errorf("site not found"))
+		return
+	}
+	if !s.allowAccount(w, r, st.Username) {
+		return
+	}
+	if !st.SSL {
+		writeJSON(w, http.StatusOK, rpc.CertInfo{Message: "HTTPS is off"})
+		return
+	}
+	out, err := s.Agent.SiteSSLInfo(rpc.SiteSSLInfoReq{Domain: st.Domain, Kind: st.SSLKind})
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) installCustomSSL(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
+		return
+	}
+	st, err := s.Store.GetSite(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, fmt.Errorf("site not found"))
+		return
+	}
+	if !s.allowAccount(w, r, st.Username) {
+		return
+	}
+	var body struct {
+		Cert string `json:"cert"`
+		Key  string `json:"key"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if len(body.Cert) > 256<<10 || len(body.Key) > 256<<10 {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("certificate or key is too large"))
+		return
+	}
+	info, err := s.Agent.InstallCustomSSL(rpc.SiteCustomSSLReq{Domain: st.Domain, Cert: body.Cert, Key: body.Key})
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	req := s.siteWriteReq(*st, st.PHPVersion, st.Enabled, st.Aliases, true, "custom", st.Rewrite)
+	if err := s.Agent.SiteWrite(req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	expiry := ""
+	if info != nil {
+		expiry = info.NotAfter
+	}
+	_ = s.Store.UpdateSite(st.ID, st.PHPVersion, st.DocRoot, st.Enabled, st.Aliases, true, expiry, "custom", st.Rewrite)
+	st, _ = s.Store.GetSite(id)
+	writeJSON(w, http.StatusOK, struct {
+		*store.Site
+		Cert *rpc.CertInfo `json:"certInfo,omitempty"`
+	}{Site: st, Cert: info})
 }
 
 func (s *Server) siteWriteReq(st store.Site, php string, enabled bool, aliases []string, ssl bool, kind, rewrite string) rpc.SiteWriteReq {

@@ -321,6 +321,18 @@ func (c *Client) SiteSSL(in SiteSSLReq) (*SiteSSLResp, error) {
 	return &out, err
 }
 
+func (c *Client) SiteSSLInfo(in SiteSSLInfoReq) (*CertInfo, error) {
+	var out CertInfo
+	err := c.do(http.MethodPost, "/sites/ssl/info", in, &out)
+	return &out, err
+}
+
+func (c *Client) InstallCustomSSL(in SiteCustomSSLReq) (*CertInfo, error) {
+	var out CertInfo
+	err := c.do(http.MethodPost, "/sites/ssl/custom", in, &out)
+	return &out, err
+}
+
 func (c *Client) RegisterLEAccount(in LEAccountReq) (*LEAccountResp, error) {
 	var out LEAccountResp
 	err := c.do(http.MethodPost, "/ssl/letsencrypt/account", in, &out)

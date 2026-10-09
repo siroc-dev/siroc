@@ -3,6 +3,20 @@ import { App as AntdApp } from "antd";
 import { describe, expect, it, vi } from "vitest";
 import { SiteSettings, type SiteSettingsSite } from "./SiteSettings";
 
+vi.mock("@/lib/api", () => ({
+  api: {
+    get: vi.fn(async () => ({
+      ok: true,
+      subject: "test.com",
+      issuer: "Test CA",
+      notBefore: "2026-01-01T00:00:00Z",
+      notAfter: "2027-01-01T00:00:00Z",
+      dnsNames: ["test.com", "www.test.com"],
+      serial: "abc",
+    })),
+  },
+}));
+
 const site: SiteSettingsSite = {
   id: 1,
   username: "demo",
@@ -15,12 +29,12 @@ const site: SiteSettingsSite = {
   createdAt: "2025-07-09T16:13:54Z",
 };
 
-function renderSettings(section: "domain" | "php" | "maintenance" = "domain") {
+function renderSettings(section: "domain" | "php" | "maintenance" | "ssl" = "domain", extra?: Partial<SiteSettingsSite>) {
   const onPatch = vi.fn(async () => undefined);
   render(
     <AntdApp>
       <SiteSettings
-        site={site}
+        site={{ ...site, ...extra }}
         section={section}
         busy={false}
         phpVersions={[{ value: "8.3", label: "PHP 8.3" }]}
@@ -47,6 +61,14 @@ describe("SiteSettings", () => {
     expect(screen.getByRole("button", { name: "Domain Manager" })).toBeTruthy();
     expect(screen.getByText("www.test.com")).toBeTruthy();
     expect(screen.getByText("Inoperable")).toBeTruthy();
+  });
+
+  it("shows certificate details on the SSL tab", async () => {
+    renderSettings("ssl", { ssl: true, sslKind: "custom" });
+    expect(await screen.findByText(/Issuer: Test CA/)).toBeTruthy();
+    expect(screen.getByText(/Names: test.com, www.test.com/)).toBeTruthy();
+    expect(screen.getByText("Custom certificate")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Install certificate" })).toBeTruthy();
   });
 
   it("switches to PHP and maintenance", () => {

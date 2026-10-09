@@ -13,6 +13,7 @@ export type RedisSettings = {
   maxMemory: string;
   maxMemoryPolicy: string;
   appendOnly: boolean;
+  saveToDisk?: boolean;
   timeout: number;
   databases: number;
   confPath?: string;
@@ -43,7 +44,8 @@ export function RedisConfigPanel() {
         protectedMode: data.protectedMode,
         maxMemory: data.maxMemory === "0" ? "" : data.maxMemory,
         maxMemoryPolicy: data.maxMemoryPolicy || "noeviction",
-        appendOnly: data.appendOnly,
+        appendOnly: data.saveToDisk === false ? false : data.appendOnly,
+        saveToDisk: data.saveToDisk !== false,
         timeout: data.timeout || 0,
         databases: data.databases || 16,
       });
@@ -65,13 +67,17 @@ export function RedisConfigPanel() {
     maxMemory?: string;
     maxMemoryPolicy: string;
     appendOnly: boolean;
+    saveToDisk?: boolean;
     timeout: number;
     databases: number;
   }) {
     setFormBusy(true);
     try {
+      const saveToDisk = values.saveToDisk !== false;
       const next = await api.put<RedisSettings>("/api/software/redis", {
         ...values,
+        saveToDisk,
+        appendOnly: saveToDisk && values.appendOnly,
         maxMemory: values.maxMemory?.trim() || "0",
       });
       setSt(next);
@@ -98,7 +104,8 @@ export function RedisConfigPanel() {
         protectedMode: next.protectedMode,
         maxMemory: next.maxMemory === "0" ? "" : next.maxMemory,
         maxMemoryPolicy: next.maxMemoryPolicy || "noeviction",
-        appendOnly: next.appendOnly,
+        appendOnly: next.saveToDisk === false ? false : next.appendOnly,
+        saveToDisk: next.saveToDisk !== false,
         timeout: next.timeout || 0,
         databases: next.databases || 16,
         password: "",
@@ -151,8 +158,20 @@ export function RedisConfigPanel() {
               ]}
             />
           </Form.Item>
-          <Form.Item name="appendOnly" valuePropName="checked" label="AOF persistence">
-            <Switch />
+          <Form.Item
+            name="saveToDisk"
+            valuePropName="checked"
+            label="Save to disk"
+            extra="Off keeps data in memory only. Redis will not write an RDB snapshot or the AOF, and a restart drops the data."
+          >
+            <Switch onChange={(on) => { if (!on) form.setFieldValue("appendOnly", false); }} />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate>
+            {() => (
+              <Form.Item name="appendOnly" valuePropName="checked" label="AOF persistence" extra="Append-only log. Available when save to disk is on.">
+                <Switch disabled={form.getFieldValue("saveToDisk") === false} />
+              </Form.Item>
+            )}
           </Form.Item>
           <Form.Item name="timeout" label="Idle timeout (seconds)">
             <InputNumber min={0} style={{ width: "100%" }} />

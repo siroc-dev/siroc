@@ -45,6 +45,25 @@ func localKey(domain string) string {
 	return filepath.Join(localSSLDir(domain), "privkey.pem")
 }
 
+func customCert(domain string) string {
+	return filepath.Join(localSSLDir(domain), "custom-fullchain.pem")
+}
+
+func customKey(domain string) string {
+	return filepath.Join(localSSLDir(domain), "custom-privkey.pem")
+}
+
+func certFiles(domain, kind string) (cert, key string) {
+	switch kind {
+	case "custom":
+		return customCert(domain), customKey(domain)
+	case "letsencrypt":
+		return liveCert(domain), liveKey(domain)
+	default:
+		return localCert(domain), localKey(domain)
+	}
+}
+
 func fileOK(path string) bool {
 	st, err := os.Stat(path)
 	return err == nil && st.Size() > 0
@@ -59,16 +78,30 @@ func localExists(domain string) bool {
 }
 
 func resolveCerts(domain, prefer string) (kind, cert, key string) {
-	if prefer != "local" && leExists(domain) {
-		return "letsencrypt", liveCert(domain), liveKey(domain)
+	order := []string{"letsencrypt", "custom", "local"}
+	switch prefer {
+	case "custom":
+		order = []string{"custom", "letsencrypt", "local"}
+	case "local":
+		order = []string{"local", "letsencrypt", "custom"}
+	case "letsencrypt":
+		order = []string{"letsencrypt", "custom", "local"}
 	}
-	if localExists(domain) {
-		return "local", localCert(domain), localKey(domain)
-	}
-	if leExists(domain) {
-		return "letsencrypt", liveCert(domain), liveKey(domain)
+	for _, kind := range order {
+		cert, key := certFiles(domain, kind)
+		if fileOK(cert) && fileOK(key) {
+			return kind, cert, key
+		}
 	}
 	return "", "", ""
+}
+
+func wantLocalCert(ssl bool, kind string) bool {
+	return ssl && (kind == "" || kind == "local")
+}
+
+func sslRedirect(ssl bool, kind string) bool {
+	return ssl && (kind == "letsencrypt" || kind == "custom")
 }
 
 func ensureLocalCert(domain string, aliases []string) error {
@@ -383,4 +416,55 @@ func tailOut(s string) string {
 		return s
 	}
 	return s[len(s)-800:]
+}
+
+func (m *Manager) CertInfo(req rpc.SiteSSLInfoReq) (*rpc.CertInfo, error) {
+	domain, err := validate.ASCIIHost(req.Domain)
+	if err != nil {
+		return nil, err
+	}
+	kind, cert, _ := resolveCerts(domain, req.Kind)
+	if cert == "" {
+		return &rpc.CertInfo{Message: "No certificate is installed"}, nil
+	}
+	raw, err := os.ReadFile(cert)
+	if err != nil {
+		return &rpc.CertInfo{Kind: kind, Message: "Certificate file is unreadable"}, nil
+	}
+	info, err := ParseCertPEM(raw)
+	if err != nil {
+		return &rpc.CertInfo{Kind: kind, Message: err.Error()}, nil
+	}
+	info.Kind = kind
+	return &info, nil
+}
+
+func (m *Manager) InstallCustomSSL(req rpc.SiteCustomSSLReq) (*rpc.CertInfo, error) {
+	domain, err := validate.ASCIIHost(req.Domain)
+	if err != nil {
+		return nil, err
+	}
+	certPEM := []byte(strings.TrimSpace(req.Cert) + "\n")
+	keyPEM := []byte(strings.TrimSpace(req.Key) + "\n")
+	if err := MatchCertKey(certPEM, keyPEM); err != nil {
+		return nil, err
+	}
+	if !CertCovers(certPEM, domain) {
+		return nil, fmt.Errorf("certificate does not cover %s", domain)
+	}
+	if err := os.MkdirAll(localSSLDir(domain), 0755); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(customCert(domain), certPEM, 0644); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(customKey(domain), keyPEM, 0640); err != nil {
+		return nil, err
+	}
+	info, err := ParseCertPEM(certPEM)
+	if err != nil {
+		return nil, err
+	}
+	info.Kind = "custom"
+	return &info, nil
 }

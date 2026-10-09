@@ -975,10 +975,27 @@ html[data-theme="dark"] .ant-table-thead > tr > th {
 
 .siroc-login .ant-input,
 .siroc-login .ant-input-affix-wrapper,
-.siroc-login .ant-input-password {
+.siroc-login .ant-input-password,
+.siroc-login-input {
   background: #0e0d0c;
   border-color: rgba(244, 234, 220, 0.1);
   color: #f4eadc;
+}
+
+.siroc-login-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 4px 11px;
+  border: 1px solid rgba(244, 234, 220, 0.1);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.siroc-login-input:focus {
+  outline: none;
+  border-color: #e2783a;
 }
 
 .brand-logo {

@@ -671,7 +671,7 @@ func (s *Store) CreateSite(accountID int64, domain, docroot, php string, aliases
 	if err != nil {
 		return nil, err
 	}
-	res, err := s.DB.Exec(`INSERT INTO sites (account_id, domain, docroot, php_version, aliases_json, ssl_enabled, ssl_kind, kind, proxy_pass, nginx_rewrites_json, app_port, app_cmd) VALUES (?, ?, ?, ?, ?, 1, 'local', ?, ?, ?, ?, ?)`, accountID, domain, docroot, php, string(raw), kind, proxyPass, string(rw), appPort, appCmd)
+	res, err := s.DB.Exec(`INSERT INTO sites (account_id, domain, docroot, php_version, aliases_json, ssl_enabled, ssl_kind, kind, proxy_pass, nginx_rewrites_json, app_port, app_cmd) VALUES (?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?, ?)`, accountID, domain, docroot, php, string(raw), kind, proxyPass, string(rw), appPort, appCmd)
 	if err != nil {
 		return nil, err
 	}

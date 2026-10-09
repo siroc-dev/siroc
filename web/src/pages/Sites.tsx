@@ -207,6 +207,7 @@ type SiteApp = {
 function sslTag(s: Site) {
   if (!s.ssl) return <Tag>HTTP</Tag>;
   if (s.sslKind === "letsencrypt") return <Tag color="success">Let's Encrypt</Tag>;
+  if (s.sslKind === "custom") return <Tag color="processing">Custom SSL</Tag>;
   return <Tag color="processing">Local HTTPS</Tag>;
 }
 
@@ -473,7 +474,7 @@ export function Sites() {
       await api.post("/api/sites", values);
       form.resetFields();
       setCreateOpen(false);
-      message.success("Website created with a local HTTPS certificate");
+      message.success("Website created");
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -588,6 +589,22 @@ export function Sites() {
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function customSSL(cert: string, key: string) {
+    if (!edit) return;
+    setBusy(true);
+    try {
+      const st = await api.post<Site>(`/api/sites/${edit.id}/ssl/custom`, { cert, key });
+      message.success(`Certificate installed for ${siteLabel(edit)}`);
+      setEdit(st);
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+      throw err;
     } finally {
       setBusy(false);
     }
@@ -999,7 +1016,7 @@ export function Sites() {
             Websites & domains
           </Typography.Title>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            Open a domain for files, databases, Git, SSL, and logs. New sites get local HTTPS first.
+            Open a domain for files, databases, Git, SSL, and logs. New sites start on HTTP. Add HTTPS from the SSL tab.
           </Typography.Paragraph>
         </div>
         <Button type="primary" onClick={() => setCreateOpen(true)} disabled={phps.length === 0}>
@@ -1195,6 +1212,7 @@ export function Sites() {
           sslLog={sslLog}
           onLocalSSL={useLocalSSL}
           onDisableSSL={disableSSL}
+          onCustomSSL={customSSL}
           onGit={() => setGitSite(edit)}
           onLogs={() => setLogSite(edit)}
           onSSH={() => nav(`/terminal?user=${encodeURIComponent(edit.username)}`)}
