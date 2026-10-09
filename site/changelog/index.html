@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.45">0.2.45</a>
           <a href="#v0.2.44">0.2.44</a>
           <a href="#v0.2.43">0.2.43</a>
           <a href="#v0.2.42">0.2.42</a>
@@ -73,6 +74,18 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.45">
+          <h2><a href="#v0.2.45">0.2.45</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>rclone shows the file it is transferring. While copy, sync, or move is running, the current file name, percent, size, and speed update every second.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>PHP leaves proc_open available so Composer, Symfony, and Laravel Process can run. An account still using the previous default list picks this up the next time its PHP settings or a site is saved. Shell commands stay disabled.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.44">
           <h2><a href="#v0.2.44">0.2.44</a></h2>

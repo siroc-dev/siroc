@@ -1345,10 +1345,29 @@ type RcloneRunReq struct {
 	Dest   string `json:"dest,omitempty"`
 }
 
+type RcloneFileProgress struct {
+	Name    string  `json:"name"`
+	Bytes   int64   `json:"bytes"`
+	Size    int64   `json:"size"`
+	Percent int     `json:"percent"`
+	Speed   float64 `json:"speed,omitempty"`
+}
+
 type RcloneRunResp struct {
-	OK      bool   `json:"ok"`
-	Output  string `json:"output,omitempty"`
-	Message string `json:"message,omitempty"`
+	OK             bool                 `json:"ok"`
+	Running        bool                 `json:"running"`
+	Action         string               `json:"action,omitempty"`
+	Source         string               `json:"source,omitempty"`
+	Dest           string               `json:"dest,omitempty"`
+	Output         string               `json:"output,omitempty"`
+	Message        string               `json:"message,omitempty"`
+	Bytes          int64                `json:"bytes,omitempty"`
+	TotalBytes     int64                `json:"totalBytes,omitempty"`
+	Percent        int                  `json:"percent,omitempty"`
+	Speed          float64              `json:"speed,omitempty"`
+	Transfers      int64                `json:"transfers,omitempty"`
+	TotalTransfers int64                `json:"totalTransfers,omitempty"`
+	Files          []RcloneFileProgress `json:"files,omitempty"`
 }
 
 type BackupManifest struct {

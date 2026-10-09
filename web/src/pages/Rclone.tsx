@@ -1,11 +1,41 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Alert, App, Button, Card, Form, Input, InputNumber, Popconfirm, Select, Space, Table, Tabs, Typography } from "antd";
-import { api, RequestError } from "@/lib/api";
+import { Alert, App, Button, Card, Form, Input, InputNumber, Popconfirm, Progress, Select, Space, Table, Tabs, Typography } from "antd";
+import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Remote = { name: string; type: string };
 type Status = { installed: boolean; version?: string; remotes?: Remote[]; message?: string };
+type FileProgress = { name: string; bytes: number; size: number; percent: number; speed?: number };
+type Job = {
+  ok?: boolean;
+  running?: boolean;
+  action?: string;
+  source?: string;
+  dest?: string;
+  output?: string;
+  message?: string;
+  bytes?: number;
+  totalBytes?: number;
+  percent?: number;
+  speed?: number;
+  transfers?: number;
+  totalTransfers?: number;
+  files?: FileProgress[];
+};
+
+function formatBytes(n?: number) {
+  const v = n || 0;
+  if (v < 1024) return `${v} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let x = v / 1024;
+  let i = 0;
+  while (x >= 1024 && i < units.length - 1) {
+    x /= 1024;
+    i++;
+  }
+  return `${x >= 10 ? x.toFixed(0) : x.toFixed(1)} ${units[i]}`;
+}
 
 const types = [
   { value: "s3", label: "S3" },
@@ -34,7 +64,11 @@ export function Rclone() {
   const { message } = App.useApp();
   const [st, setSt] = useState<Status | null>(null);
   const [busy, setBusy] = useState(false);
-  const [log, setLog] = useState("");
+  const [job, setJob] = useState<Job | null>(null);
+  const running = !!job?.running;
+  const files = job?.files || [];
+  const wasRunning = useRef(false);
+  const pollGen = useRef(0);
   const [remoteForm] = Form.useForm();
   const [jobForm] = Form.useForm();
   const kind = Form.useWatch("type", remoteForm);
@@ -50,6 +84,31 @@ export function Rclone() {
     load()
       .catch((e) => message.error(e instanceof Error ? e.message : "Failed"))
       .finally(() => setSt((cur) => cur || { installed: false }));
+  }, []);
+
+  useEffect(() => {
+    let stop = false;
+    async function poll() {
+      const gen = pollGen.current;
+      try {
+        const data = await api.get<Job>("/api/rclone/run");
+        if (stop || gen !== pollGen.current) return;
+        if (wasRunning.current && !data.running) {
+          if (data.ok) message.success("Finished");
+          else message.error(data.message || "Failed");
+        }
+        wasRunning.current = !!data.running;
+        setJob(data);
+      } catch {
+        // The next poll retries.
+      }
+    }
+    poll();
+    const t = setInterval(poll, 1000);
+    return () => {
+      stop = true;
+      clearInterval(t);
+    };
   }, []);
 
   async function saveRemote(values: Record<string, string>) {
@@ -85,18 +144,19 @@ export function Rclone() {
   }
 
   async function run(values: { action: string; source: string; dest?: string }) {
+    const gen = ++pollGen.current;
     setBusy(true);
-    setLog("");
     try {
-      const out = await api.post<{ output?: string }>("/api/rclone/run", {
+      const out = await api.post<Job>("/api/rclone/run", {
         action: values.action,
         source: values.source,
         dest: spec.dest ? values.dest : "",
       });
-      setLog(out.output || "Done");
-      message.success("Finished");
+      if (gen !== pollGen.current) return;
+      wasRunning.current = !!out.running;
+      setJob(out);
+      if (!out.running && out.ok) message.success("Finished");
     } catch (err) {
-      if (err instanceof RequestError && err.log) setLog(err.log);
       message.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setBusy(false);
@@ -257,17 +317,52 @@ export function Rclone() {
                   ) : null}
                   {spec.danger ? (
                     <Popconfirm title={`Run ${spec.label}?`} description={spec.hint} onConfirm={() => jobForm.submit()}>
-                      <Button danger type="primary" loading={busy} disabled={!st.installed}>
-                        Run {spec.label}
+                      <Button danger type="primary" loading={busy || running} disabled={!st.installed || running}>
+                        {running ? "Running" : `Run ${spec.label}`}
                       </Button>
                     </Popconfirm>
                   ) : (
-                    <Button type="primary" htmlType="submit" loading={busy} disabled={!st.installed}>
-                      Run {spec.label}
+                    <Button type="primary" htmlType="submit" loading={busy || running} disabled={!st.installed || running}>
+                      {running ? "Running" : `Run ${spec.label}`}
                     </Button>
                   )}
                 </Form>
-                {log ? <pre className="cmd-out">{log}</pre> : null}
+                {job && (running || job.percent || (job.files && job.files.length > 0)) ? (
+                  <div style={{ marginTop: 16 }}>
+                    <Typography.Text>
+                      {job.action ? `${job.action} ` : ""}
+                      {job.source}
+                      {job.dest ? ` → ${job.dest}` : ""}
+                    </Typography.Text>
+                    <Progress percent={job.percent || 0} status={running ? "active" : job.ok ? "success" : "exception"} />
+                    <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                      {[
+                        job.totalTransfers ? `${job.transfers || 0} / ${job.totalTransfers} files` : "",
+                        job.totalBytes ? `${formatBytes(job.bytes)} / ${formatBytes(job.totalBytes)}` : job.bytes ? formatBytes(job.bytes) : "",
+                        job.speed ? `${formatBytes(job.speed)}/s` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Typography.Paragraph>
+                    {files.length ? (
+                      <div style={{ marginTop: 12 }}>
+                        <Typography.Text type="secondary">{files.length === 1 ? "Current file" : "Current files"}</Typography.Text>
+                        {files.map((file) => (
+                          <div key={file.name} style={{ marginTop: 8 }}>
+                            <Typography.Text code>{file.name}</Typography.Text>
+                            <Progress percent={file.percent || 0} size="small" status={running ? "active" : "normal"} />
+                            <Typography.Text type="secondary">
+                              {file.size > 0 ? `${formatBytes(file.bytes)} / ${formatBytes(file.size)}` : formatBytes(file.bytes)}
+                              {file.speed ? ` · ${formatBytes(file.speed)}/s` : ""}
+                            </Typography.Text>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {!running && job?.message && !job.ok ? <Alert style={{ marginTop: 16 }} type="error" showIcon message={job.message} /> : null}
+                {job?.output ? <pre className="cmd-out">{job.output}</pre> : null}
               </Card>
             ),
           },

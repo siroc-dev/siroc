@@ -149,3 +149,13 @@ func RunArgs(action, source, dest string) ([]string, bool, error) {
 	}
 	return args, spec.slow, nil
 }
+
+// ProgressFlags are the rclone flags that print per-file stats once a second.
+func ProgressFlags(action string) []string {
+	switch action {
+	case "copy", "sync", "move", "copyto":
+		return []string{"--stats=1s", "--use-json-log"}
+	default:
+		return nil
+	}
+}

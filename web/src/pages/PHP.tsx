@@ -56,7 +56,7 @@ function emptyFPM(): FPM {
     uploadMaxFilesize: "64M",
     displayErrors: false,
     timezone: "UTC",
-    disableFunctions: "exec,passthru,shell_exec,system,proc_open,popen,show_source",
+    disableFunctions: "exec,passthru,shell_exec,system,popen,show_source",
     openBasedir: true,
     extensions: {},
   };
@@ -372,6 +372,9 @@ export function PHP() {
           <Col span={24}>
             <Typography.Text type="secondary">disable_functions</Typography.Text>
             <Input style={{ marginTop: 4 }} value={settings.disableFunctions} onChange={(e) => patch("disableFunctions", e.target.value)} />
+            <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+              proc_open stays available so Composer, Symfony, and Laravel Process can run. Shell commands stay disabled.
+            </Typography.Paragraph>
           </Col>
         </Row>
       </Card>

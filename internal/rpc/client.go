@@ -793,6 +793,12 @@ func (c *Client) RcloneRun(in RcloneRunReq) (*RcloneRunResp, error) {
 	return &out, err
 }
 
+func (c *Client) RcloneJob() (*RcloneRunResp, error) {
+	var out RcloneRunResp
+	err := c.do(http.MethodGet, "/rclone/run", nil, &out)
+	return &out, err
+}
+
 func (c *Client) BackupRun(in BackupReq) (*BackupResp, error) {
 	var out BackupResp
 	err := c.do(http.MethodPost, "/backup/run", in, &out)

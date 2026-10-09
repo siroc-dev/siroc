@@ -1230,16 +1230,15 @@ func main() {
 		if !decode(w, r, &req) {
 			return
 		}
-		out, err := rclone.Run(req)
+		out, err := rclone.Start(req)
 		if err != nil {
-			if out != nil && out.Output != "" {
-				writeJSON(w, http.StatusOK, out)
-				return
-			}
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
+	})
+	r.Get("/rclone/run", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, rclone.Job())
 	})
 	r.Post("/backup/run", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.BackupReq

@@ -5,6 +5,17 @@ import (
 	"strings"
 )
 
+const defaultDisableFunctions = "exec,passthru,shell_exec,system,popen,show_source"
+const legacyDisableFunctions = "exec,passthru,shell_exec,system,proc_open,popen,show_source"
+
+func normalizeDisableFunctions(v string) string {
+	v = strings.TrimSpace(v)
+	if v == legacyDisableFunctions {
+		return defaultDisableFunctions
+	}
+	return v
+}
+
 func DefaultPHPFPM() PHPFPMSettings {
 	return PHPFPMSettings{
 		PM:                "ondemand",
@@ -20,7 +31,7 @@ func DefaultPHPFPM() PHPFPMSettings {
 		PostMaxSize:       "64M",
 		UploadMaxFilesize: "64M",
 		Timezone:          "UTC",
-		DisableFunctions:  "exec,passthru,shell_exec,system,proc_open,popen,show_source",
+		DisableFunctions:  defaultDisableFunctions,
 		OpenBasedir:       true,
 		Extensions:        map[string][]string{},
 	}
@@ -69,7 +80,7 @@ func MergePHPFPM(in PHPFPMSettings) PHPFPMSettings {
 	}
 	d.DisplayErrors = in.DisplayErrors
 	d.OpenBasedir = true
-	d.DisableFunctions = in.DisableFunctions
+	d.DisableFunctions = normalizeDisableFunctions(in.DisableFunctions)
 	if in.Extensions != nil {
 		d.Extensions = in.Extensions
 	}

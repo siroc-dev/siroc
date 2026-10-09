@@ -71,19 +71,20 @@ func (s *Server) rcloneRun(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := s.Agent.RcloneRun(body)
 	if err != nil {
-		log := ""
-		if out != nil {
-			log = out.Output
-		}
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error(), "log": log})
+		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	if out != nil && !out.OK {
-		msg := out.Message
-		if msg == "" {
-			msg = "rclone failed"
-		}
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg, "log": out.Output})
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) rcloneJob(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(currentUser(r)) {
+		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
+		return
+	}
+	out, err := s.Agent.RcloneJob()
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
