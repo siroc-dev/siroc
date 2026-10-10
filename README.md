@@ -102,7 +102,7 @@ Do not run `wrangler deploy` from GitHub Actions with that R2 token. It has no W
 | --- | --- | --- |
 | Cloudflare Workers Git | push to `main` | publishes `site/` to siroc.dev |
 | `.github/workflows/site.yml` | site/VERSION change | stamps URLs and checks the public site files |
-| `.github/workflows/release.yml` | tag `v*` (or manual) | uploads `siroc-linux-amd64.tar.gz` and `latest.json` to `siroc-cp` |
+| `.github/workflows/release.yml` | tag `v*` (or manual) | uploads `siroc-linux-amd64.tar.gz` and `latest.json` to `siroc-cp`, then deletes version prefixes older than the newest 3 |
 
 Tag a release after the token can write R2:
 

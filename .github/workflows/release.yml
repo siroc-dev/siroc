@@ -90,3 +90,21 @@ jobs:
             --endpoint-url "$ENDPOINT" \
             --content-type application/json \
             --cache-control "no-cache"
+
+          echo "Keeping the 3 newest version prefixes"
+          aws s3api list-objects-v2 \
+            --bucket siroc-cp \
+            --delimiter / \
+            --endpoint-url "$ENDPOINT" \
+            --query 'CommonPrefixes[].Prefix' \
+            --output text > dist/r2-prefixes.txt || true
+          python3 scripts/prune-r2-versions.py 3 < dist/r2-prefixes.txt > dist/r2-drop.txt
+          if [ ! -s dist/r2-drop.txt ]; then
+            echo "Nothing to delete"
+            exit 0
+          fi
+          while IFS= read -r prefix; do
+            [ -n "$prefix" ] || continue
+            echo "Deleting s3://siroc-cp/${prefix}"
+            aws s3 rm "s3://siroc-cp/${prefix}" --recursive --endpoint-url "$ENDPOINT"
+          done < dist/r2-drop.txt
