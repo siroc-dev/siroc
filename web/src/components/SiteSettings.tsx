@@ -186,7 +186,7 @@ export function SiteSettings({
   phpVersions: { value: string; label: string }[];
   publicName: boolean;
   onClose: () => void;
-  onPatch: (body: Record<string, unknown>, ok: string) => Promise<void>;
+  onPatch: (body: Record<string, unknown>, ok: string) => Promise<{ aliases?: string[]; skipped?: string[] } | void>;
   onIssueSSL: () => void;
   sslLog?: string;
   onLocalSSL: () => void;
@@ -287,8 +287,26 @@ export function SiteSettings({
       message.error(`${bad}: this panel serves ports 80 and 443. Add the hostname only.`);
       return;
     }
-    const next = Array.from(new Set([...(site.aliases || []), ...lines.filter((l) => l !== site.domain)]));
-    await onPatch({ aliases: next }, "Domains added");
+    const existing = new Set([site.domain, ...(site.aliases || [])]);
+    const fresh: string[] = [];
+    let skipped = 0;
+    for (const line of lines) {
+      if (existing.has(line) || fresh.includes(line)) {
+        skipped++;
+        continue;
+      }
+      fresh.push(line);
+    }
+    if (!fresh.length) {
+      if (skipped > 0) message.info(skipped === 1 ? "1 duplicate domain skipped" : `${skipped} duplicate domains skipped`);
+      setDraft("");
+      return;
+    }
+    const next = [...(site.aliases || []), ...fresh];
+    const saved = await onPatch({ aliases: next }, "Domains added");
+    if (!saved) return;
+    skipped += saved.skipped?.length || 0;
+    if (skipped > 0) message.info(skipped === 1 ? "1 duplicate domain skipped" : `${skipped} duplicate domains skipped`);
     setDraft("");
   }
 
@@ -320,7 +338,7 @@ export function SiteSettings({
             <>
               <div className="site-mod-domain-top">
                 <div className="site-mod-hint">
-                  One domain per line, up to 99 aliases. The default ports are 80 and 443.
+                  One domain per line, up to 500 aliases. Duplicate names are skipped. The default ports are 80 and 443. A Let's Encrypt certificate covers the primary name and the first 99 aliases.
                   <br />
                   Wildcard domain format: *.domain.com
                   <br />
@@ -340,7 +358,7 @@ export function SiteSettings({
               <Table
                 size="small"
                 rowKey="name"
-                pagination={false}
+                pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], showTotal: (n) => `Total ${n}`, hideOnSinglePage: true }}
                 dataSource={rows}
                 rowSelection={{
                   selectedRowKeys: picked,

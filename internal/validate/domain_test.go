@@ -2,6 +2,7 @@ package validate
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -80,5 +81,21 @@ func TestDomainAliasLimit(t *testing.T) {
 	names = append(names, "extra.example.com")
 	if _, err := DomainAliases("example.com", names); err == nil {
 		t.Fatal("over the limit")
+	}
+}
+
+func TestCertbotNames(t *testing.T) {
+	aliases := []string{"*.example.com", "www.example.com"}
+	for i := 0; i < 120; i++ {
+		aliases = append(aliases, fmt.Sprintf("n%d.example.com", i))
+	}
+	got := CertbotNames("example.com", aliases)
+	if len(got) != MaxCertbotNames || got[0] != "example.com" || got[1] != "www.example.com" {
+		t.Fatalf("%d names, first %#v", len(got), got[:2])
+	}
+	for _, n := range got {
+		if strings.HasPrefix(n, "*.") {
+			t.Fatalf("wildcard included: %s", n)
+		}
 	}
 }

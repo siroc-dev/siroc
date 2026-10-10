@@ -1406,10 +1406,17 @@ func (s *Server) createSite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := s.claimHostnames(0, append([]string{body.Domain}, aliases...)...); err != nil {
+	if err := s.claimHostnames(0, body.Domain); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	wanted := append([]string(nil), aliases...)
+	aliases, err = s.skipTaken(0, aliases)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	skipped := missingNames(wanted, aliases)
 	if body.PHPVersion == "" {
 		body.PHPVersion = "8.3"
 	}
@@ -1509,6 +1516,7 @@ func (s *Server) createSite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	st.Skipped = skipped
 	writeJSON(w, http.StatusOK, st)
 }
 
@@ -1565,16 +1573,20 @@ func (s *Server) updateSite(w http.ResponseWriter, r *http.Request) {
 		enabled = *body.Enabled
 	}
 	aliases := st.Aliases
+	var skipped []string
 	if body.Aliases != nil {
 		aliases, err = validate.DomainAliases(st.Domain, body.Aliases)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
-		if err := s.claimHostnames(st.ID, aliases...); err != nil {
-			writeErr(w, http.StatusBadRequest, err)
+		wanted := append([]string(nil), aliases...)
+		aliases, err = s.skipTaken(st.ID, aliases)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
 			return
 		}
+		skipped = missingNames(wanted, aliases)
 	}
 	rewrite := st.Rewrite
 	if body.Rewrite != nil {
@@ -1728,6 +1740,9 @@ func (s *Server) updateSite(w http.ResponseWriter, r *http.Request) {
 	_ = s.Store.UpdateSite(st.ID, php, doc, enabled, aliases, ssl, expiry, kind, rewrite)
 	_ = s.Store.UpdateSiteApp(st.ID, st.Kind, st.ProxyPass, st.AppPort, st.AppCmd)
 	st, _ = s.Store.GetSite(id)
+	if st != nil {
+		st.Skipped = skipped
+	}
 	writeJSON(w, http.StatusOK, st)
 }
 
@@ -2047,6 +2062,35 @@ func (s *Server) applyStoredSites() {
 	if migrated != "1" {
 		_ = s.Store.SetSetting("sites_local_ssl", "1")
 	}
+}
+
+func (s *Server) skipTaken(exceptID int64, names []string) ([]string, error) {
+	taken, err := s.Store.TakenHostnames(exceptID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if _, ok := taken[strings.ToLower(strings.TrimSpace(n))]; ok {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
+func missingNames(wanted, kept []string) []string {
+	have := map[string]struct{}{}
+	for _, n := range kept {
+		have[n] = struct{}{}
+	}
+	var out []string
+	for _, n := range wanted {
+		if _, ok := have[n]; !ok {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 func (s *Server) claimHostnames(exceptID int64, names ...string) error {

@@ -55,6 +55,14 @@ function renderSettings(section: "domain" | "php" | "maintenance" | "ssl" = "dom
 }
 
 describe("SiteSettings", () => {
+  it("pages the domain list after twenty names", () => {
+    const aliases = Array.from({ length: 25 }, (_, i) => `a${i}.test.com`);
+    renderSettings("domain", { aliases });
+    expect(screen.getByText("a0.test.com")).toBeTruthy();
+    expect(screen.queryByText("a24.test.com")).toBeNull();
+    expect(screen.getByText("Total 26")).toBeTruthy();
+  });
+
   it("opens on Domain Manager with the primary name locked", () => {
     renderSettings();
     expect(screen.getByText("Site modification [test.com] -- Time added [2025-07-09 16:13:54]")).toBeTruthy();

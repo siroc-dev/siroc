@@ -63,6 +63,7 @@ type Site = {
   phpVersion: string;
   enabled: boolean;
   aliases: string[];
+  skipped?: string[];
   ssl: boolean;
   sslKind?: string;
   sslExpiry?: string;
@@ -472,10 +473,11 @@ export function Sites() {
   async function create(values: { username: string; domain: string; phpVersion: string; aliases?: string[]; docRoot?: string; kind?: string; proxyPass?: string; appPort?: number; appCmd?: string; rewrite?: string }) {
     setBusy(true);
     try {
-      await api.post("/api/sites", values);
+      const st = await api.post<Site>("/api/sites", values);
       form.resetFields();
       setCreateOpen(false);
       message.success("Website created");
+      if (st.skipped?.length) message.info(st.skipped.length === 1 ? "1 duplicate domain skipped" : `${st.skipped.length} duplicate domains skipped`);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -498,6 +500,7 @@ export function Sites() {
       message.success(ok);
       setEdit(st);
       await load();
+      return st;
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
     } finally {

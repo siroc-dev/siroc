@@ -173,8 +173,29 @@ func DomainOrWildcardAlias(name string) error {
 }
 
 // MaxDomainAliases is how many extra names one website can have.
-// Let's Encrypt allows 100 names on a certificate, including the primary domain.
-const MaxDomainAliases = 99
+const MaxDomainAliases = 500
+
+// MaxCertbotNames is Let's Encrypt's limit for names on one certificate, including the primary domain.
+const MaxCertbotNames = 100
+
+// CertbotNames keeps the primary name and the earliest aliases that fit on one certificate.
+// Wildcard aliases are omitted because this panel issues them separately from the HTTP challenge.
+func CertbotNames(primary string, aliases []string) []string {
+	out := make([]string, 0, MaxCertbotNames)
+	if primary != "" {
+		out = append(out, primary)
+	}
+	for _, a := range aliases {
+		if strings.HasPrefix(a, "*.") {
+			continue
+		}
+		if len(out) >= MaxCertbotNames {
+			break
+		}
+		out = append(out, a)
+	}
+	return out
+}
 
 func DomainAliases(primary string, aliases []string) ([]string, error) {
 	var err error

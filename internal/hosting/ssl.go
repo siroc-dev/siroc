@@ -180,10 +180,8 @@ func (m *Manager) IssueSSL(req rpc.SiteSSLReq) (*rpc.SiteSSLResp, error) {
 	}
 	names := append([]string{req.Domain}, aliases...)
 	if !custom {
+		names = validate.CertbotNames(req.Domain, aliases)
 		for _, n := range names {
-			if strings.HasPrefix(n, "*.") {
-				continue
-			}
 			if !publicACMEName(n) {
 				return nil, fmt.Errorf("Let's Encrypt cannot issue for %q: domain name does not end with a valid public suffix (TLD). Use local HTTPS for lab domains (.test, .local), or set a custom ACME server under Websites → Let's Encrypt", n)
 			}
@@ -232,12 +230,11 @@ func (m *Manager) IssueSSL(req rpc.SiteSSLReq) (*rpc.SiteSSLResp, error) {
 		}
 		args = append(args, "--eab-kid", kid, "--eab-hmac-key", hmac)
 	}
-	args = append(args, "-d", req.Domain)
-	for _, a := range aliases {
-		if strings.HasPrefix(a, "*.") {
+	for _, n := range names {
+		if strings.HasPrefix(n, "*.") {
 			continue
 		}
-		args = append(args, "-d", a)
+		args = append(args, "-d", n)
 	}
 	out, err := exec.Command("certbot", args...).CombinedOutput()
 	log := clipLog(string(out))

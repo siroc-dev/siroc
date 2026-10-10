@@ -382,6 +382,9 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 		return err
 	}
 
+	if err := ensureServerNamesHash(); err != nil {
+		return err
+	}
 	if err := writeTemplate(filepath.Join("/etc/nginx/sites-available", req.Domain+".conf"), nginxTmpl, data, 0644); err != nil {
 		return err
 	}
@@ -464,6 +467,14 @@ func applyGuards(data *siteData, opt siteopts.Options, proxy string) error {
 		}
 	}
 	return nil
+}
+
+func ensureServerNamesHash() error {
+	if err := os.MkdirAll("/etc/nginx/conf.d", 0755); err != nil {
+		return err
+	}
+	body := "server_names_hash_max_size 65536;\n"
+	return os.WriteFile("/etc/nginx/conf.d/siroc-names.conf", []byte(body), 0644)
 }
 
 func ensureProxySupport(loc string) error {
@@ -570,6 +581,9 @@ func (m *Manager) writeDirect(req rpc.SiteWriteReq) error {
 	if err := ensureUploadsPHPSnippet(req.Domain); err != nil {
 		return err
 	}
+	if err := ensureServerNamesHash(); err != nil {
+		return err
+	}
 	if err := writeTemplate(filepath.Join("/etc/nginx/sites-available", req.Domain+".conf"), nginxTmpl, data, 0644); err != nil {
 		return err
 	}
@@ -654,6 +668,9 @@ func (m *Manager) writeProxy(req rpc.SiteWriteReq) error {
 		return err
 	}
 	if err := ensureUploadsPHPSnippet(req.Domain); err != nil {
+		return err
+	}
+	if err := ensureServerNamesHash(); err != nil {
 		return err
 	}
 	if err := writeTemplate(filepath.Join("/etc/nginx/sites-available", req.Domain+".conf"), nginxTmpl, data, 0644); err != nil {

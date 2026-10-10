@@ -170,7 +170,10 @@ export function SiteDash({
           </Space>
           {site.aliases?.length ? (
             <div style={{ marginTop: 8 }}>
-              <Typography.Text type="secondary">Aliases: {site.aliases.join(", ")}</Typography.Text>
+              <Typography.Text type="secondary">
+                Aliases: {site.aliases.slice(0, 8).join(", ")}
+                {site.aliases.length > 8 ? ` +${site.aliases.length - 8} more` : ""}
+              </Typography.Text>
             </div>
           ) : null}
         </div>

@@ -70,6 +70,7 @@ type Site struct {
 	Enabled        bool             `json:"enabled"`
 	Aliases        []string         `json:"aliases"`
 	DisplayAliases []string         `json:"displayAliases,omitempty"`
+	Skipped        []string         `json:"skipped,omitempty"`
 	SSL            bool             `json:"ssl"`
 	SSLKind        string           `json:"sslKind,omitempty"`
 	SSLExpiry      string           `json:"sslExpiry,omitempty"`
@@ -902,6 +903,28 @@ func (s *Store) NextAppPort(exceptID int64) (int, error) {
 		}
 	}
 	return 0, fmt.Errorf("no free app port in 30000-39999")
+}
+
+func (s *Store) TakenHostnames(exceptID int64) (map[string]struct{}, error) {
+	list, err := s.ListSites()
+	if err != nil {
+		return nil, err
+	}
+	taken := map[string]struct{}{}
+	for _, st := range list {
+		if st.ID == exceptID {
+			continue
+		}
+		if n := strings.ToLower(strings.TrimSpace(st.Domain)); n != "" {
+			taken[n] = struct{}{}
+		}
+		for _, a := range st.Aliases {
+			if n := strings.ToLower(strings.TrimSpace(a)); n != "" {
+				taken[n] = struct{}{}
+			}
+		}
+	}
+	return taken, nil
 }
 
 func (s *Store) HostnameTaken(name string, exceptID int64) (bool, error) {
