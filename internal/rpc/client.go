@@ -315,6 +315,24 @@ func (c *Client) SiteWrite(in SiteWriteReq) error {
 	return c.do(http.MethodPost, "/sites/write", in, nil)
 }
 
+func (c *Client) SiteConfigRead(domain string) (*SiteConfigResp, error) {
+	var out SiteConfigResp
+	err := c.do(http.MethodPost, "/sites/config/read", SiteConfigReq{Domain: domain}, &out)
+	return &out, err
+}
+
+func (c *Client) SiteConfigTest(in SiteConfigReq) (*SiteConfigResp, error) {
+	var out SiteConfigResp
+	err := c.do(http.MethodPost, "/sites/config/test", in, &out)
+	return &out, err
+}
+
+func (c *Client) SiteConfigSave(in SiteConfigReq) (*SiteConfigResp, error) {
+	var out SiteConfigResp
+	err := c.do(http.MethodPost, "/sites/config/save", in, &out)
+	return &out, err
+}
+
 func (c *Client) SiteSSL(in SiteSSLReq) (*SiteSSLResp, error) {
 	var out SiteSSLResp
 	err := c.do(http.MethodPost, "/sites/ssl", in, &out)

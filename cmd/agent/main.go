@@ -544,6 +544,42 @@ func main() {
 		writeJSON(w, http.StatusOK, softMgr.CleanLogs())
 	})
 
+	r.Post("/sites/config/read", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.SiteConfigReq
+		if !decode(w, r, &req) {
+			return
+		}
+		nginx, apache, err := hostMgr.ReadSiteConfig(req.Domain)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.SiteConfigResp{OK: true, Nginx: nginx, Apache: apache})
+	})
+	r.Post("/sites/config/test", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.SiteConfigReq
+		if !decode(w, r, &req) {
+			return
+		}
+		log, err := hostMgr.ApplySiteConfig(req.Domain, req.Nginx, req.Apache, req.Enabled, false)
+		if err != nil {
+			writeJSON(w, http.StatusOK, rpc.SiteConfigResp{Log: log, Message: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.SiteConfigResp{OK: true, Log: log})
+	})
+	r.Post("/sites/config/save", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.SiteConfigReq
+		if !decode(w, r, &req) {
+			return
+		}
+		log, err := hostMgr.ApplySiteConfig(req.Domain, req.Nginx, req.Apache, req.Enabled, true)
+		if err != nil {
+			writeJSON(w, http.StatusOK, rpc.SiteConfigResp{Log: log, Message: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.SiteConfigResp{OK: true, Log: log, Nginx: req.Nginx, Apache: req.Apache})
+	})
 	r.Post("/sites/write", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.SiteWriteReq
 		if !decode(w, r, &req) {

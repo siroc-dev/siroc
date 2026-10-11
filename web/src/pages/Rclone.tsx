@@ -60,7 +60,7 @@ const actions = [
   { value: "purge", label: "Purge", dest: false, danger: true, hint: "Delete the path and everything inside it." },
 ];
 
-export function Rclone() {
+export function Rclone({ embedded = false }: { embedded?: boolean }) {
   const { message } = App.useApp();
   const [st, setSt] = useState<Status | null>(null);
   const [busy, setBusy] = useState(false);
@@ -167,15 +167,21 @@ export function Rclone() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <div>
-        <Typography.Title level={3} style={{ marginBottom: 4 }}>
-          rclone
-        </Typography.Title>
+      {embedded ? (
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          {st.version || "Manage remotes and run copy, sync, move, list, and delete."}{" "}
-          <Link to="/software">Install from Software</Link>
+          {st.version || "Remotes, copy, sync, and move."} <Link to="/software">Install from Software</Link>
         </Typography.Paragraph>
-      </div>
+      ) : (
+        <div>
+          <Typography.Title level={3} style={{ marginBottom: 4 }}>
+            rclone
+          </Typography.Title>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            {st.version || "Manage remotes and run copy, sync, move, list, and delete."}{" "}
+            <Link to="/software">Install from Software</Link>
+          </Typography.Paragraph>
+        </div>
+      )}
       {!st.installed ? <Alert type="warning" showIcon message={st.message || "rclone is not installed."} /> : null}
       <Tabs
         items={[

@@ -100,8 +100,14 @@ func wantLocalCert(ssl bool, kind string) bool {
 	return ssl && (kind == "" || kind == "local")
 }
 
-func sslRedirect(ssl bool, kind string) bool {
-	return ssl && (kind == "letsencrypt" || kind == "custom")
+func sslRedirect(ssl bool, kind string, force *bool) bool {
+	if !ssl {
+		return false
+	}
+	if force != nil {
+		return *force
+	}
+	return kind == "letsencrypt" || kind == "custom"
 }
 
 func ensureLocalCert(domain string, aliases []string) error {
@@ -420,7 +426,7 @@ func (m *Manager) CertInfo(req rpc.SiteSSLInfoReq) (*rpc.CertInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	kind, cert, _ := resolveCerts(domain, req.Kind)
+	kind, cert, keyPath := resolveCerts(domain, req.Kind)
 	if cert == "" {
 		return &rpc.CertInfo{Message: "No certificate is installed"}, nil
 	}
@@ -433,6 +439,12 @@ func (m *Manager) CertInfo(req rpc.SiteSSLInfoReq) (*rpc.CertInfo, error) {
 		return &rpc.CertInfo{Kind: kind, Message: err.Error()}, nil
 	}
 	info.Kind = kind
+	info.Cert = string(raw)
+	if keyPath != "" {
+		if key, err := os.ReadFile(keyPath); err == nil && len(key) <= maxCertPEM {
+			info.Key = string(key)
+		}
+	}
 	return &info, nil
 }
 

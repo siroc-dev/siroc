@@ -1,19 +1,24 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { App as AntdApp } from "antd";
 import { describe, expect, it, vi } from "vitest";
-import { SiteSettings, type SiteSettingsSite } from "./SiteSettings";
+import { SiteSettings, type SiteSection, type SiteSettingsSite } from "./SiteSettings";
 
 vi.mock("@/lib/api", () => ({
   api: {
-    get: vi.fn(async () => ({
-      ok: true,
-      subject: "test.com",
-      issuer: "Test CA",
-      notBefore: "2026-01-01T00:00:00Z",
-      notAfter: "2027-01-01T00:00:00Z",
-      dnsNames: ["test.com", "www.test.com"],
-      serial: "abc",
-    })),
+    get: vi.fn(async (url: string) => {
+      if (String(url).includes("/config")) {
+        return { ok: true, nginx: "server { listen 80; }\n", apache: "", custom: false };
+      }
+      return {
+        ok: true,
+        subject: "test.com",
+        issuer: "Test CA",
+        notBefore: "2026-01-01T00:00:00Z",
+        notAfter: "2027-01-01T00:00:00Z",
+        dnsNames: ["test.com", "www.test.com"],
+        serial: "abc",
+      };
+    }),
   },
 }));
 
@@ -29,7 +34,7 @@ const site: SiteSettingsSite = {
   createdAt: "2025-07-09T16:13:54Z",
 };
 
-function renderSettings(section: "domain" | "php" | "maintenance" | "ssl" = "domain", extra?: Partial<SiteSettingsSite>) {
+function renderSettings(section: SiteSection = "domain", extra?: Partial<SiteSettingsSite>) {
   const onPatch = vi.fn(async () => undefined);
   render(
     <AntdApp>
@@ -71,12 +76,24 @@ describe("SiteSettings", () => {
     expect(screen.getByText("Inoperable")).toBeTruthy();
   });
 
-  it("shows certificate details on the SSL tab", async () => {
+  it("loads the nginx file with save ready", async () => {
+    renderSettings("config");
+    expect(await screen.findByDisplayValue(/listen 80/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Test" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Save" })).toHaveProperty("disabled", false);
+  });
+
+  it("shows the deployed certificate without a business-certificate tab", async () => {
     renderSettings("ssl", { ssl: true, sslKind: "custom" });
-    expect(await screen.findByText(/Issuer: Test CA/)).toBeTruthy();
-    expect(screen.getByText(/Names: test.com, www.test.com/)).toBeTruthy();
-    expect(screen.getByText("Custom certificate")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Install certificate" })).toBeTruthy();
+    expect(await screen.findByRole("tab", { name: "Current Certs - [Deployed]" })).toBeTruthy();
+    expect(screen.getByText(/Other certificate/)).toBeTruthy();
+    expect(screen.getByText(/Test CA/)).toBeTruthy();
+    expect(screen.getByText(/test.com, www.test.com/)).toBeTruthy();
+    expect(screen.getByText("Force HTTPS")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Disable SSL" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "Business certificate" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Let's Encrypt" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Certificate holder" })).toBeTruthy();
   });
 
   it("switches to PHP and maintenance", () => {

@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.47">0.2.47</a>
           <a href="#v0.2.46">0.2.46</a>
           <a href="#v0.2.45">0.2.45</a>
           <a href="#v0.2.44">0.2.44</a>
@@ -75,6 +76,17 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.47">
+          <h2><a href="#v0.2.47">0.2.47</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>The SSL tab shows the deployed certificate: type, brand, domains, expiry, the private key, and the PEM. Saving the pasted key and certificate installs it. Tabs are Current Certs, Let's Encrypt, and Certificate holder.</li>
+            <li>Force HTTPS is a switch on the current certificate. Leaving it unset still redirects HTTP for Let's Encrypt and a pasted certificate. Turning it off stops that redirect.</li>
+            <li>The site Config tab edits the Nginx and Apache files. Save tests them first and writes them only when the test passes. Reset restores the generated files.</li>
+            <li>rclone is a tab on Backup. An expired panel session returns to the sign-in page.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.46">
           <h2><a href="#v0.2.46">0.2.46</a></h2>

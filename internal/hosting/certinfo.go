@@ -55,6 +55,12 @@ func ParseCertPEM(raw []byte) (rpc.CertInfo, error) {
 	if info.Issuer == "" {
 		info.Issuer = leaf.Issuer.String()
 	}
+	if len(leaf.Issuer.Organization) > 0 {
+		info.Brand = leaf.Issuer.Organization[0]
+	}
+	if info.Brand == "" {
+		info.Brand = info.Issuer
+	}
 	return info, nil
 }
 

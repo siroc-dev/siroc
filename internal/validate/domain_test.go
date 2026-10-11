@@ -99,3 +99,15 @@ func TestCertbotNames(t *testing.T) {
 		}
 	}
 }
+
+func TestSiteConfigText(t *testing.T) {
+	if err := SiteConfigText("nginx", "server { listen 80; }\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SiteConfigText("nginx", "bad\x00"); err == nil {
+		t.Fatal("nul accepted")
+	}
+	if err := SiteConfigText("apache", strings.Repeat("a", 256<<10+1)); err == nil {
+		t.Fatal("oversize accepted")
+	}
+}

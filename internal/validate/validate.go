@@ -535,6 +535,22 @@ func PHPIdleTimeout(v string) error {
 	return nil
 }
 
+const maxSiteConfigBytes = 256 << 10
+
+func SiteConfigText(kind, body string) error {
+	kind = strings.TrimSpace(kind)
+	if kind == "" {
+		kind = "config"
+	}
+	if strings.ContainsRune(body, 0) {
+		return fmt.Errorf("%s config is not text", kind)
+	}
+	if len(body) > maxSiteConfigBytes {
+		return fmt.Errorf("%s config is too long", kind)
+	}
+	return nil
+}
+
 func PHPDisableFunctions(v string) error {
 	if !phpFnRe.MatchString(v) {
 		return fmt.Errorf("invalid disable_functions list")

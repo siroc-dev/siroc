@@ -21,6 +21,8 @@ type Options struct {
 	// A false pointer turns that off. StaticExt empty means the Plesk extension list.
 	Static    *bool  `json:"static,omitempty"`
 	StaticExt string `json:"staticExt,omitempty"`
+	// ForceHTTPS nil keeps the previous default: redirect when the certificate is Let's Encrypt or custom.
+	ForceHTTPS *bool `json:"forceHttps,omitempty"`
 }
 
 type Redirect struct {
@@ -58,7 +60,7 @@ func Marshal(o Options) (string, error) {
 }
 
 func IsZero(o Options) bool {
-	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && !o.Maintenance && len(o.Redirects) == 0 && o.Proxy == nil && !staticExplicitOff(o) && o.StaticExt == ""
+	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && !o.Maintenance && len(o.Redirects) == 0 && o.Proxy == nil && !staticExplicitOff(o) && o.StaticExt == "" && o.ForceHTTPS == nil
 }
 
 func Normalize(in Options) (Options, error) {
@@ -158,6 +160,10 @@ func Normalize(in Options) (Options, error) {
 		return Options{}, err
 	}
 	out.StaticExt = strings.Join(ext, " ")
+	if in.ForceHTTPS != nil {
+		v := *in.ForceHTTPS
+		out.ForceHTTPS = &v
+	}
 	return out, nil
 }
 

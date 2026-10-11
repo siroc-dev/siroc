@@ -75,6 +75,8 @@ type Site struct {
 	SSLKind        string           `json:"sslKind,omitempty"`
 	SSLExpiry      string           `json:"sslExpiry,omitempty"`
 	Rewrite        string           `json:"rewrite,omitempty"`
+	NginxConf      string           `json:"-"`
+	ApacheConf     string           `json:"-"`
 	Kind           string           `json:"kind,omitempty"`
 	ProxyPass      string           `json:"proxyPass,omitempty"`
 	AppPort        int              `json:"appPort,omitempty"`
@@ -245,6 +247,8 @@ CREATE TABLE IF NOT EXISTS settings (
 		`ALTER TABLE sites ADD COLUMN waf_enabled INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE sites ADD COLUMN waf_disabled_json TEXT NOT NULL DEFAULT '[]'`,
 		`ALTER TABLE sites ADD COLUMN site_opts_json TEXT NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE sites ADD COLUMN nginx_conf TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sites ADD COLUMN apache_conf TEXT NOT NULL DEFAULT ''`,
 	} {
 		_, _ = s.DB.Exec(col)
 	}
@@ -680,13 +684,13 @@ func (s *Store) CreateSite(accountID int64, domain, docroot, php string, aliases
 	return s.GetSite(id)
 }
 
-const siteCols = `s.id, s.account_id, a.username, s.domain, s.docroot, s.php_version, s.enabled, s.aliases_json, s.ssl_enabled, s.ssl_expiry, s.ssl_kind, s.nginx_rewrites_json, s.kind, s.proxy_pass, s.app_port, s.app_cmd, s.waf_enabled, s.waf_disabled_json, s.site_opts_json, s.created_at`
+const siteCols = `s.id, s.account_id, a.username, s.domain, s.docroot, s.php_version, s.enabled, s.aliases_json, s.ssl_enabled, s.ssl_expiry, s.ssl_kind, s.nginx_rewrites_json, s.kind, s.proxy_pass, s.app_port, s.app_cmd, s.waf_enabled, s.waf_disabled_json, s.site_opts_json, s.created_at, s.nginx_conf, s.apache_conf`
 
 func scanSite(scan func(dest ...any) error) (*Site, error) {
 	st := &Site{}
 	var en, ssl, waf int
 	var created, aliases, rewrites, disabled, opts string
-	if err := scan(&st.ID, &st.AccountID, &st.Username, &st.Domain, &st.DocRoot, &st.PHPVersion, &en, &aliases, &ssl, &st.SSLExpiry, &st.SSLKind, &rewrites, &st.Kind, &st.ProxyPass, &st.AppPort, &st.AppCmd, &waf, &disabled, &opts, &created); err != nil {
+	if err := scan(&st.ID, &st.AccountID, &st.Username, &st.Domain, &st.DocRoot, &st.PHPVersion, &en, &aliases, &ssl, &st.SSLExpiry, &st.SSLKind, &rewrites, &st.Kind, &st.ProxyPass, &st.AppPort, &st.AppCmd, &waf, &disabled, &opts, &created, &st.NginxConf, &st.ApacheConf); err != nil {
 		return nil, err
 	}
 	st.Enabled = en == 1
@@ -768,6 +772,11 @@ func (s *Store) UpdateSite(id int64, php, docroot string, enabled bool, aliases 
 		return err
 	}
 	_, err = s.DB.Exec(`UPDATE sites SET php_version = ?, docroot = ?, enabled = ?, aliases_json = ?, ssl_enabled = ?, ssl_expiry = ?, ssl_kind = ?, nginx_rewrites_json = ? WHERE id = ?`, php, docroot, v, string(raw), sv, expiry, kind, string(rw), id)
+	return err
+}
+
+func (s *Store) UpdateSiteConfig(id int64, nginx, apache string) error {
+	_, err := s.DB.Exec(`UPDATE sites SET nginx_conf = ?, apache_conf = ? WHERE id = ?`, nginx, apache, id)
 	return err
 }
 

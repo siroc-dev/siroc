@@ -160,6 +160,24 @@ type SiteWriteReq struct {
 	WAF        bool             `json:"waf"`
 	WAFRemove  []int            `json:"wafRemove,omitempty"`
 	Options    siteopts.Options `json:"options,omitempty"`
+	NginxConf  string           `json:"nginxConf,omitempty"`
+	ApacheConf string           `json:"apacheConf,omitempty"`
+}
+
+type SiteConfigReq struct {
+	Domain  string `json:"domain"`
+	Nginx   string `json:"nginx"`
+	Apache  string `json:"apache,omitempty"`
+	Enabled bool   `json:"enabled"`
+}
+
+type SiteConfigResp struct {
+	OK      bool   `json:"ok"`
+	Nginx   string `json:"nginx,omitempty"`
+	Apache  string `json:"apache,omitempty"`
+	Custom  bool   `json:"custom,omitempty"`
+	Log     string `json:"log,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 type SiteRuntimeReq struct {
@@ -245,10 +263,13 @@ type CertInfo struct {
 	Kind      string   `json:"kind,omitempty"`
 	Subject   string   `json:"subject,omitempty"`
 	Issuer    string   `json:"issuer,omitempty"`
+	Brand     string   `json:"brand,omitempty"`
 	NotBefore string   `json:"notBefore,omitempty"`
 	NotAfter  string   `json:"notAfter,omitempty"`
 	DNSNames  []string `json:"dnsNames,omitempty"`
 	Serial    string   `json:"serial,omitempty"`
+	Cert      string   `json:"cert,omitempty"`
+	Key       string   `json:"key,omitempty"`
 	Message   string   `json:"message,omitempty"`
 }
 

@@ -44,7 +44,7 @@ import {
   SnippetsOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
-import { api } from "@/lib/api";
+import { api, redirectIfSessionExpired } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { languageFromPath } from "@/lib/fileLang";
 import { isSystemPath, joinPath, moveDestinations, normalizeFileJump } from "@/lib/filePaths";
@@ -286,6 +286,7 @@ export function Files() {
       const q = new URLSearchParams({ user, path: e.path });
       const res = await fetch(`/api/files/download?${q}`, { credentials: "include" });
       if (!res.ok) {
+        if (redirectIfSessionExpired(res.status, "/api/files/download")) return;
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { error?: string }).error || "Preview failed");
       }
@@ -440,6 +441,7 @@ export function Files() {
               data = {};
             }
             if (xhr.status >= 200 && xhr.status < 300) resolve();
+            else if (redirectIfSessionExpired(xhr.status, "/api/files/upload")) return;
             else reject(new Error(data.error || `Upload failed: ${f.name}`));
           };
           xhr.onerror = () => reject(new Error(`Upload failed: ${f.name}`));
@@ -506,6 +508,7 @@ export function Files() {
       const q = new URLSearchParams({ user, path: e.path });
       const res = await fetch(`/api/files/download?${q}`, { credentials: "include" });
       if (!res.ok) {
+        if (redirectIfSessionExpired(res.status, "/api/files/download")) return;
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { error?: string }).error || "Download failed");
       }

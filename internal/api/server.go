@@ -174,6 +174,10 @@ func (s *Server) Router() http.Handler {
 		r.Patch("/api/sites/{id}", s.updateSite)
 		r.Post("/api/sites/{id}/rename", s.renameSite)
 		r.Post("/api/sites/{id}/ssl", s.issueSiteSSL)
+		r.Get("/api/sites/{id}/config", s.siteConfig)
+		r.Post("/api/sites/{id}/config/test", s.testSiteConfig)
+		r.Post("/api/sites/{id}/config", s.saveSiteConfig)
+		r.Post("/api/sites/{id}/config/reset", s.resetSiteConfig)
 		r.Get("/api/sites/{id}/ssl", s.siteSSLInfo)
 		r.Post("/api/sites/{id}/ssl/custom", s.installCustomSSL)
 		r.Delete("/api/sites/{id}/ssl", s.disableSiteSSL)
@@ -1928,6 +1932,8 @@ func (s *Server) siteWriteReq(st store.Site, php string, enabled bool, aliases [
 		WAF:        s.siteWAF(st),
 		WAFRemove:  append([]int(nil), st.WAFDisabledIDs...),
 		Options:    st.Options,
+		NginxConf:  st.NginxConf,
+		ApacheConf: st.ApacheConf,
 	}
 }
 

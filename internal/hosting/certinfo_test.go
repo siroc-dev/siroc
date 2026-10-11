@@ -38,8 +38,8 @@ func TestParseCertPEM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Subject != "site.test" || info.Issuer != "site.test" {
-		t.Fatalf("subject %q issuer %q", info.Subject, info.Issuer)
+	if info.Subject != "site.test" || info.Issuer != "site.test" || info.Brand != "site.test" {
+		t.Fatalf("subject %q issuer %q brand %q", info.Subject, info.Issuer, info.Brand)
 	}
 	if len(info.DNSNames) != 2 || info.NotAfter == "" || info.Serial == "" {
 		t.Fatalf("%#v", info)

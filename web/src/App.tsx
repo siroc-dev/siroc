@@ -12,7 +12,6 @@ import { TerminalPage } from "@/pages/Terminal";
 import { Software } from "@/pages/Software";
 import { Sites } from "@/pages/Sites";
 import { Backup } from "@/pages/Backup";
-import { Rclone } from "@/pages/Rclone";
 import { Tools } from "@/pages/Tools";
 import { OSUpdates } from "@/pages/OSUpdates";
 import { Databases } from "@/pages/Databases";
@@ -137,8 +136,8 @@ export function App() {
         <Route path="/sites/:id" element={<Sites />} />
         <Route path="/php" element={<PHP />} />
         <Route path="/databases" element={<Databases />} />
-        <Route path="/backup" element={<Backup />} />
-        <Route path="/rclone" element={<AdminOnly admin={admin}><Rclone /></AdminOnly>} />
+        <Route path="/backup" element={<Backup admin={admin} />} />
+        <Route path="/rclone" element={<Navigate to="/backup?tab=rclone" replace />} />
         <Route path="/tools" element={<AdminOnly admin={admin}><Tools /></AdminOnly>} />
         <Route path="/os" element={<AdminOnly admin={admin}><OSUpdates /></AdminOnly>} />
         <Route path="/settings" element={<AdminOnly admin={admin}><Settings /></AdminOnly>} />

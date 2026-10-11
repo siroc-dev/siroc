@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, App, Button, Input, Modal, Select, Space, Switch, Table, Typography } from "antd";
 import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/lib/nginxRewrites";
 import { ProxySettings, type ProxySettingsValue } from "@/components/ProxySettings";
-import { api } from "@/lib/api";
+import { api, RequestError } from "@/lib/api";
 
 export type SiteOptions = {
   index?: string[];
@@ -14,6 +14,7 @@ export type SiteOptions = {
   proxy?: ProxySettingsValue;
   static?: boolean;
   staticExt?: string;
+  forceHttps?: boolean;
 };
 
 export type SiteSettingsSite = {
@@ -46,19 +47,40 @@ export type CertInfo = {
   notAfter?: string;
   dnsNames?: string[];
   serial?: string;
+  brand?: string;
+  cert?: string;
+  key?: string;
   message?: string;
 };
 
-function certDate(v?: string) {
-  if (!v) return "—";
-  return v.replace("T", " ").replace(/\.\d+/, "").replace("Z", " UTC");
+function certTypeLabel(site: SiteSettingsSite) {
+  if (site.sslKind === "letsencrypt") return "Let's Encrypt";
+  if (site.sslKind === "local") return "Local certificate";
+  return "Other certificate";
 }
 
-function sslKindLabel(site: SiteSettingsSite) {
-  if (!site.ssl) return "HTTP only";
-  if (site.sslKind === "letsencrypt") return "Let's Encrypt";
-  if (site.sslKind === "custom") return "Custom certificate";
-  return "Local HTTPS";
+function httpsForced(site: SiteSettingsSite) {
+  if (typeof site.options?.forceHttps === "boolean") return site.options.forceHttps;
+  return !!site.ssl && (site.sslKind === "letsencrypt" || site.sslKind === "custom");
+}
+
+function expDay(v?: string) {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "—";
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${m}-${day}`;
+}
+
+function expPhrase(v?: string) {
+  if (!v) return "";
+  const end = Date.parse(v);
+  if (!Number.isFinite(end)) return "";
+  const days = Math.ceil((end - Date.now()) / 86400000);
+  if (days < 0) return `Expired ${Math.abs(days)} days ago`;
+  if (days === 0) return "Expires today";
+  return `Exp in ${days} days`;
 }
 
 export type SiteSection =
@@ -142,6 +164,7 @@ function baseOpts(site: SiteSettingsSite): SiteOptions {
     proxy: o.proxy,
     static: o.static,
     staticExt: o.staticExt,
+    forceHttps: o.forceHttps,
   };
 }
 
@@ -206,6 +229,7 @@ export function SiteSettings({
   const [sslInfo, setSslInfo] = useState<CertInfo | null>(null);
   const [certPEM, setCertPEM] = useState("");
   const [keyPEM, setKeyPEM] = useState("");
+  const [sslTab, setSslTab] = useState<"current" | "le" | "holder">("current");
   const [kind, setKind] = useState("php");
   const [proxyPass, setProxyPass] = useState("");
   const [appCmd, setAppCmd] = useState("");
@@ -221,6 +245,11 @@ export function SiteSettings({
   const [to, setTo] = useState("");
   const [code, setCode] = useState(301);
   const [redirects, setRedirects] = useState<{ from: string; to: string; code: number }[]>([]);
+  const [nginxConf, setNginxConf] = useState("");
+  const [apacheConf, setApacheConf] = useState("");
+  const [cfgCustom, setCfgCustom] = useState(false);
+  const [cfgLog, setCfgLog] = useState("");
+  const [cfgBusy, setCfgBusy] = useState("");
   const { message } = App.useApp();
 
   useEffect(() => {
@@ -233,7 +262,10 @@ export function SiteSettings({
     api
       .get<CertInfo>(`/api/sites/${site.id}/ssl`)
       .then((info) => {
-        if (!stop) setSslInfo(info);
+        if (stop) return;
+        setSslInfo(info);
+        setCertPEM(info.cert || "");
+        setKeyPEM(info.key || "");
       })
       .catch(() => {
         if (!stop) setSslInfo(null);
@@ -242,6 +274,26 @@ export function SiteSettings({
       stop = true;
     };
   }, [tab, site.id, site.ssl, site.sslKind]);
+
+  useEffect(() => {
+    if (tab !== "config") return;
+    let stop = false;
+    api
+      .get<{ nginx?: string; apache?: string; custom?: boolean }>(`/api/sites/${site.id}/config`)
+      .then((out) => {
+        if (stop) return;
+        setNginxConf(out.nginx || "");
+        setApacheConf(out.apache || "");
+        setCfgCustom(!!out.custom);
+        setCfgLog("");
+      })
+      .catch((err: unknown) => {
+        if (!stop) message.error(err instanceof Error ? err.message : "Could not read the config");
+      });
+    return () => {
+      stop = true;
+    };
+  }, [tab, site.id, message]);
 
   useEffect(() => {
     const o = baseOpts(site);
@@ -319,6 +371,73 @@ export function SiteSettings({
 
   function saveOpts(partial: SiteOptions, ok: string) {
     return onPatch({ options: { ...baseOpts(site), ...partial } }, ok);
+  }
+
+  async function saveConfig() {
+    setCfgBusy("save");
+    setCfgLog("");
+    try {
+      const out = await api.post<{ log?: string; nginx?: string; apache?: string }>(`/api/sites/${site.id}/config`, { nginx: nginxConf, apache: apacheConf });
+      const nextNginx = out.nginx ?? nginxConf;
+      const nextApache = out.apache ?? apacheConf;
+      setNginxConf(nextNginx);
+      setApacheConf(nextApache);
+      setCfgCustom(true);
+      setCfgLog(out.log || "");
+      message.success("Config tested and saved");
+    } catch (err: unknown) {
+      setCfgLog(err instanceof RequestError ? err.log || "" : "");
+      message.error(err instanceof Error ? err.message : "Config test failed");
+    } finally {
+      setCfgBusy("");
+    }
+  }
+
+  async function resetConfig() {
+    setCfgBusy("reset");
+    try {
+      await api.post(`/api/sites/${site.id}/config/reset`);
+      const out = await api.get<{ nginx?: string; apache?: string }>(`/api/sites/${site.id}/config`);
+      setNginxConf(out.nginx || "");
+      setApacheConf(out.apache || "");
+      setCfgCustom(false);
+      setCfgLog("");
+      message.success("Generated config restored");
+    } catch (err: unknown) {
+      message.error(err instanceof Error ? err.message : "Could not reset the config");
+    } finally {
+      setCfgBusy("");
+    }
+  }
+
+  function installPasted() {
+    if (!onCustomSSL) return;
+    return onCustomSSL(certPEM, keyPEM).catch(() => undefined);
+  }
+
+  function certEditors() {
+    return (
+      <div className="ssl-pair">
+        <label>
+          Private key (KEY)
+          <textarea
+            value={keyPEM}
+            spellCheck={false}
+            placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
+            onChange={(e) => setKeyPEM(e.target.value)}
+          />
+        </label>
+        <label>
+          Certificate (CRT/PEM)
+          <textarea
+            value={certPEM}
+            spellCheck={false}
+            placeholder={"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}
+            onChange={(e) => setCertPEM(e.target.value)}
+          />
+        </label>
+      </div>
+    );
   }
 
   const phpSite = !APP.has(kind) && kind !== "proxy" && kind !== "nginx";
@@ -498,101 +617,126 @@ export function SiteSettings({
               <Alert
                 type="info"
                 showIcon
-                message="Generated configuration"
-                description="Nginx and Apache files are written from these settings. A hand edit is replaced the next time the site is saved."
+                message={cfgCustom ? "Custom configuration" : "Live configuration"}
+                description={
+                  cfgCustom
+                    ? "These files are used as written. Save tests them first and keeps the edit only when the test passes. Other site settings leave them alone until you reset."
+                    : "Edit the files on disk. Save tests them first and writes them only when the test passes. A saved file is kept until you reset it."
+                }
               />
-              <pre className="site-mod-config">{`server_name ${[site.domain, ...(site.aliases || [])].join(" ")};
-root ${site.docRoot};
-listen 80;
-${site.ssl ? "listen 443 ssl;\n" : ""}${phpSite ? `php ${site.phpVersion};\n` : ""}${site.proxyPass ? `proxy_pass ${site.proxyPass};\n` : ""}`}</pre>
+              <Typography.Text type="secondary">Nginx</Typography.Text>
+              <textarea className="site-mod-config" value={nginxConf} spellCheck={false} onChange={(e) => setNginxConf(e.target.value)} />
+              <Typography.Text type="secondary">Apache</Typography.Text>
+              <textarea className="site-mod-config" value={apacheConf} spellCheck={false} onChange={(e) => setApacheConf(e.target.value)} />
+              <Typography.Paragraph type="secondary">Leave Apache empty to keep the current Apache file.</Typography.Paragraph>
+              <Space wrap>
+                <Button type="primary" loading={cfgBusy === "save"} disabled={cfgBusy !== "" && cfgBusy !== "save"} onClick={() => void saveConfig()}>
+                  Save
+                </Button>
+                <Button loading={cfgBusy === "reset"} disabled={cfgBusy !== "" && cfgBusy !== "reset"} onClick={() => void resetConfig()}>
+                  Reset
+                </Button>
+              </Space>
+              {cfgLog ? <pre className="site-mod-config">{cfgLog}</pre> : null}
             </>
           ) : null}
 
           {tab === "ssl" ? (
             <>
-              <Space wrap>
-                <Typography.Text>{sslKindLabel(site)}</Typography.Text>
-                {site.ssl && site.sslExpiry ? <Typography.Text type="secondary">{site.sslExpiry}</Typography.Text> : null}
-              </Space>
-              <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-                A new site starts on HTTP. Issue Let's Encrypt, use a local certificate, or paste your own certificate and private key.
-              </Typography.Paragraph>
-              {sslInfo?.ok ? (
-                <Typography.Paragraph>
-                  Subject: {sslInfo.subject || "—"}
-                  <br />
-                  Issuer: {sslInfo.issuer || "—"}
-                  <br />
-                  Valid from: {certDate(sslInfo.notBefore)}
-                  <br />
-                  Valid until: {certDate(sslInfo.notAfter)}
-                  <br />
-                  Names: {(sslInfo.dnsNames || []).join(", ") || "—"}
-                  <br />
-                  Serial: {sslInfo.serial || "—"}
-                </Typography.Paragraph>
-              ) : sslInfo?.message ? (
-                <Typography.Paragraph type="secondary">{sslInfo.message}</Typography.Paragraph>
+              <div className="ssl-tabs" role="tablist">
+                <button type="button" role="tab" className={sslTab === "current" ? "on" : ""} aria-selected={sslTab === "current"} onClick={() => setSslTab("current")}>
+                  Current Certs - [{site.ssl && sslInfo?.ok ? "Deployed" : "Not deployed"}]
+                </button>
+                <button type="button" role="tab" className={sslTab === "le" ? "on" : ""} aria-selected={sslTab === "le"} onClick={() => setSslTab("le")}>
+                  Let's Encrypt
+                </button>
+                <button type="button" role="tab" className={sslTab === "holder" ? "on" : ""} aria-selected={sslTab === "holder"} onClick={() => setSslTab("holder")}>
+                  Certificate holder
+                </button>
+              </div>
+              {sslTab === "current" ? (
+                <>
+                  {site.ssl && sslInfo?.ok ? (
+                    <div className="ssl-current">
+                      <div>
+                        <div>
+                          <span className="k">Certificate type:</span> {certTypeLabel(site)}
+                        </div>
+                        <div>
+                          <span className="k">Certificate brand:</span> {sslInfo.brand || sslInfo.issuer || "—"}
+                        </div>
+                        <div className="ssl-names">
+                          <span className="k">Certificate domain(s):</span> {(sslInfo.dnsNames || []).join(", ") || "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div>
+                          <span className="k">Expired:</span> {expDay(sslInfo.notAfter)}
+                          {expPhrase(sslInfo.notAfter) ? `, ${expPhrase(sslInfo.notAfter)}` : ""}
+                        </div>
+                        <div className="ssl-force">
+                          <span>Force HTTPS</span>
+                          <Switch checked={httpsForced(site)} loading={busy} onChange={(on) => void saveOpts({ forceHttps: on }, "Force HTTPS saved")} />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <Typography.Paragraph type="secondary">{sslInfo?.message || "No certificate is deployed."}</Typography.Paragraph>
+                  )}
+                  {certEditors()}
+                  <Space wrap>
+                    <Button className="ssl-save" type="primary" loading={busy} disabled={!certPEM.trim() || !keyPEM.trim()} onClick={() => void installPasted()}>
+                      Save
+                    </Button>
+                    {site.ssl ? (
+                      <Button loading={busy} onClick={onDisableSSL}>
+                        Disable SSL
+                      </Button>
+                    ) : null}
+                  </Space>
+                  <ul className="ssl-notes">
+                    <li>Paste your KEY and CRT content, and then save it.</li>
+                    <li>If the browser says the certificate chain is incomplete, paste the full chain after the certificate in the PEM box.</li>
+                  </ul>
+                </>
               ) : null}
-              {!publicName ? (
-                <Alert
-                  type="warning"
-                  showIcon
-                  style={{ marginBottom: 12 }}
-                  message={`${label} is not a public TLD`}
-                  description="Let's Encrypt will refuse this name. Use local HTTPS, paste a certificate, or set a custom ACME server."
-                />
+              {sslTab === "le" ? (
+                <>
+                  {!publicName ? (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      style={{ marginBottom: 12 }}
+                      message={`${label} is not a public TLD`}
+                      description="Let's Encrypt will refuse this name. Use local HTTPS, paste a certificate, or set a custom ACME server."
+                    />
+                  ) : (
+                    <Typography.Paragraph type="secondary">Issue a certificate for this site. A renewal uses the same button.</Typography.Paragraph>
+                  )}
+                  <Space wrap>
+                    <Button type="primary" loading={busy} onClick={onIssueSSL}>
+                      {site.sslKind === "letsencrypt" ? "Renew Let's Encrypt" : "Issue Let's Encrypt"}
+                    </Button>
+                    {site.sslKind !== "local" || !site.ssl ? (
+                      <Button loading={busy} onClick={onLocalSSL}>
+                        Use local HTTPS
+                      </Button>
+                    ) : null}
+                  </Space>
+                  {sslLog ? <pre className="cmd-out">{sslLog}</pre> : null}
+                </>
               ) : null}
-              <Space wrap>
-                <Button loading={busy} onClick={onIssueSSL}>
-                  {site.sslKind === "letsencrypt" ? "Renew Let's Encrypt" : "Issue Let's Encrypt"}
-                </Button>
-                {site.sslKind !== "local" || !site.ssl ? (
-                  <Button loading={busy} onClick={onLocalSSL}>
-                    Use local HTTPS
+              {sslTab === "holder" ? (
+                <>
+                  <Typography.Paragraph type="secondary">
+                    Paste a certificate you already hold. Saving it deploys that certificate on this site.
+                  </Typography.Paragraph>
+                  {certEditors()}
+                  <Button className="ssl-save" type="primary" loading={busy} disabled={!certPEM.trim() || !keyPEM.trim()} onClick={() => void installPasted()}>
+                    Save
                   </Button>
-                ) : null}
-                {site.ssl ? (
-                  <Button loading={busy} onClick={onDisableSSL}>
-                    Disable HTTPS
-                  </Button>
-                ) : null}
-              </Space>
-              <Typography.Paragraph strong style={{ marginTop: 16 }}>
-                Your certificate
-              </Typography.Paragraph>
-              <Input.TextArea
-                value={certPEM}
-                onChange={(e) => setCertPEM(e.target.value)}
-                placeholder={"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"}
-                autoSize={{ minRows: 5, maxRows: 10 }}
-                spellCheck={false}
-              />
-              <Input.TextArea
-                style={{ marginTop: 8 }}
-                value={keyPEM}
-                onChange={(e) => setKeyPEM(e.target.value)}
-                placeholder={"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"}
-                autoSize={{ minRows: 4, maxRows: 8 }}
-                spellCheck={false}
-              />
-              <Button
-                style={{ marginTop: 8 }}
-                loading={busy}
-                disabled={!certPEM.trim() || !keyPEM.trim()}
-                onClick={() => {
-                  if (!onCustomSSL) return;
-                  void onCustomSSL(certPEM, keyPEM)
-                    .then(() => {
-                      setCertPEM("");
-                      setKeyPEM("");
-                    })
-                    .catch(() => undefined);
-                }}
-              >
-                Install certificate
-              </Button>
-              {sslLog ? <pre className="cmd-out">{sslLog}</pre> : null}
+                </>
+              ) : null}
             </>
           ) : null}
 

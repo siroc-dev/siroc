@@ -8,9 +8,30 @@ export class RequestError extends Error {
   log?: string;
 }
 
-async function parse<T>(res: Response): Promise<T> {
+let leavingForLogin = false;
+
+export function shouldGoToLogin(status: number, requestURL: string, pagePath: string) {
+  if (status !== 401) return false;
+  const path = requestURL.split("?")[0];
+  if (path === "/api/login" || path === "/api/setup" || path === "/api/login/captcha" || path.startsWith("/api/setup/")) return false;
+  if (pagePath === "/login" || pagePath === "/setup") return false;
+  return true;
+}
+
+export function redirectIfSessionExpired(status: number, requestURL: string) {
+  if (typeof window === "undefined") return false;
+  if (!shouldGoToLogin(status, requestURL, window.location.pathname)) return false;
+  if (!leavingForLogin) {
+    leavingForLogin = true;
+    window.location.assign("/login");
+  }
+  return true;
+}
+
+async function parse<T>(res: Response, url: string): Promise<T> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    if (redirectIfSessionExpired(res.status, url)) return new Promise<T>(() => {});
     const payload = data as ApiError & { captchaRequired?: boolean; captcha?: Captcha; log?: string };
     const err = new RequestError(payload.error || res.statusText);
     err.captchaRequired = payload.captchaRequired;
@@ -22,14 +43,14 @@ async function parse<T>(res: Response): Promise<T> {
 }
 
 export const api = {
-  get: <T>(url: string) => fetch(url, { credentials: "include" }).then(parse<T>),
+  get: <T>(url: string) => fetch(url, { credentials: "include" }).then((res) => parse<T>(res, url)),
   send: <T>(url: string, method: string, body?: unknown) =>
     fetch(url, {
       method,
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
-    }).then(parse<T>),
+    }).then((res) => parse<T>(res, url)),
   post: <T>(url: string, body?: unknown) => api.send<T>(url, "POST", body),
   put: <T>(url: string, body?: unknown) => api.send<T>(url, "PUT", body),
   patch: <T>(url: string, body?: unknown) => api.send<T>(url, "PATCH", body),
@@ -57,6 +78,7 @@ export const api = {
           resolve(data as T);
           return;
         }
+        if (redirectIfSessionExpired(xhr.status, url)) return;
         reject(new RequestError(data.error || xhr.statusText || "Upload failed"));
       };
       xhr.onerror = () => reject(new RequestError("Upload failed"));

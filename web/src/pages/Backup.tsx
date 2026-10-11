@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography } from "antd";
+import { useSearchParams } from "react-router-dom";
+import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { formatBytes } from "@/lib/usage";
+import { Rclone } from "@/pages/Rclone";
 
 type Account = { username: string };
 type Dest = {
@@ -56,8 +58,10 @@ function cronWhen(c: Cron) {
   return `Daily at ${hm}`;
 }
 
-export function Backup() {
+export function Backup({ admin }: { admin?: boolean }) {
   const { message } = App.useApp();
+  const [params, setParams] = useSearchParams();
+  const tab = admin && params.get("tab") === "rclone" ? "rclone" : "archives";
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [dests, setDests] = useState<Dest[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -148,13 +152,21 @@ export function Backup() {
 
   return (
     <div className="cp-page">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            Backup
-          </Typography.Title>
-          <Typography.Text type="secondary">One tar.gz per hosting user. Restore recreates a missing Linux user and their sites and databases.</Typography.Text>
-        </div>
+      <Typography.Title level={3} style={{ margin: 0 }}>
+        Backup
+      </Typography.Title>
+      <Tabs
+        activeKey={tab}
+        destroyOnHidden
+        onChange={(key) => setParams(key === "rclone" ? { tab: "rclone" } : {}, { replace: true })}
+        items={[
+          {
+            key: "archives",
+            label: "Archives",
+            children: (
+              <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
+        <Typography.Text type="secondary">One tar.gz per hosting user. Restore recreates a missing Linux user and their sites and databases.</Typography.Text>
         <Space>
           <Button onClick={() => setOpen(true)}>Add destination</Button>
           <Button onClick={() => setRestoreOpen(true)}>Restore archive</Button>
@@ -256,6 +268,20 @@ export function Backup() {
           ]}
         />
       </Card>
+              </Space>
+            ),
+          },
+          ...(admin
+            ? [
+                {
+                  key: "rclone",
+                  label: "rclone",
+                  children: <Rclone embedded />,
+                },
+              ]
+            : []),
+        ]}
+      />
 
       <Modal title="Backup destination" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={busy} destroyOnHidden>
         <Form form={form} layout="vertical" onFinish={saveDest} initialValues={{ kind: "local", useSSL: true, port: 21 }}>

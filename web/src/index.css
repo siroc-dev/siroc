@@ -1414,6 +1414,145 @@ html[data-theme="dark"] .log-list button.is-on {
   white-space: pre-wrap;
 }
 
+textarea.site-mod-config {
+  display: block;
+  width: 100%;
+  min-height: 180px;
+  border: 0;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+textarea.site-mod-config:focus {
+  outline: 1px solid #e2783a;
+}
+
+.ssl-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.ssl-tabs button {
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-right: 0;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: #333;
+}
+
+.ssl-tabs button:last-child {
+  border-right: 1px solid #e5e5e5;
+}
+
+.ssl-tabs button.on {
+  color: #20a53a;
+  font-weight: 600;
+}
+
+.ssl-current {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 24px;
+  background: #f6fff6;
+  border: 1px solid #d9f7be;
+  border-radius: 8px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+
+.ssl-current .k {
+  color: #888;
+}
+
+.ssl-names {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ssl-force {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.ssl-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.ssl-pair label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ssl-pair textarea {
+  width: 100%;
+  min-height: 220px;
+  box-sizing: border-box;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  padding: 10px 12px;
+  resize: vertical;
+  font: 12px/1.55 ui-monospace, Menlo, Consolas, monospace;
+}
+
+.ssl-save.ant-btn-primary {
+  background: #20a53a;
+  border-color: #20a53a;
+}
+
+.ssl-save.ant-btn-primary:not(:disabled):hover {
+  background: #189232;
+  border-color: #189232;
+}
+
+.ssl-notes {
+  margin: 14px 0 0;
+  padding-left: 18px;
+  color: #666;
+}
+
+html[data-theme="dark"] .ssl-tabs button {
+  background: #171512;
+  border-color: #3a3228;
+  color: #f4eadc;
+}
+
+html[data-theme="dark"] .ssl-tabs button.on {
+  color: #73d13d;
+}
+
+html[data-theme="dark"] .ssl-current {
+  background: #142016;
+  border-color: #245232;
+}
+
+html[data-theme="dark"] .ssl-current .k,
+html[data-theme="dark"] .ssl-notes {
+  color: #a89884;
+}
+
+html[data-theme="dark"] .ssl-pair textarea {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-color: #303030;
+}
+
+@media (max-width: 720px) {
+  .ssl-current,
+  .ssl-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
 html[data-theme="dark"] .site-mod-nav {
   background: #141414;
   border-right-color: #303030;

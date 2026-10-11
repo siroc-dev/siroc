@@ -72,6 +72,27 @@ func TestMaintenanceAndHotlink(t *testing.T) {
 	}
 }
 
+func TestForceHTTPSKept(t *testing.T) {
+	on := true
+	raw, err := Marshal(Options{ForceHTTPS: &on, Hotlink: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := Parse(raw)
+	if got.ForceHTTPS == nil || !*got.ForceHTTPS || !got.Hotlink {
+		t.Fatalf("%#v", got)
+	}
+	off := false
+	raw, err = Marshal(Options{ForceHTTPS: &off})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = Parse(raw)
+	if got.ForceHTTPS == nil || *got.ForceHTTPS {
+		t.Fatalf("%#v", got)
+	}
+}
+
 func TestStaticDirect(t *testing.T) {
 	body, err := NginxStatic(Options{})
 	if err != nil {

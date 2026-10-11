@@ -346,7 +346,7 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 		AllNames:      strings.Join(append([]string{req.Domain}, aliases...), " "),
 		AliasLine:     strings.Join(aliases, " "),
 		SSL:           ssl,
-		SSLRedirect:   sslRedirect(ssl, kind),
+		SSLRedirect:   sslRedirect(ssl, kind, req.Options.ForceHTTPS),
 		SSLCert:       cert,
 		SSLKey:        key,
 		Rewrite:       innerRewrite,
@@ -385,10 +385,10 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 	if err := ensureServerNamesHash(); err != nil {
 		return err
 	}
-	if err := writeTemplate(filepath.Join("/etc/nginx/sites-available", req.Domain+".conf"), nginxTmpl, data, 0644); err != nil {
+	if err := writeNginxConf(req.Domain, req.NginxConf, data); err != nil {
 		return err
 	}
-	if err := writeTemplate(filepath.Join("/etc/apache2/sites-available", req.Domain+".conf"), apacheTmpl, data, 0644); err != nil {
+	if err := writeApacheConf(req.Domain, req.ApacheConf, data); err != nil {
 		return err
 	}
 	poolDir := fmt.Sprintf("/etc/php/%s/fpm/pool.d", req.PHPVersion)
@@ -558,7 +558,7 @@ func (m *Manager) writeDirect(req rpc.SiteWriteReq) error {
 		AllNames:      strings.Join(append([]string{req.Domain}, aliases...), " "),
 		AliasLine:     strings.Join(aliases, " "),
 		SSL:           ssl,
-		SSLRedirect:   sslRedirect(ssl, kind),
+		SSLRedirect:   sslRedirect(ssl, kind, req.Options.ForceHTTPS),
 		SSLCert:       cert,
 		SSLKey:        key,
 		Direct:        true,
@@ -584,11 +584,20 @@ func (m *Manager) writeDirect(req rpc.SiteWriteReq) error {
 	if err := ensureServerNamesHash(); err != nil {
 		return err
 	}
-	if err := writeTemplate(filepath.Join("/etc/nginx/sites-available", req.Domain+".conf"), nginxTmpl, data, 0644); err != nil {
+	if err := writeNginxConf(req.Domain, req.NginxConf, data); err != nil {
 		return err
 	}
-	_ = os.Remove(filepath.Join("/etc/apache2/sites-available", req.Domain+".conf"))
-	_ = exec.Command("a2dissite", req.Domain+".conf").Run()
+	if strings.TrimSpace(req.ApacheConf) != "" {
+		if err := writeApacheConf(req.Domain, req.ApacheConf, data); err != nil {
+			return err
+		}
+		if req.Enabled {
+			_ = exec.Command("a2ensite", req.Domain+".conf").Run()
+		}
+	} else {
+		_ = os.Remove(filepath.Join("/etc/apache2/sites-available", req.Domain+".conf"))
+		_ = exec.Command("a2dissite", req.Domain+".conf").Run()
+	}
 	dropSitePools(req.Username, req.Domain, "")
 	if req.Enabled {
 		_ = os.MkdirAll("/etc/nginx/sites-enabled", 0755)
@@ -652,7 +661,7 @@ func (m *Manager) writeProxy(req rpc.SiteWriteReq) error {
 		AllNames:    strings.Join(append([]string{req.Domain}, aliases...), " "),
 		AliasLine:   strings.Join(aliases, " "),
 		SSL:         ssl,
-		SSLRedirect: sslRedirect(ssl, kind),
+		SSLRedirect: sslRedirect(ssl, kind, req.Options.ForceHTTPS),
 		SSLCert:     cert,
 		SSLKey:      key,
 		ProxyPass:   pass,
@@ -673,11 +682,20 @@ func (m *Manager) writeProxy(req rpc.SiteWriteReq) error {
 	if err := ensureServerNamesHash(); err != nil {
 		return err
 	}
-	if err := writeTemplate(filepath.Join("/etc/nginx/sites-available", req.Domain+".conf"), nginxTmpl, data, 0644); err != nil {
+	if err := writeNginxConf(req.Domain, req.NginxConf, data); err != nil {
 		return err
 	}
-	_ = os.Remove(filepath.Join("/etc/apache2/sites-available", req.Domain+".conf"))
-	_ = exec.Command("a2dissite", req.Domain+".conf").Run()
+	if strings.TrimSpace(req.ApacheConf) != "" {
+		if err := writeApacheConf(req.Domain, req.ApacheConf, data); err != nil {
+			return err
+		}
+		if req.Enabled {
+			_ = exec.Command("a2ensite", req.Domain+".conf").Run()
+		}
+	} else {
+		_ = os.Remove(filepath.Join("/etc/apache2/sites-available", req.Domain+".conf"))
+		_ = exec.Command("a2dissite", req.Domain+".conf").Run()
+	}
 	dropSitePools(req.Username, req.Domain, "")
 	if req.Enabled {
 		_ = os.MkdirAll("/etc/nginx/sites-enabled", 0755)
@@ -793,6 +811,33 @@ func dropSitePools(username, domain, keep string) {
 		_ = os.Remove(path)
 		_ = exec.Command("systemctl", "reload", "php"+v+"-fpm").Run()
 	}
+}
+
+func writeNginxConf(domain, custom string, data any) error {
+	path := filepath.Join("/etc/nginx/sites-available", domain+".conf")
+	if strings.TrimSpace(custom) != "" {
+		return writeConfFile(path, custom)
+	}
+	return writeTemplate(path, nginxTmpl, data, 0644)
+}
+
+func writeApacheConf(domain, custom string, data any) error {
+	path := filepath.Join("/etc/apache2/sites-available", domain+".conf")
+	if strings.TrimSpace(custom) != "" {
+		return writeConfFile(path, custom)
+	}
+	return writeTemplate(path, apacheTmpl, data, 0644)
+}
+
+func writeConfFile(path, body string) error {
+	body = strings.ReplaceAll(body, "\r\n", "\n")
+	if !strings.HasSuffix(body, "\n") {
+		body += "\n"
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(body), 0644)
 }
 
 func writeTemplate(path, tmpl string, data any, mode os.FileMode) error {

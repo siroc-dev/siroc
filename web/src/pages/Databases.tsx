@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import { Alert, App, AutoComplete, Button, Card, Dropdown, Form, Input, Modal, Popconfirm, Progress, Select, Space, Table, Tabs, Tag, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
-import { api } from "@/lib/api";
+import { api, redirectIfSessionExpired } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
 import { InstallLog } from "@/components/InstallLog";
 import { DatabaseMonitorPanel } from "@/pages/DatabaseMonitor";
@@ -229,6 +229,7 @@ export function Databases() {
     try {
       const res = await fetch(`/api/databases/${d.id}/export?format=${encodeURIComponent(format)}`, { credentials: "include" });
       if (!res.ok) {
+        if (redirectIfSessionExpired(res.status, `/api/databases/${d.id}/export`)) return;
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { error?: string }).error || res.statusText);
       }
