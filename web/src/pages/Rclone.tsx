@@ -5,7 +5,7 @@ import { UploadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 
-type Remote = { name: string; type: string };
+type Remote = { name: string; type: string; params?: Record<string, string>; hasSecret?: boolean; hasKey?: boolean };
 type Status = { installed: boolean; version?: string; remotes?: Remote[]; message?: string };
 type FileProgress = { name: string; bytes: number; size: number; percent: number; speed?: number };
 type Job = {
@@ -74,6 +74,8 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
   const [jobForm] = Form.useForm();
   const [keyText, setKeyText] = useState("");
   const [keyName, setKeyName] = useState("");
+  const [editing, setEditing] = useState<Remote | null>(null);
+  const [clearKey, setClearKey] = useState(false);
   const kind = Form.useWatch("type", remoteForm);
   const action = Form.useWatch("action", jobForm) || "copy";
   const spec = actions.find((a) => a.value === action) || actions[0];
@@ -114,25 +116,52 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
     };
   }, []);
 
-  async function saveRemote(values: Record<string, string>) {
+  function resetRemoteForm() {
+    setEditing(null);
+    setClearKey(false);
+    setKeyText("");
+    setKeyName("");
+    remoteForm.resetFields();
+  }
+
+  function startEdit(row: Remote) {
+    const params = { ...(row.params || {}) };
+    const port = params.port ? Number(params.port) : undefined;
+    delete params.port;
+    setEditing(row);
+    setClearKey(false);
+    setKeyText("");
+    setKeyName("");
+    remoteForm.resetFields();
+    remoteForm.setFieldsValue({ ...params, name: row.name, type: row.type, port });
+  }
+
+  async function saveRemote(values: Record<string, unknown>) {
     setBusy(true);
     try {
       const params: Record<string, string> = {};
+      const secrets = new Set(["pass", "secret_access_key", "key", "keyPass"]);
       for (const [key, value] of Object.entries(values)) {
-        if (key === "name" || key === "type" || key === "keyPass" || value == null || value === "") continue;
+        if (key === "name" || key === "type" || key === "keyPass") continue;
+        if (value == null || value === "") {
+          if (editing && !secrets.has(key)) params[key] = "";
+          continue;
+        }
         params[key] = String(value);
       }
-      const next = await api.post<Status>("/api/rclone/remotes", {
-        name: values.name,
-        type: values.type,
+      const body = {
+        name: String(values.name || ""),
+        type: String(values.type || ""),
         params,
         key: values.type === "sftp" ? keyText : "",
         keyPass: values.type === "sftp" ? String(values.keyPass || "") : "",
-      });
+        clearKey: !!editing && clearKey && !keyText,
+      };
+      const next = editing
+        ? await api.put<Status>(`/api/rclone/remotes/${encodeURIComponent(editing.name)}`, body)
+        : await api.post<Status>("/api/rclone/remotes", body);
       setSt(next);
-      remoteForm.resetFields();
-      setKeyText("");
-      setKeyName("");
+      resetRemoteForm();
       message.success("Remote saved");
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -146,6 +175,7 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
     try {
       const next = await api.delete<Status>(`/api/rclone/remotes/${encodeURIComponent(name)}`);
       setSt(next);
+      if (editing?.name === name) resetRemoteForm();
       message.success("Remote removed");
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -212,24 +242,29 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
                     { title: "Type", dataIndex: "type", width: 140 },
                     {
                       title: "",
-                      width: 100,
+                      width: 170,
                       render: (_, row) => (
-                        <Popconfirm title={`Remove remote ${row.name}?`} onConfirm={() => void removeRemote(row.name)}>
-                          <Button size="small" danger loading={busy}>
-                            Remove
+                        <Space>
+                          <Button size="small" disabled={!st.installed} onClick={() => startEdit(row)}>
+                            Edit
                           </Button>
-                        </Popconfirm>
+                          <Popconfirm title={`Remove remote ${row.name}?`} onConfirm={() => void removeRemote(row.name)}>
+                            <Button size="small" danger loading={busy}>
+                              Remove
+                            </Button>
+                          </Popconfirm>
+                        </Space>
                       ),
                     },
                   ]}
                 />
-                <Card size="small" title="Add remote">
+                <Card size="small" title={editing ? `Edit ${editing.name}` : "Add remote"}>
                   <Form form={remoteForm} layout="vertical" onFinish={saveRemote} initialValues={{ type: "s3" }} disabled={!st.installed}>
                     <Form.Item name="name" label="Name" rules={[{ required: true }]} extra="Letters, numbers, _ and -. Used as remote:path.">
-                      <Input placeholder="offsite" />
+                      <Input placeholder="offsite" disabled={!!editing} />
                     </Form.Item>
                     <Form.Item name="type" label="Type">
-                      <Select options={types} />
+                      <Select options={types} disabled={!!editing} />
                     </Form.Item>
                     {kind === "s3" ? (
                       <>
@@ -246,8 +281,8 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
                         <Form.Item name="access_key_id" label="Access key" rules={[{ required: true }]}>
                           <Input />
                         </Form.Item>
-                        <Form.Item name="secret_access_key" label="Secret key" rules={[{ required: true }]}>
-                          <Input.Password />
+                        <Form.Item name="secret_access_key" label="Secret key" rules={editing ? [] : [{ required: true }]}>
+                          <Input.Password placeholder={editing?.hasSecret ? "Leave blank to keep the current secret" : undefined} />
                         </Form.Item>
                         <Form.Item name="region" label="Region">
                           <Input placeholder="us-east-1" />
@@ -262,8 +297,8 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
                         <Form.Item name="account" label="Account ID" rules={[{ required: true }]}>
                           <Input />
                         </Form.Item>
-                        <Form.Item name="key" label="Application key" rules={[{ required: true }]}>
-                          <Input.Password />
+                        <Form.Item name="key" label="Application key" rules={editing ? [] : [{ required: true }]}>
+                          <Input.Password placeholder={editing?.hasSecret ? "Leave blank to keep the current key" : undefined} />
                         </Form.Item>
                       </>
                     ) : null}
@@ -279,11 +314,20 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
                           <Input />
                         </Form.Item>
                         <Form.Item name="pass" label="Password">
-                          <Input.Password />
+                          <Input.Password placeholder={editing?.hasSecret ? "Leave blank to keep the current password" : undefined} />
                         </Form.Item>
                         {kind === "sftp" ? (
                           <>
-                            <Form.Item label="Private key" extra="OpenSSH, PEM, PKCS#8, or PuTTY PPK.">
+                            <Form.Item
+                              label="Private key"
+                              extra={
+                                editing?.hasKey && !keyText && !clearKey
+                                  ? "A private key is already saved. Upload a file to replace it."
+                                  : clearKey && !keyText
+                                    ? "The saved private key will be removed when you save."
+                                    : "OpenSSH, PEM, PKCS#8, or PuTTY PPK."
+                              }
+                            >
                               <Upload
                                 maxCount={1}
                                 accept=".ppk,.pem,.key"
@@ -306,6 +350,11 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
                               >
                                 <Button icon={<UploadOutlined />}>Upload private key</Button>
                               </Upload>
+                              {editing?.hasKey && !keyText ? (
+                                <Button type="link" size="small" style={{ paddingLeft: 0 }} onClick={() => setClearKey((on) => !on)}>
+                                  {clearKey ? "Keep saved key" : "Remove saved key"}
+                                </Button>
+                              ) : null}
                             </Form.Item>
                             <Form.Item name="keyPass" label="Key passphrase">
                               <Input.Password placeholder="Only if the key file is encrypted" />
@@ -333,13 +382,20 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
                           <Input />
                         </Form.Item>
                         <Form.Item name="pass" label="Password">
-                          <Input.Password />
+                          <Input.Password placeholder={editing?.hasSecret ? "Leave blank to keep the current password" : undefined} />
                         </Form.Item>
                       </>
                     ) : null}
-                    <Button type="primary" htmlType="submit" loading={busy} disabled={!st.installed}>
-                      Save remote
-                    </Button>
+                    <Space>
+                      <Button type="primary" htmlType="submit" loading={busy} disabled={!st.installed}>
+                        {editing ? "Save changes" : "Save remote"}
+                      </Button>
+                      {editing ? (
+                        <Button disabled={!st.installed} onClick={resetRemoteForm}>
+                          Cancel
+                        </Button>
+                      ) : null}
+                    </Space>
                   </Form>
                 </Card>
               </Space>

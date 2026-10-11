@@ -1250,6 +1250,17 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
 	})
+	r.Post("/rclone/remotes/update", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.RcloneRemoteReq
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := rclone.Update(req); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
 	r.Post("/rclone/remotes/delete", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.RcloneRemoteReq
 		if !decode(w, r, &req) {

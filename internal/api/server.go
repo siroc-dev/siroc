@@ -223,6 +223,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/backup/inspect", s.inspectBackup)
 		r.Get("/api/rclone", s.rcloneStatus)
 		r.Post("/api/rclone/remotes", s.rcloneCreate)
+		r.Put("/api/rclone/remotes/{name}", s.rcloneUpdate)
 		r.Delete("/api/rclone/remotes/{name}", s.rcloneDelete)
 		r.Post("/api/rclone/run", s.rcloneRun)
 		r.Get("/api/rclone/run", s.rcloneJob)

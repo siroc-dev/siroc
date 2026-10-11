@@ -130,6 +130,97 @@ func CreateArgs(name, typ string, params map[string]string) ([]string, error) {
 	return args, nil
 }
 
+func secretField(typ, key string) bool {
+	switch typ {
+	case "s3":
+		return key == "secret_access_key"
+	case "b2":
+		return key == "key"
+	case "sftp", "ftp", "webdav":
+		return key == "pass"
+	default:
+		return false
+	}
+}
+
+// RedactRemote returns the settings that are safe to show. Passwords stay on the server.
+func RedactRemote(typ string, raw map[string]string) (params map[string]string, hasSecret, hasKey bool) {
+	params = map[string]string{}
+	for _, key := range remoteFields[typ] {
+		value := strings.TrimSpace(raw[key])
+		if key == "key_file" {
+			hasKey = value != ""
+			continue
+		}
+		if secretField(typ, key) {
+			hasSecret = value != ""
+			continue
+		}
+		if value != "" {
+			params[key] = value
+		}
+	}
+	return params, hasSecret, hasKey
+}
+
+// UpdateArgs builds `rclone config update` arguments.
+// An empty secret is left unchanged. An empty other field that was sent is cleared.
+// A nil result means nothing needs to be written.
+func UpdateArgs(name, typ string, params map[string]string) ([]string, error) {
+	if err := validRemoteName(name); err != nil {
+		return nil, err
+	}
+	fields, ok := remoteFields[typ]
+	if !ok {
+		return nil, fmt.Errorf("unsupported remote type")
+	}
+	allowed := map[string]struct{}{}
+	for _, field := range fields {
+		allowed[field] = struct{}{}
+	}
+	clean := map[string]string{}
+	present := map[string]bool{}
+	for key, value := range params {
+		if _, ok := allowed[key]; !ok {
+			return nil, fmt.Errorf("unsupported field %s", key)
+		}
+		value = strings.TrimSpace(value)
+		present[key] = true
+		if value == "" {
+			if !secretField(typ, key) {
+				clean[key] = ""
+			}
+			continue
+		}
+		if err := validValue(value); err != nil {
+			return nil, err
+		}
+		clean[key] = value
+	}
+	if typ == "s3" && present["provider"] && clean["provider"] == "" {
+		clean["provider"] = "Other"
+	}
+	for _, key := range remoteRequired[typ] {
+		if secretField(typ, key) {
+			continue
+		}
+		if clean[key] == "" {
+			return nil, fmt.Errorf("%s is required", strings.ReplaceAll(key, "_", " "))
+		}
+	}
+	args := []string{"config", "update", name}
+	for _, key := range fields {
+		if !present[key] || (secretField(typ, key) && clean[key] == "") {
+			continue
+		}
+		args = append(args, key, clean[key])
+	}
+	if len(args) == 3 {
+		return nil, nil
+	}
+	return args, nil
+}
+
 // RunArgs builds an rclone command for one supported action.
 // The bool is true when the command may move a lot of data.
 func RunArgs(action, source, dest string) ([]string, bool, error) {

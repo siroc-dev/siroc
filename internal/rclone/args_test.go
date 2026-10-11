@@ -24,6 +24,29 @@ func TestCreateArgs(t *testing.T) {
 	}
 }
 
+func TestUpdateArgsKeepsBlankSecrets(t *testing.T) {
+	args, err := UpdateArgs("offsite", "s3", map[string]string{
+		"access_key_id":     "AKIA",
+		"secret_access_key": "",
+		"region":            "",
+		"endpoint":          "s3.example",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := stringsJoin(args)
+	want := "config update offsite access_key_id AKIA region  endpoint s3.example"
+	if got != want {
+		t.Fatalf("got %q", got)
+	}
+	params, secret, key := RedactRemote("sftp", map[string]string{
+		"host": "h", "user": "u", "pass": "hidden", "key_file": "/var/lib/siroc/rclone/keys/offsite.pem",
+	})
+	if !secret || !key || params["host"] != "h" || params["pass"] != "" || params["key_file"] != "" {
+		t.Fatalf("redact %#v secret %v key %v", params, secret, key)
+	}
+}
+
 func TestRunArgs(t *testing.T) {
 	args, slow, err := RunArgs("sync", "/var/backups/siroc", "b2remote:bucket/siroc")
 	if err != nil || !slow || stringsJoin(args) != "sync /var/backups/siroc b2remote:bucket/siroc" {

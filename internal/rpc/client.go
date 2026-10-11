@@ -801,6 +801,10 @@ func (c *Client) RcloneCreate(in RcloneRemoteReq) error {
 	return c.do(http.MethodPost, "/rclone/remotes", in, nil)
 }
 
+func (c *Client) RcloneUpdate(in RcloneRemoteReq) error {
+	return c.do(http.MethodPost, "/rclone/remotes/update", in, nil)
+}
+
 func (c *Client) RcloneDelete(name string) error {
 	return c.do(http.MethodPost, "/rclone/remotes/delete", RcloneRemoteReq{Name: name}, nil)
 }

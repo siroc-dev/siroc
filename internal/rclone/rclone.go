@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,29 +39,63 @@ func Status() (*rpc.RcloneStatus, error) {
 }
 
 func remotes() ([]rpc.RcloneRemote, error) {
-	out, err := exec.Command("rclone", "config", "dump").CombinedOutput()
-	text := strings.TrimSpace(string(out))
-	if text == "" {
-		if err != nil {
-			return nil, fmt.Errorf("rclone config: %s", err.Error())
-		}
-		return nil, nil
-	}
-	var dump map[string]struct {
-		Type string `json:"type"`
-	}
-	if jerr := json.Unmarshal([]byte(text), &dump); jerr != nil {
-		if err != nil {
-			return nil, fmt.Errorf("rclone config: %s", clip(text))
-		}
-		return nil, fmt.Errorf("rclone config: %s", clip(text))
+	dump, err := loadDump()
+	if err != nil {
+		return nil, err
 	}
 	list := make([]rpc.RcloneRemote, 0, len(dump))
 	for name, cfg := range dump {
-		list = append(list, rpc.RcloneRemote{Name: name, Type: cfg.Type})
+		params, hasSecret, hasKey := RedactRemote(cfg["type"], cfg)
+		list = append(list, rpc.RcloneRemote{
+			Name:      name,
+			Type:      cfg["type"],
+			Params:    params,
+			HasSecret: hasSecret,
+			HasKey:    hasKey,
+		})
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
 	return list, nil
+}
+
+func loadDump() (map[string]map[string]string, error) {
+	out, err := exec.Command("rclone", "config", "dump").CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if text == "" || text == "{}" || text == "null" {
+		if err != nil {
+			return nil, fmt.Errorf("rclone config: %s", err.Error())
+		}
+		return map[string]map[string]string{}, nil
+	}
+	var raw map[string]map[string]any
+	if jerr := json.Unmarshal([]byte(text), &raw); jerr != nil {
+		return nil, fmt.Errorf("rclone config: %s", clip(text))
+	}
+	dump := make(map[string]map[string]string, len(raw))
+	for name, cfg := range raw {
+		flat := make(map[string]string, len(cfg))
+		for key, value := range cfg {
+			flat[key] = scalarString(value)
+		}
+		dump[name] = flat
+	}
+	return dump, nil
+}
+
+func scalarString(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+	default:
+		return ""
+	}
 }
 
 func Create(req rpc.RcloneRemoteReq) error {
@@ -112,6 +147,74 @@ func Create(req rpc.RcloneRemoteReq) error {
 	return nil
 }
 
+func Update(req rpc.RcloneRemoteReq) error {
+	if _, err := exec.LookPath("rclone"); err != nil {
+		return fmt.Errorf("rclone is not installed. Install it from Software.")
+	}
+	if err := validRemoteName(req.Name); err != nil {
+		return err
+	}
+	dump, err := loadDump()
+	if err != nil {
+		return err
+	}
+	cfg, ok := dump[req.Name]
+	if !ok {
+		return fmt.Errorf("remote not found")
+	}
+	if req.Type == "" {
+		req.Type = cfg["type"]
+	}
+	if cfg["type"] != req.Type {
+		return fmt.Errorf("remote type cannot be changed")
+	}
+	if req.Params == nil {
+		req.Params = map[string]string{}
+	}
+	delete(req.Params, "key_file")
+	var pemBytes []byte
+	if strings.TrimSpace(req.Key) != "" {
+		if req.Type != "sftp" {
+			return fmt.Errorf("a private key is only used with SFTP")
+		}
+		pemBytes, err = NormalizePrivateKey([]byte(req.Key), req.KeyPass)
+		if err != nil {
+			return err
+		}
+		req.Params["key_file"] = keyPath(req.Name)
+	} else if req.ClearKey && req.Type == "sftp" {
+		req.Params["key_file"] = ""
+	}
+	args, err := UpdateArgs(req.Name, req.Type, req.Params)
+	if err != nil {
+		return err
+	}
+	var restore func()
+	if pemBytes != nil {
+		restore, err = replaceKey(req.Name, pemBytes)
+		if err != nil {
+			return err
+		}
+	}
+	if args != nil {
+		out, runErr := exec.Command("rclone", args...).CombinedOutput()
+		if runErr != nil {
+			if restore != nil {
+				restore()
+			}
+			msg := clip(string(out))
+			if msg == "" {
+				msg = runErr.Error()
+			}
+			return fmt.Errorf("rclone: %s", msg)
+		}
+	}
+	if req.ClearKey && pemBytes == nil {
+		_ = os.Remove(keyPath(req.Name))
+	}
+	return nil
+}
+
 func Delete(name string) error {
 	if _, err := exec.LookPath("rclone"); err != nil {
 		return fmt.Errorf("rclone is not installed. Install it from Software.")
@@ -141,6 +244,22 @@ func saveKey(name string, pemBytes []byte) error {
 		return err
 	}
 	return os.WriteFile(keyPath(name), pemBytes, 0600)
+}
+
+func replaceKey(name string, pemBytes []byte) (func(), error) {
+	path := keyPath(name)
+	old, err := os.ReadFile(path)
+	had := err == nil
+	if err := saveKey(name, pemBytes); err != nil {
+		return nil, err
+	}
+	return func() {
+		if had {
+			_ = os.WriteFile(path, old, 0600)
+			return
+		}
+		_ = os.Remove(path)
+	}, nil
 }
 
 var (

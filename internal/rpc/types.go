@@ -1343,8 +1343,11 @@ type BackupResp struct {
 }
 
 type RcloneRemote struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
+	Name      string            `json:"name"`
+	Type      string            `json:"type"`
+	Params    map[string]string `json:"params,omitempty"`
+	HasSecret bool              `json:"hasSecret,omitempty"`
+	HasKey    bool              `json:"hasKey,omitempty"`
 }
 
 type RcloneStatus struct {
@@ -1358,8 +1361,9 @@ type RcloneRemoteReq struct {
 	Name    string            `json:"name"`
 	Type    string            `json:"type"`
 	Params  map[string]string `json:"params,omitempty"`
-	Key     string            `json:"key,omitempty"`
-	KeyPass string            `json:"keyPass,omitempty"`
+	Key      string            `json:"key,omitempty"`
+	KeyPass  string            `json:"keyPass,omitempty"`
+	ClearKey bool              `json:"clearKey,omitempty"`
 }
 
 type RcloneRunReq struct {
