@@ -19,6 +19,7 @@ type Dash = {
   diskPercent?: number;
   diskUsed?: number;
   diskTotal?: number;
+  disks?: { mount: string; used: number; total: number; percent: number }[];
   load1?: number;
   load5?: number;
   load15?: number;
@@ -40,6 +41,26 @@ function gaugeStatus(percent: number) {
   if (percent >= 90) return "exception" as const;
   if (percent >= 75) return "normal" as const;
   return "success" as const;
+}
+
+function diskGauges(data: Dash) {
+  const disks = (data.disks || []).filter((d) => d.mount && d.total > 0);
+  if (!disks.length) {
+    return [
+      {
+        key: "/",
+        title: "Disk",
+        percent: data.diskPercent || 0,
+        detail: `${formatBytes(data.diskUsed || 0)} / ${formatBytes(data.diskTotal || 0)}`,
+      },
+    ];
+  }
+  return disks.map((d) => ({
+    key: d.mount,
+    title: disks.length === 1 && d.mount === "/" ? "Disk" : d.mount,
+    percent: d.percent || 0,
+    detail: `${formatBytes(d.used || 0)} / ${formatBytes(d.total || 0)}`,
+  }));
 }
 
 function Gauge({ title, percent, detail }: { title: string; percent: number; detail: string }) {
@@ -124,11 +145,9 @@ export function Dashboard() {
               percent={data.memPercent || 0}
               detail={`${formatBytes(data.memUsed || 0)} / ${formatBytes(data.memTotal || 0)}`}
             />
-            <Gauge
-              title="Disk"
-              percent={data.diskPercent || 0}
-              detail={`${formatBytes(data.diskUsed || 0)} / ${formatBytes(data.diskTotal || 0)}`}
-            />
+            {diskGauges(data).map((disk) => (
+              <Gauge key={disk.key} title={disk.title} percent={disk.percent} detail={disk.detail} />
+            ))}
           </div>
           {data.uptimeSec ? (
             <Typography.Text type="secondary" className="cp-overview-up">

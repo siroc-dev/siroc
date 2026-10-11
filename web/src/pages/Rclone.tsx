@@ -227,12 +227,14 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
   }
 
   function browseUp() {
+    const trimmed = browsePath.replace(/\/+$/, "");
+    const slash = trimmed.lastIndexOf("/");
     if (!browseRemote) {
-      const parent = browsePath.replace(/\/+$/, "").replace(/\/[^/]+$/, "") || "/";
+      const parent = slash <= 0 ? "/" : trimmed.slice(0, slash);
       void loadDirs("", parent);
       return;
     }
-    const parent = browsePath.replace(/\/+$/, "").replace(/\/[^/]+$/, "");
+    const parent = slash < 0 ? "" : trimmed.slice(0, slash);
     void loadDirs(browseRemote, parent);
   }
 

@@ -267,7 +267,7 @@ html[data-theme="dark"] .site-dash-tile-static:hover {
 
 .cp-gauges {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
   align-items: start;
 }
@@ -288,9 +288,11 @@ html[data-theme="dark"] .site-dash-tile-static:hover {
 
 .cp-gauge-title {
   margin-top: 8px;
+  max-width: 100%;
   color: #64748b;
   font-size: 13px;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .cp-gauge-detail {

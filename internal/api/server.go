@@ -466,9 +466,9 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 			resp["memPercent"] = st.Memory.Percent
 			resp["memUsed"] = st.Memory.Used
 			resp["memTotal"] = st.Memory.Total
-			if len(st.Disks) > 0 {
-				root := st.Disks[0]
-				for _, d := range st.Disks {
+			if disks := dashboardDisks(st.Disks); len(disks) > 0 {
+				root := disks[0]
+				for _, d := range disks {
 					if d.Mount == "/" {
 						root = d
 						break
@@ -477,6 +477,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 				resp["diskPercent"] = root.Percent
 				resp["diskUsed"] = root.Used
 				resp["diskTotal"] = root.Total
+				resp["disks"] = disks
 			}
 			resp["load1"] = st.Load.One
 			resp["load5"] = st.Load.Five
