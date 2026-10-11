@@ -225,6 +225,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/rclone/remotes", s.rcloneCreate)
 		r.Put("/api/rclone/remotes/{name}", s.rcloneUpdate)
 		r.Delete("/api/rclone/remotes/{name}", s.rcloneDelete)
+		r.Post("/api/rclone/list", s.rcloneList)
 		r.Post("/api/rclone/run", s.rcloneRun)
 		r.Get("/api/rclone/run", s.rcloneJob)
 		r.Put("/api/accounts/{username}/quota", s.setAccountQuota)

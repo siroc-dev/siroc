@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Alert, App, Button, Card, Form, Input, InputNumber, Popconfirm, Progress, Select, Space, Table, Tabs, Typography, Upload } from "antd";
+import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Progress, Select, Space, Table, Tabs, Typography, Upload } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
@@ -76,6 +76,12 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
   const [keyName, setKeyName] = useState("");
   const [editing, setEditing] = useState<Remote | null>(null);
   const [clearKey, setClearKey] = useState(false);
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [browseField, setBrowseField] = useState<"source" | "dest">("dest");
+  const [browseRemote, setBrowseRemote] = useState("");
+  const [browsePath, setBrowsePath] = useState("");
+  const [browseDirs, setBrowseDirs] = useState<string[]>([]);
+  const [browseBusy, setBrowseBusy] = useState(false);
   const kind = Form.useWatch("type", remoteForm);
   const action = Form.useWatch("action", jobForm) || "copy";
   const spec = actions.find((a) => a.value === action) || actions[0];
@@ -182,6 +188,68 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function loadDirs(remote: string, path: string) {
+    setBrowseRemote(remote);
+    setBrowsePath(path);
+    setBrowseBusy(true);
+    try {
+      const out = await api.post<{ path: string; dirs?: string[] }>("/api/rclone/list", { remote, path });
+      setBrowseDirs(out.dirs || []);
+    } catch (err) {
+      setBrowseDirs([]);
+      message.error(err instanceof Error ? err.message : "Could not list folders");
+    } finally {
+      setBrowseBusy(false);
+    }
+  }
+
+  function openBrowse(field: "source" | "dest") {
+    const current = String(jobForm.getFieldValue(field) || "");
+    const remotes = st?.remotes || [];
+    const colon = current.indexOf(":");
+    let remote = "";
+    let path = "/";
+    if (colon > 0 && remotes.some((item) => item.name === current.slice(0, colon))) {
+      remote = current.slice(0, colon);
+      path = current.slice(colon + 1).replace(/^\/+|\/+$/g, "");
+    } else if (current.startsWith("/")) {
+      remote = "";
+      path = current;
+    } else if (field === "dest" && remotes[0]) {
+      remote = remotes[0].name;
+      path = "";
+    }
+    setBrowseField(field);
+    setBrowseOpen(true);
+    void loadDirs(remote, path);
+  }
+
+  function browseUp() {
+    if (!browseRemote) {
+      const parent = browsePath.replace(/\/+$/, "").replace(/\/[^/]+$/, "") || "/";
+      void loadDirs("", parent);
+      return;
+    }
+    const parent = browsePath.replace(/\/+$/, "").replace(/\/[^/]+$/, "");
+    void loadDirs(browseRemote, parent);
+  }
+
+  function browseInto(name: string) {
+    if (!name || name.includes("/") || name.includes("..")) return;
+    if (!browseRemote) {
+      const base = browsePath === "/" ? "" : browsePath.replace(/\/$/, "");
+      void loadDirs("", `${base}/${name}`);
+      return;
+    }
+    void loadDirs(browseRemote, browsePath ? `${browsePath}/${name}` : name);
+  }
+
+  function useFolder() {
+    const value = browseRemote ? (browsePath ? `${browseRemote}:${browsePath}` : `${browseRemote}:`) : browsePath || "/";
+    jobForm.setFieldValue(browseField, value);
+    setBrowseOpen(false);
   }
 
   async function run(values: { action: string; source: string; dest?: string }) {
@@ -411,12 +479,22 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
                     <Select options={actions.map((a) => ({ value: a.value, label: a.label }))} />
                   </Form.Item>
                   <Typography.Paragraph type="secondary">{spec.hint}</Typography.Paragraph>
-                  <Form.Item name="source" label={spec.dest ? "Source" : "Path"} rules={[{ required: true }]} extra="Absolute path, or remote:path such as offsite:bucket/files.">
-                    <Input placeholder="/var/backups/siroc" />
+                  <Form.Item label={spec.dest ? "Source" : "Path"} required extra="Absolute path, or remote:path such as offsite:bucket/files.">
+                    <Space.Compact style={{ width: "100%" }}>
+                      <Form.Item name="source" noStyle rules={[{ required: true, message: "Source is required" }]}>
+                        <Input placeholder="/var/backups/siroc" />
+                      </Form.Item>
+                      <Button onClick={() => openBrowse("source")}>Browse</Button>
+                    </Space.Compact>
                   </Form.Item>
                   {spec.dest ? (
-                    <Form.Item name="dest" label="Destination" rules={[{ required: true }]}>
-                      <Input placeholder="offsite:bucket/siroc" />
+                    <Form.Item label="Destination" required>
+                      <Space.Compact style={{ width: "100%" }}>
+                        <Form.Item name="dest" noStyle rules={[{ required: true, message: "Destination is required" }]}>
+                          <Input placeholder="offsite:bucket/siroc" />
+                        </Form.Item>
+                        <Button onClick={() => openBrowse("dest")}>Browse</Button>
+                      </Space.Compact>
                     </Form.Item>
                   ) : null}
                   {spec.danger ? (
@@ -472,6 +550,36 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
           },
         ]}
       />
+      <Modal
+        title="Choose a folder"
+        open={browseOpen}
+        onCancel={() => setBrowseOpen(false)}
+        okText="Use this folder"
+        onOk={useFolder}
+        confirmLoading={browseBusy}
+        destroyOnHidden
+      >
+        <Select
+          style={{ width: "100%", marginBottom: 12 }}
+          value={browseRemote}
+          options={[{ value: "", label: "This server" }, ...(st?.remotes || []).map((item) => ({ value: item.name, label: `${item.name} (${item.type})` }))]}
+          onChange={(value) => void loadDirs(value, value ? "" : "/")}
+        />
+        <Space style={{ marginBottom: 12 }}>
+          <Button disabled={browseBusy || (browseRemote ? browsePath === "" : browsePath === "/" || browsePath === "")} onClick={browseUp}>
+            Up
+          </Button>
+          <Typography.Text code>{browseRemote ? (browsePath ? `${browseRemote}:${browsePath}` : `${browseRemote}:`) : browsePath || "/"}</Typography.Text>
+        </Space>
+        <div style={{ maxHeight: 320, overflow: "auto" }}>
+          {browseDirs.length === 0 && !browseBusy ? <Typography.Text type="secondary">No folders</Typography.Text> : null}
+          {browseDirs.map((name) => (
+            <Button key={name} type="text" block style={{ textAlign: "left" }} disabled={browseBusy} onClick={() => browseInto(name)}>
+              {name}
+            </Button>
+          ))}
+        </div>
+      </Modal>
     </Space>
   );
 }

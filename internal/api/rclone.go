@@ -89,6 +89,26 @@ func (s *Server) rcloneDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+func (s *Server) rcloneList(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(currentUser(r)) {
+		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
+		return
+	}
+	var body rpc.RcloneListReq
+	if !decode(w, r, &body) {
+		return
+	}
+	out, err := s.Agent.RcloneList(body)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if out.Dirs == nil {
+		out.Dirs = []string{}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) rcloneRun(w http.ResponseWriter, r *http.Request) {
 	if !isAdmin(currentUser(r)) {
 		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))

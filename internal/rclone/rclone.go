@@ -4,6 +4,7 @@ package rclone
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -271,6 +272,40 @@ type runState struct {
 	mu   sync.Mutex
 	snap rpc.RcloneRunResp
 	buf  strings.Builder
+}
+
+func List(req rpc.RcloneListReq) (*rpc.RcloneListResp, error) {
+	if _, err := exec.LookPath("rclone"); err != nil {
+		return nil, fmt.Errorf("rclone is not installed. Install it from Software.")
+	}
+	target, err := ListTarget(req.Remote, req.Path)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "rclone", "lsjson", target, "--dirs-only", "--max-depth", "1", "--no-modtime", "--retries", "1")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("listing folders timed out")
+		}
+		msg := clip(stderr.String())
+		if msg == "" {
+			msg = clip(stdout.String())
+		}
+		if msg == "" {
+			msg = err.Error()
+		}
+		return nil, fmt.Errorf("rclone: %s", msg)
+	}
+	dirs, err := ParseDirs(stdout.Bytes())
+	if err != nil {
+		return nil, err
+	}
+	return &rpc.RcloneListResp{Path: target, Dirs: dirs}, nil
 }
 
 func Start(req rpc.RcloneRunReq) (*rpc.RcloneRunResp, error) {

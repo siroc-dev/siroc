@@ -47,6 +47,24 @@ func TestUpdateArgsKeepsBlankSecrets(t *testing.T) {
 	}
 }
 
+func TestListTargetAndDirs(t *testing.T) {
+	got, err := ListTarget("offsite", "/bucket/files/")
+	if err != nil || got != "offsite:bucket/files" {
+		t.Fatalf("remote %q %v", got, err)
+	}
+	got, err = ListTarget("", "/var/backups")
+	if err != nil || got != "/var/backups" {
+		t.Fatalf("local %q %v", got, err)
+	}
+	if _, err := ListTarget("offsite", "../etc"); err == nil {
+		t.Fatal("parent path should fail")
+	}
+	dirs, err := ParseDirs([]byte(`[{"Name":"b","IsDir":true},{"Name":"a","IsDir":true},{"Name":"file","IsDir":false},{"Name":"../x","IsDir":true}]`))
+	if err != nil || stringsJoin(dirs) != "a b" {
+		t.Fatalf("%v %v", dirs, err)
+	}
+}
+
 func TestRunArgs(t *testing.T) {
 	args, slow, err := RunArgs("sync", "/var/backups/siroc", "b2remote:bucket/siroc")
 	if err != nil || !slow || stringsJoin(args) != "sync /var/backups/siroc b2remote:bucket/siroc" {

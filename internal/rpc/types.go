@@ -1372,6 +1372,16 @@ type RcloneRunReq struct {
 	Dest   string `json:"dest,omitempty"`
 }
 
+type RcloneListReq struct {
+	Remote string `json:"remote"`
+	Path   string `json:"path"`
+}
+
+type RcloneListResp struct {
+	Path string   `json:"path"`
+	Dirs []string `json:"dirs"`
+}
+
 type RcloneFileProgress struct {
 	Name    string  `json:"name"`
 	Bytes   int64   `json:"bytes"`

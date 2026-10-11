@@ -1,7 +1,10 @@
 package rclone
 
 import (
+	"encoding/json"
 	"fmt"
+	"path"
+	"sort"
 	"strings"
 )
 
@@ -83,6 +86,72 @@ func validTarget(raw string) error {
 		return fmt.Errorf("local path must be an absolute path")
 	}
 	return nil
+}
+
+// ListTarget is the rclone path for one folder level. An empty remote means this server.
+func ListTarget(remote, dir string) (string, error) {
+	remote = strings.TrimSpace(remote)
+	dir = strings.TrimSpace(strings.ReplaceAll(dir, "\\", "/"))
+	if strings.ContainsAny(dir, "\r\n\t") || strings.Contains(dir, "..") {
+		return "", fmt.Errorf("invalid path")
+	}
+	if remote == "" {
+		if dir == "" || dir == "." {
+			dir = "/"
+		}
+		if !strings.HasPrefix(dir, "/") {
+			dir = "/" + dir
+		}
+		dir = path.Clean(dir)
+		if !strings.HasPrefix(dir, "/") || strings.Contains(dir, "..") {
+			return "", fmt.Errorf("local path must be an absolute path")
+		}
+		return dir, nil
+	}
+	if err := validRemoteName(remote); err != nil {
+		return "", err
+	}
+	dir = strings.Trim(dir, "/")
+	if strings.Contains(dir, ":") {
+		return "", fmt.Errorf("invalid path")
+	}
+	if dir == "" {
+		return remote + ":", nil
+	}
+	return remote + ":" + dir, nil
+}
+
+// ParseDirs reads rclone lsjson output and returns folder names in this directory.
+func ParseDirs(raw []byte) ([]string, error) {
+	raw = []byte(strings.TrimSpace(string(raw)))
+	if len(raw) == 0 || string(raw) == "null" {
+		return []string{}, nil
+	}
+	var items []struct {
+		Name  string `json:"Name"`
+		IsDir bool   `json:"IsDir"`
+	}
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, fmt.Errorf("could not read the folder list")
+	}
+	dirs := make([]string, 0, len(items))
+	seen := map[string]struct{}{}
+	for _, item := range items {
+		name := strings.Trim(strings.TrimSpace(item.Name), "/")
+		if name == "" || strings.Contains(name, "/") || strings.Contains(name, "..") || strings.ContainsAny(name, "\r\n\t:") {
+			continue
+		}
+		if !item.IsDir && item.Name != "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		dirs = append(dirs, name)
+	}
+	sort.Strings(dirs)
+	return dirs, nil
 }
 
 // CreateArgs builds `rclone config create` arguments for a known backend.

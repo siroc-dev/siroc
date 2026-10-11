@@ -1272,6 +1272,18 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
 	})
+	r.Post("/rclone/list", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.RcloneListReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := rclone.List(req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Post("/rclone/run", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.RcloneRunReq
 		if !decode(w, r, &req) {
