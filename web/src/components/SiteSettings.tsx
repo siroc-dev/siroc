@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, App, Button, Input, Modal, Select, Space, Switch, Table, Typography } from "antd";
+import { Alert, App, Button, Descriptions, Input, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/lib/nginxRewrites";
 import { ProxySettings, type ProxySettingsValue } from "@/components/ProxySettings";
 import { api, RequestError } from "@/lib/api";
@@ -102,22 +102,22 @@ export type SiteSection =
   | "logs";
 
 const NAV: { key: SiteSection; label: string }[] = [
-  { key: "domain", label: "Domain Manager" },
+  { key: "domain", label: "Domains" },
   { key: "directory", label: "Directory" },
-  { key: "access", label: "Limit access" },
-  { key: "rewrite", label: "URL rewrite" },
-  { key: "index", label: "Default document" },
+  { key: "access", label: "Access" },
+  { key: "rewrite", label: "Rewrite" },
+  { key: "index", label: "Index files" },
   { key: "config", label: "Config" },
-  { key: "ssl", label: "SSL" },
-  { key: "php", label: "PHP version" },
-  { key: "server", label: "Web Server" },
-  { key: "git", label: "Git Manager" },
+  { key: "ssl", label: "HTTPS" },
+  { key: "php", label: "PHP" },
+  { key: "server", label: "Web server" },
+  { key: "git", label: "Git" },
   { key: "composer", label: "Composer" },
-  { key: "redirect", label: "Redirect" },
-  { key: "proxy", label: "Reverse proxy" },
-  { key: "hotlink", label: "Hotlink Protection" },
-  { key: "maintenance", label: "Maintenance Mode" },
-  { key: "logs", label: "Response log" },
+  { key: "redirect", label: "Redirects" },
+  { key: "proxy", label: "Runtime" },
+  { key: "hotlink", label: "Hotlink" },
+  { key: "maintenance", label: "Maintenance" },
+  { key: "logs", label: "Logs" },
 ];
 
 const KINDS = [
@@ -318,7 +318,7 @@ export function SiteSettings({
 
   const when = addedAt(site.createdAt);
   const label = site.displayName || site.domain;
-  const title = `Site modification [${label}]${when ? ` -- Time added [${when}]` : ""}`;
+  const meta = [when ? `Added ${when}` : "", label !== site.domain ? site.domain : ""].filter(Boolean).join(" · ");
   const port = site.ssl ? "80, 443" : "80";
   const rows = useMemo(
     () => [
@@ -443,37 +443,29 @@ export function SiteSettings({
   const phpSite = !APP.has(kind) && kind !== "proxy" && kind !== "nginx";
 
   return (
-    <Modal className="site-mod" width={980} title={title} open onCancel={onClose} footer={null} destroyOnHidden>
-      <div className="site-mod-body">
-        <nav className="site-mod-nav">
-          {NAV.map((item) => (
-            <button key={item.key} type="button" className={tab === item.key ? "active" : ""} onClick={() => setTab(item.key)}>
-              {item.label}
-            </button>
-          ))}
-        </nav>
-        <div className="site-mod-pane">
+    <Modal className="site-mod" width={920} title={label} open onCancel={onClose} footer={null} destroyOnHidden>
+      {meta ? (
+        <Typography.Paragraph type="secondary" className="site-mod-meta">
+          {meta}
+        </Typography.Paragraph>
+      ) : null}
+      <div className="site-mod-pills" role="tablist">
+        {NAV.map((item) => (
+          <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} className={tab === item.key ? "active" : ""} onClick={() => setTab(item.key)}>
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div className="site-mod-pane">
           {tab === "domain" ? (
             <>
-              <div className="site-mod-domain-top">
-                <div className="site-mod-hint">
-                  One domain per line, up to 500 aliases. Duplicate names are skipped. The default ports are 80 and 443. A Let's Encrypt certificate covers the primary name and the first 99 aliases.
-                  <br />
-                  Wildcard domain format: *.domain.com
-                  <br />
-                  The primary name stays here. Use Rename to change it.
-                  <Input.TextArea
-                    rows={3}
-                    style={{ marginTop: 12 }}
-                    value={draft}
-                    placeholder={"www.example.com\n*.example.com"}
-                    onChange={(e) => setDraft(e.target.value)}
-                  />
-                </div>
-                <Button type="primary" className="site-mod-add" loading={busy} onClick={() => void addDomains()}>
-                  Add
-                </Button>
-              </div>
+              <Typography.Paragraph type="secondary">
+                One domain per line, up to 500 aliases. Duplicate names are skipped. The site listens on ports 80 and 443. A Let's Encrypt certificate covers the primary name and the first 99 aliases. A wildcard looks like *.example.com. Rename the site to change the primary name.
+              </Typography.Paragraph>
+              <Input.TextArea rows={3} value={draft} placeholder={"www.example.com\n*.example.com"} onChange={(e) => setDraft(e.target.value)} />
+              <Button style={{ marginTop: 12 }} type="primary" loading={busy} onClick={() => void addDomains()}>
+                Add names
+              </Button>
               <Table
                 size="small"
                 rowKey="name"
@@ -490,19 +482,17 @@ export function SiteSettings({
                     dataIndex: "label",
                     render: (label: string, row: { name: string; primary: boolean }) => (
                       <span>
-                        {row.primary ? <span className="site-mod-primary">{label}</span> : label}
+                        {label} {row.primary ? <Tag>Primary</Tag> : null}
                         {label !== row.name ? <div className="site-list-puny">{row.name}</div> : null}
                       </span>
                     ),
                   },
                   { title: "Port", width: 110, render: () => port },
                   {
-                    title: "Operate",
+                    title: "",
                     width: 120,
                     render: (_, row) =>
-                      row.primary ? (
-                        <Typography.Text type="secondary">Inoperable</Typography.Text>
-                      ) : (
+                      row.primary ? null : (
                         <Button
                           type="link"
                           size="small"
@@ -516,7 +506,7 @@ export function SiteSettings({
                 ]}
               />
               <Button style={{ marginTop: 12 }} disabled={!picked.length} loading={busy} onClick={() => void deletePicked()}>
-                Delete Selected
+                Remove selected
               </Button>
             </>
           ) : null}
@@ -643,50 +633,41 @@ export function SiteSettings({
 
           {tab === "ssl" ? (
             <>
-              <div className="ssl-tabs" role="tablist">
-                <button type="button" role="tab" className={sslTab === "current" ? "on" : ""} aria-selected={sslTab === "current"} onClick={() => setSslTab("current")}>
-                  Current Certs - [{site.ssl && sslInfo?.ok ? "Deployed" : "Not deployed"}]
-                </button>
-                <button type="button" role="tab" className={sslTab === "le" ? "on" : ""} aria-selected={sslTab === "le"} onClick={() => setSslTab("le")}>
-                  Let's Encrypt
-                </button>
-                <button type="button" role="tab" className={sslTab === "holder" ? "on" : ""} aria-selected={sslTab === "holder"} onClick={() => setSslTab("holder")}>
-                  Certificate holder
-                </button>
-              </div>
+              <Tabs
+                className="ssl-switch"
+                activeKey={sslTab}
+                onChange={(key) => setSslTab(key as "current" | "le" | "holder")}
+                items={[
+                  { key: "current", label: "Certificate" },
+                  { key: "le", label: "Let's Encrypt" },
+                  { key: "holder", label: "Paste a certificate" },
+                ]}
+              />
               {sslTab === "current" ? (
                 <>
                   {site.ssl && sslInfo?.ok ? (
-                    <div className="ssl-current">
-                      <div>
-                        <div>
-                          <span className="k">Certificate type:</span> {certTypeLabel(site)}
-                        </div>
-                        <div>
-                          <span className="k">Certificate brand:</span> {sslInfo.brand || sslInfo.issuer || "—"}
-                        </div>
-                        <div className="ssl-names">
-                          <span className="k">Certificate domain(s):</span> {(sslInfo.dnsNames || []).join(", ") || "—"}
-                        </div>
-                      </div>
-                      <div>
-                        <div>
-                          <span className="k">Expired:</span> {expDay(sslInfo.notAfter)}
-                          {expPhrase(sslInfo.notAfter) ? `, ${expPhrase(sslInfo.notAfter)}` : ""}
-                        </div>
-                        <div className="ssl-force">
-                          <span>Force HTTPS</span>
-                          <Switch checked={httpsForced(site)} loading={busy} onChange={(on) => void saveOpts({ forceHttps: on }, "Force HTTPS saved")} />
-                        </div>
-                      </div>
-                    </div>
+                    <Descriptions size="small" column={1} style={{ marginBottom: 16 }}>
+                      <Descriptions.Item label="Type">{certTypeLabel(site)}</Descriptions.Item>
+                      <Descriptions.Item label="Issuer">{sslInfo.brand || sslInfo.issuer || "—"}</Descriptions.Item>
+                      <Descriptions.Item label="Names">{(sslInfo.dnsNames || []).join(", ") || "—"}</Descriptions.Item>
+                      <Descriptions.Item label="Expires">
+                        {expDay(sslInfo.notAfter)}
+                        {expPhrase(sslInfo.notAfter) ? ` · ${expPhrase(sslInfo.notAfter)}` : ""}
+                      </Descriptions.Item>
+                    </Descriptions>
                   ) : (
                     <Typography.Paragraph type="secondary">{sslInfo?.message || "No certificate is deployed."}</Typography.Paragraph>
                   )}
+                  {site.ssl && sslInfo?.ok ? (
+                    <div className="ssl-force">
+                      <span>Redirect HTTP to HTTPS</span>
+                      <Switch checked={httpsForced(site)} loading={busy} onChange={(on) => void saveOpts({ forceHttps: on }, "HTTPS redirect saved")} />
+                    </div>
+                  ) : null}
                   {certEditors()}
                   <Space wrap>
-                    <Button className="ssl-save" type="primary" loading={busy} disabled={!certPEM.trim() || !keyPEM.trim()} onClick={() => void installPasted()}>
-                      Save
+                    <Button type="primary" loading={busy} disabled={!certPEM.trim() || !keyPEM.trim()} onClick={() => void installPasted()}>
+                      Save certificate
                     </Button>
                     {site.ssl ? (
                       <Button loading={busy} onClick={onDisableSSL}>
@@ -694,10 +675,9 @@ export function SiteSettings({
                       </Button>
                     ) : null}
                   </Space>
-                  <ul className="ssl-notes">
-                    <li>Paste your KEY and CRT content, and then save it.</li>
-                    <li>If the browser says the certificate chain is incomplete, paste the full chain after the certificate in the PEM box.</li>
-                  </ul>
+                  <Typography.Paragraph type="secondary">
+                    Paste the private key and the certificate. If the browser reports an incomplete chain, put the intermediate certificates after the leaf certificate in the PEM box.
+                  </Typography.Paragraph>
                 </>
               ) : null}
               {sslTab === "le" ? (
@@ -732,8 +712,8 @@ export function SiteSettings({
                     Paste a certificate you already hold. Saving it deploys that certificate on this site.
                   </Typography.Paragraph>
                   {certEditors()}
-                  <Button className="ssl-save" type="primary" loading={busy} disabled={!certPEM.trim() || !keyPEM.trim()} onClick={() => void installPasted()}>
-                    Save
+                  <Button type="primary" loading={busy} disabled={!certPEM.trim() || !keyPEM.trim()} onClick={() => void installPasted()}>
+                    Save certificate
                   </Button>
                 </>
               ) : null}
@@ -754,7 +734,7 @@ export function SiteSettings({
               <Typography.Paragraph>
                 {kind === "nginx"
                   ? "Nginx serves this document root directly. PHP is not used."
-                  : `This site is ${kind}. PHP-FPM is not in front of it. Change the runtime under Reverse proxy.`}
+                  : `This site is ${kind}. PHP-FPM is not in front of it. Change the runtime under Runtime.`}
               </Typography.Paragraph>
             )
           ) : null}
@@ -805,7 +785,7 @@ export function SiteSettings({
             <>
               <Typography.Paragraph type="secondary">Force-pull a repository into this site and install a webhook.</Typography.Paragraph>
               <Button type="primary" onClick={onGit}>
-                Open Git Manager
+                Open Git
               </Button>
             </>
           ) : null}
@@ -976,12 +956,11 @@ export function SiteSettings({
             <>
               <Typography.Paragraph type="secondary">Access, error, and panel response logs for this domain.</Typography.Paragraph>
               <Button type="primary" onClick={onLogs}>
-                Open response log
+                Open logs
               </Button>
             </>
           ) : null}
         </div>
-      </div>
     </Modal>
   );
 }

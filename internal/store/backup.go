@@ -184,6 +184,25 @@ func (s *Store) ListBackupCrons() ([]BackupCron, error) {
 	return out, rows.Err()
 }
 
+func (s *Store) SetBackupCronEnabled(id int64, enabled bool) error {
+	v := 0
+	if enabled {
+		v = 1
+	}
+	res, err := s.DB.Exec(`UPDATE backup_crons SET enabled = ? WHERE id = ?`, v, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (s *Store) DeleteBackupCron(id int64) error {
 	_, err := s.DB.Exec(`DELETE FROM backup_crons WHERE id = ?`, id)
 	return err

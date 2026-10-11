@@ -100,6 +100,9 @@ export function SiteDash({
   onOpen,
   onWaf,
   onRules,
+  autoBackup,
+  autoBackupBusy,
+  onAutoBackup,
 }: {
   site: SiteDashSite;
   admin?: boolean;
@@ -110,6 +113,9 @@ export function SiteDash({
   onOpen: (key: SiteDashAction) => void;
   onWaf: (enabled: boolean) => void;
   onRules?: () => void;
+  autoBackup?: boolean;
+  autoBackupBusy?: boolean;
+  onAutoBackup?: (enabled: boolean) => void;
 }) {
   const phpSite = !APP_KINDS.has(site.kind || "") && site.kind !== "proxy" && site.kind !== "nginx";
   const files: Tile[] = [
@@ -197,6 +203,18 @@ export function SiteDash({
           {files.map((t) => (
             <TileButton key={t.key} tile={t} onOpen={onOpen} />
           ))}
+          {onAutoBackup ? (
+            <div className="site-dash-tile site-dash-tile-static">
+              <span className="site-dash-icon" style={{ background: autoBackup ? "#13c2c2" : "#8c8c8c" }}>
+                <CloudDownloadOutlined />
+              </span>
+              <span className="site-dash-copy">
+                <strong>Auto backup</strong>
+                <em>{autoBackup ? "On for this account" : "Off for this account"}</em>
+              </span>
+              <Switch checked={!!autoBackup} loading={autoBackupBusy} onChange={onAutoBackup} />
+            </div>
+          ) : null}
         </div>
       </section>
 

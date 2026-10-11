@@ -39,6 +39,7 @@ type Cron = {
   weekday: number;
   monthday: number;
   retain: number;
+  enabled: boolean;
   lastRun?: string;
   lastStatus?: string;
 };
@@ -112,6 +113,15 @@ export function Backup({ admin }: { admin?: boolean }) {
 
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restorePath, setRestorePath] = useState("");
+
+  async function setCronEnabled(c: Cron, enabled: boolean) {
+    try {
+      await api.put(`/api/backup/crons/${c.id}`, { enabled });
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    }
+  }
 
   async function run(values: { username: string; destId: number; includeDB: boolean }) {
     setBusy(true);
@@ -214,6 +224,11 @@ export function Backup({ admin }: { admin?: boolean }) {
             { title: "When", render: (_, c) => cronWhen(c) },
             { title: "Destination", dataIndex: "destName" },
             { title: "Keep", dataIndex: "retain", width: 70 },
+            {
+              title: "Auto",
+              width: 80,
+              render: (_, c) => <Switch checked={c.enabled} onChange={(on) => void setCronEnabled(c, on)} />,
+            },
             { title: "Last run", dataIndex: "lastStatus", ellipsis: true, render: (v) => v || "—" },
             {
               title: "",

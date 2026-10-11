@@ -346,6 +346,8 @@ export function Sites() {
   const [wafBusy, setWafBusy] = useState("");
   const [sslLog, setSslLog] = useState("");
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [accountCrons, setAccountCrons] = useState<{ id: number; account: string; enabled: boolean }[]>([]);
+  const [backupBusy, setBackupBusy] = useState(false);
   const [ruleSiteId, setRuleSiteId] = useState(0);
   const [ready, setReady] = useState(false);
 
@@ -727,6 +729,42 @@ export function Sites() {
   }
 
   const openSite = sites.find((s) => String(s.id) === siteIdParam) || null;
+  const siteCrons = openSite ? accountCrons.filter((c) => c.account === openSite.username) : [];
+  const autoBackup = siteCrons.some((c) => c.enabled);
+  useEffect(() => {
+    if (!admin || !openSite) return;
+    let stop = false;
+    api
+      .get<{ id: number; account: string; enabled: boolean }[]>("/api/backup/crons")
+      .then((rows) => {
+        if (!stop) setAccountCrons(rows || []);
+      })
+      .catch(() => {
+        if (!stop) setAccountCrons([]);
+      });
+    return () => {
+      stop = true;
+    };
+  }, [admin, openSite?.id]);
+
+  async function setAutoBackup(on: boolean) {
+    if (!openSite) return;
+    if (!siteCrons.length) {
+      message.info("Add a backup schedule for this account on the Backup page first");
+      nav("/backup");
+      return;
+    }
+    setBackupBusy(true);
+    try {
+      await Promise.all(siteCrons.map((c) => api.put(`/api/backup/crons/${c.id}`, { enabled: on })));
+      setAccountCrons((cur) => cur.map((c) => (c.account === openSite.username ? { ...c, enabled: on } : c)));
+      message.success(on ? "Automatic backup is on" : "Automatic backup is off");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBackupBusy(false);
+    }
+  }
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return sites;
@@ -1041,6 +1079,9 @@ export function Sites() {
             onOpen={(key) => runDash(openSite, key)}
             onWaf={(v) => void setSiteWAF(openSite, v)}
             onRules={() => setRulesOpen(true)}
+            autoBackup={autoBackup}
+            autoBackupBusy={backupBusy}
+            onAutoBackup={admin ? (on) => void setAutoBackup(on) : undefined}
           />
         </Card>
       ) : null}

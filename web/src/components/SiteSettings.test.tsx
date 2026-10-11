@@ -70,10 +70,11 @@ describe("SiteSettings", () => {
 
   it("opens on Domain Manager with the primary name locked", () => {
     renderSettings();
-    expect(screen.getByText("Site modification [test.com] -- Time added [2025-07-09 16:13:54]")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Domain Manager" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Domains" })).toBeTruthy();
+    expect(screen.getByText("Added 2025-07-09 16:13:54")).toBeTruthy();
     expect(screen.getByText("www.test.com")).toBeTruthy();
-    expect(screen.getByText("Inoperable")).toBeTruthy();
+    expect(screen.getByText("Primary")).toBeTruthy();
+    expect(screen.queryByText(/Site modification/)).toBeNull();
   });
 
   it("loads the nginx file with save ready", async () => {
@@ -85,22 +86,23 @@ describe("SiteSettings", () => {
 
   it("shows the deployed certificate without a business-certificate tab", async () => {
     renderSettings("ssl", { ssl: true, sslKind: "custom" });
-    expect(await screen.findByRole("tab", { name: "Current Certs - [Deployed]" })).toBeTruthy();
+    expect(await screen.findByRole("tab", { name: "Certificate" })).toBeTruthy();
     expect(screen.getByText(/Other certificate/)).toBeTruthy();
     expect(screen.getByText(/Test CA/)).toBeTruthy();
     expect(screen.getByText(/test.com, www.test.com/)).toBeTruthy();
-    expect(screen.getByText("Force HTTPS")).toBeTruthy();
+    expect(screen.getByText("Redirect HTTP to HTTPS")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Disable SSL" })).toBeTruthy();
     expect(screen.queryByRole("tab", { name: "Business certificate" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Current Certs - [Deployed]" })).toBeNull();
     expect(screen.getByRole("tab", { name: "Let's Encrypt" })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "Certificate holder" })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Paste a certificate" })).toBeTruthy();
   });
 
   it("switches to PHP and maintenance", () => {
     renderSettings();
-    fireEvent.click(screen.getByRole("button", { name: "PHP version" }));
+    fireEvent.click(screen.getByRole("tab", { name: "PHP" }));
     expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Maintenance Mode" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Maintenance" }));
     expect(screen.getByText(/HTTP 503/)).toBeTruthy();
   });
 });

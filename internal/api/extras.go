@@ -718,6 +718,48 @@ func (s *Server) createBackupCron(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, created)
 }
 
+func (s *Server) setBackupCron(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(currentUser(r)) {
+		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
+		return
+	}
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if body.Enabled == nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("enabled is required"))
+		return
+	}
+	prev, err := s.Store.GetBackupCron(id)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("schedule not found"))
+		return
+	}
+	if err := s.Store.SetBackupCronEnabled(id, *body.Enabled); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.SyncBackupCron(); err != nil {
+		_ = s.Store.SetBackupCronEnabled(id, prev.Enabled)
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("schedule could not be updated in cron: %w", err))
+		return
+	}
+	updated, err := s.Store.GetBackupCron(id)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
+}
+
 func (s *Server) deleteBackupCron(w http.ResponseWriter, r *http.Request) {
 	if !isAdmin(currentUser(r)) {
 		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
