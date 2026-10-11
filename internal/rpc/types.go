@@ -1355,9 +1355,11 @@ type RcloneStatus struct {
 }
 
 type RcloneRemoteReq struct {
-	Name   string            `json:"name"`
-	Type   string            `json:"type"`
-	Params map[string]string `json:"params,omitempty"`
+	Name    string            `json:"name"`
+	Type    string            `json:"type"`
+	Params  map[string]string `json:"params,omitempty"`
+	Key     string            `json:"key,omitempty"`
+	KeyPass string            `json:"keyPass,omitempty"`
 }
 
 type RcloneRunReq struct {

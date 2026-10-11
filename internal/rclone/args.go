@@ -8,7 +8,7 @@ import (
 var remoteFields = map[string][]string{
 	"s3":     {"provider", "access_key_id", "secret_access_key", "region", "endpoint"},
 	"b2":     {"account", "key"},
-	"sftp":   {"host", "user", "port", "pass"},
+	"sftp":   {"host", "user", "port", "pass", "key_file"},
 	"ftp":    {"host", "user", "port", "pass"},
 	"webdav": {"url", "vendor", "user", "pass"},
 	"local":  {},

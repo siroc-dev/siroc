@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Alert, App, Button, Card, Form, Input, InputNumber, Popconfirm, Progress, Select, Space, Table, Tabs, Typography } from "antd";
+import { Alert, App, Button, Card, Form, Input, InputNumber, Popconfirm, Progress, Select, Space, Table, Tabs, Typography, Upload } from "antd";
+import { UploadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 
@@ -71,6 +72,8 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
   const pollGen = useRef(0);
   const [remoteForm] = Form.useForm();
   const [jobForm] = Form.useForm();
+  const [keyText, setKeyText] = useState("");
+  const [keyName, setKeyName] = useState("");
   const kind = Form.useWatch("type", remoteForm);
   const action = Form.useWatch("action", jobForm) || "copy";
   const spec = actions.find((a) => a.value === action) || actions[0];
@@ -116,12 +119,20 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
     try {
       const params: Record<string, string> = {};
       for (const [key, value] of Object.entries(values)) {
-        if (key === "name" || key === "type" || value == null || value === "") continue;
+        if (key === "name" || key === "type" || key === "keyPass" || value == null || value === "") continue;
         params[key] = String(value);
       }
-      const next = await api.post<Status>("/api/rclone/remotes", { name: values.name, type: values.type, params });
+      const next = await api.post<Status>("/api/rclone/remotes", {
+        name: values.name,
+        type: values.type,
+        params,
+        key: values.type === "sftp" ? keyText : "",
+        keyPass: values.type === "sftp" ? String(values.keyPass || "") : "",
+      });
       setSt(next);
       remoteForm.resetFields();
+      setKeyText("");
+      setKeyName("");
       message.success("Remote saved");
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -270,6 +281,37 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
                         <Form.Item name="pass" label="Password">
                           <Input.Password />
                         </Form.Item>
+                        {kind === "sftp" ? (
+                          <>
+                            <Form.Item label="Private key" extra="OpenSSH, PEM, PKCS#8, or PuTTY PPK.">
+                              <Upload
+                                maxCount={1}
+                                accept=".ppk,.pem,.key"
+                                fileList={keyName ? [{ uid: "key", name: keyName }] : []}
+                                beforeUpload={(file) => {
+                                  if (file.size > 256 * 1024) {
+                                    message.error("Key file is too large");
+                                    return Upload.LIST_IGNORE;
+                                  }
+                                  void file.text().then((text) => {
+                                    setKeyText(text);
+                                    setKeyName(file.name);
+                                  });
+                                  return false;
+                                }}
+                                onRemove={() => {
+                                  setKeyText("");
+                                  setKeyName("");
+                                }}
+                              >
+                                <Button icon={<UploadOutlined />}>Upload private key</Button>
+                              </Upload>
+                            </Form.Item>
+                            <Form.Item name="keyPass" label="Key passphrase">
+                              <Input.Password placeholder="Only if the key file is encrypted" />
+                            </Form.Item>
+                          </>
+                        ) : null}
                       </>
                     ) : null}
                     {kind === "webdav" ? (

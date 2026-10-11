@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -65,17 +67,47 @@ func Create(req rpc.RcloneRemoteReq) error {
 	if _, err := exec.LookPath("rclone"); err != nil {
 		return fmt.Errorf("rclone is not installed. Install it from Software.")
 	}
+	if err := validRemoteName(req.Name); err != nil {
+		return err
+	}
+	if req.Params == nil {
+		req.Params = map[string]string{}
+	}
+	delete(req.Params, "key_file")
+	var pemBytes []byte
+	if strings.TrimSpace(req.Key) != "" {
+		if req.Type != "sftp" {
+			return fmt.Errorf("a private key is only used with SFTP")
+		}
+		var err error
+		pemBytes, err = NormalizePrivateKey([]byte(req.Key), req.KeyPass)
+		if err != nil {
+			return err
+		}
+		req.Params["key_file"] = keyPath(req.Name)
+	}
 	args, err := CreateArgs(req.Name, req.Type, req.Params)
 	if err != nil {
 		return err
 	}
+	if pemBytes != nil {
+		if err := saveKey(req.Name, pemBytes); err != nil {
+			return err
+		}
+	}
 	out, err := exec.Command("rclone", args...).CombinedOutput()
 	if err != nil {
+		if pemBytes != nil {
+			_ = os.Remove(keyPath(req.Name))
+		}
 		msg := clip(string(out))
 		if msg == "" {
 			msg = err.Error()
 		}
 		return fmt.Errorf("rclone: %s", msg)
+	}
+	if pemBytes == nil {
+		_ = os.Remove(keyPath(req.Name))
 	}
 	return nil
 }
@@ -95,7 +127,20 @@ func Delete(name string) error {
 		}
 		return fmt.Errorf("rclone: %s", msg)
 	}
+	_ = os.Remove(keyPath(name))
 	return nil
+}
+
+func keyPath(name string) string {
+	return filepath.Join("/var/lib/siroc/rclone/keys", name+".pem")
+}
+
+func saveKey(name string, pemBytes []byte) error {
+	dir := filepath.Dir(keyPath(name))
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(keyPath(name), pemBytes, 0600)
 }
 
 var (
