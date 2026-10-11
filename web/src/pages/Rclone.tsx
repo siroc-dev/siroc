@@ -82,6 +82,7 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
   const [browsePath, setBrowsePath] = useState("");
   const [browseDirs, setBrowseDirs] = useState<string[]>([]);
   const [browseBusy, setBrowseBusy] = useState(false);
+  const [pathDraft, setPathDraft] = useState("");
   const kind = Form.useWatch("type", remoteForm);
   const action = Form.useWatch("action", jobForm) || "copy";
   const spec = actions.find((a) => a.value === action) || actions[0];
@@ -193,6 +194,7 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
   async function loadDirs(remote: string, path: string) {
     setBrowseRemote(remote);
     setBrowsePath(path);
+    setPathDraft(path);
     setBrowseBusy(true);
     try {
       const out = await api.post<{ path: string; dirs?: string[] }>("/api/rclone/list", { remote, path });
@@ -213,7 +215,12 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
     let path = "/";
     if (colon > 0 && remotes.some((item) => item.name === current.slice(0, colon))) {
       remote = current.slice(0, colon);
-      path = current.slice(colon + 1).replace(/^\/+|\/+$/g, "");
+      const rest = current.slice(colon + 1);
+      if (rest.startsWith("/")) {
+        path = rest.replace(/\/+$/g, "") || "/";
+      } else {
+        path = rest.replace(/\/+$/g, "");
+      }
     } else if (current.startsWith("/")) {
       remote = "";
       path = current;
@@ -226,12 +233,33 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
     void loadDirs(remote, path);
   }
 
+  function remoteLeavesHome() {
+    const type = (st?.remotes || []).find((item) => item.name === browseRemote)?.type;
+    return type === "sftp" || type === "ftp";
+  }
+
+  function browseAtTop() {
+    if (!browseRemote) return !browsePath || browsePath === "/";
+    if (browsePath === "/") return true;
+    if (!browsePath) return !remoteLeavesHome();
+    return false;
+  }
+
   function browseUp() {
     const trimmed = browsePath.replace(/\/+$/, "");
     const slash = trimmed.lastIndexOf("/");
     if (!browseRemote) {
       const parent = slash <= 0 ? "/" : trimmed.slice(0, slash);
       void loadDirs("", parent);
+      return;
+    }
+    if (!browsePath) {
+      void loadDirs(browseRemote, "/");
+      return;
+    }
+    if (browsePath.startsWith("/")) {
+      const parent = slash <= 0 ? "/" : trimmed.slice(0, slash);
+      void loadDirs(browseRemote, parent);
       return;
     }
     const parent = slash < 0 ? "" : trimmed.slice(0, slash);
@@ -245,7 +273,31 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
       void loadDirs("", `${base}/${name}`);
       return;
     }
+    if (browsePath.startsWith("/")) {
+      const base = browsePath === "/" ? "" : browsePath.replace(/\/$/, "");
+      void loadDirs(browseRemote, `${base}/${name}`);
+      return;
+    }
     void loadDirs(browseRemote, browsePath ? `${browsePath}/${name}` : name);
+  }
+
+  function applyBrowsePath() {
+    let text = pathDraft.trim().replace(/\\/g, "/");
+    if (browseRemote && text.startsWith(`${browseRemote}:`)) text = text.slice(browseRemote.length + 1);
+    if (text.includes("..") || /[\r\n:]/.test(text)) {
+      message.error("Invalid path");
+      return;
+    }
+    if (!browseRemote) {
+      if (!text || text === ".") text = "/";
+      if (!text.startsWith("/")) text = `/${text}`;
+      text = text.replace(/\/+$/g, "") || "/";
+    } else if (text.startsWith("/")) {
+      text = text.replace(/\/+$/g, "") || "/";
+    } else {
+      text = text.replace(/\/+$/g, "");
+    }
+    void loadDirs(browseRemote, text);
   }
 
   function useFolder() {
@@ -567,12 +619,26 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
           options={[{ value: "", label: "This server" }, ...(st?.remotes || []).map((item) => ({ value: item.name, label: `${item.name} (${item.type})` }))]}
           onChange={(value) => void loadDirs(value, value ? "" : "/")}
         />
-        <Space style={{ marginBottom: 12 }}>
-          <Button disabled={browseBusy || (browseRemote ? browsePath === "" : browsePath === "/" || browsePath === "")} onClick={browseUp}>
+        <Space.Compact style={{ width: "100%", marginBottom: 12 }}>
+          <Button disabled={browseBusy || browseAtTop()} onClick={browseUp}>
             Up
           </Button>
-          <Typography.Text code>{browseRemote ? (browsePath ? `${browseRemote}:${browsePath}` : `${browseRemote}:`) : browsePath || "/"}</Typography.Text>
-        </Space>
+          <Input
+            value={pathDraft}
+            placeholder={browseRemote ? "Start path, such as /var/www" : "/"}
+            disabled={browseBusy}
+            onChange={(e) => setPathDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              e.stopPropagation();
+              applyBrowsePath();
+            }}
+          />
+          <Button disabled={browseBusy} onClick={applyBrowsePath}>
+            Go
+          </Button>
+        </Space.Compact>
         <div style={{ maxHeight: 320, overflow: "auto" }}>
           {browseDirs.length === 0 && !browseBusy ? <Typography.Text type="secondary">No folders</Typography.Text> : null}
           {browseDirs.map((name) => (

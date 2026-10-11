@@ -48,9 +48,17 @@ func TestUpdateArgsKeepsBlankSecrets(t *testing.T) {
 }
 
 func TestListTargetAndDirs(t *testing.T) {
-	got, err := ListTarget("offsite", "/bucket/files/")
+	got, err := ListTarget("offsite", "bucket/files/")
 	if err != nil || got != "offsite:bucket/files" {
 		t.Fatalf("remote %q %v", got, err)
+	}
+	got, err = ListTarget("offsite", "/")
+	if err != nil || got != "offsite:/" {
+		t.Fatalf("root %q %v", got, err)
+	}
+	got, err = ListTarget("offsite", "/var/backups")
+	if err != nil || got != "offsite:/var/backups" {
+		t.Fatalf("absolute %q %v", got, err)
 	}
 	got, err = ListTarget("", "/var/backups")
 	if err != nil || got != "/var/backups" {

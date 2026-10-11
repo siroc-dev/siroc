@@ -111,12 +111,19 @@ func ListTarget(remote, dir string) (string, error) {
 	if err := validRemoteName(remote); err != nil {
 		return "", err
 	}
+	absolute := strings.HasPrefix(dir, "/")
 	dir = strings.Trim(dir, "/")
 	if strings.Contains(dir, ":") {
 		return "", fmt.Errorf("invalid path")
 	}
 	if dir == "" {
+		if absolute {
+			return remote + ":/", nil
+		}
 		return remote + ":", nil
+	}
+	if absolute {
+		return remote + ":/" + dir, nil
 	}
 	return remote + ":" + dir, nil
 }
