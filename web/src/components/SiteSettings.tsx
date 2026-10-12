@@ -224,6 +224,8 @@ export function SiteSettings({
   const [tab, setTab] = useState<SiteSection>(section);
   const [draft, setDraft] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
+  const [domainPage, setDomainPage] = useState(1);
+  const [domainPageSize, setDomainPageSize] = useState(20);
   const [docRoot, setDocRoot] = useState("");
   const [rewrite, setRewrite] = useState("");
   const [php, setPhp] = useState("");
@@ -484,7 +486,18 @@ export function SiteSettings({
               <Table
                 size="small"
                 rowKey="name"
-                pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], showTotal: (n) => `Total ${n}`, hideOnSinglePage: true }}
+                pagination={{
+                  current: domainPage,
+                  pageSize: domainPageSize,
+                  showSizeChanger: true,
+                  pageSizeOptions: ["10", "20", "50", "100"],
+                  showTotal: (n) => `Total ${n}`,
+                  hideOnSinglePage: true,
+                  onChange: (page, size) => {
+                    setDomainPage(page);
+                    setDomainPageSize(size);
+                  },
+                }}
                 dataSource={rows}
                 rowSelection={{
                   selectedRowKeys: picked,
