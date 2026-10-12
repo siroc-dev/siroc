@@ -180,15 +180,30 @@ func (m *Manager) SiteApp(req rpc.SiteAppReq) (*rpc.SiteAppResp, error) {
 		return nil, err
 	}
 	kind, root := detectKind(doc)
-	out := &rpc.SiteAppResp{OK: true, Kind: kind, AppRoot: root, DocRoot: doc}
+	comp, err := m.resolveComposerRoot(req.Username, doc, req.ComposerRoot)
+	if err != nil {
+		return nil, err
+	}
+	out := &rpc.SiteAppResp{OK: true, Kind: kind, AppRoot: root, ComposerRoot: comp, DocRoot: doc}
 	action := strings.TrimSpace(req.Action)
 	if action == "install-wordpress" {
 		return wpInstall(req, out)
+	}
+	if action == "composer" || action == "packages" {
+		if kind != "laravel" {
+			return composerOnly(req, out)
+		}
+	}
+	if action == "pkg-search" && strings.TrimSpace(req.Name) != "npm" && kind != "laravel" {
+		return composerOnly(req, out)
 	}
 	if action == "" || action == "status" {
 		switch kind {
 		case "laravel":
 			out.Laravel = laravelStatus(req.Username, req.Domain, root, req.PHPVersion)
+			if out.Laravel != nil {
+				out.Laravel.HasComposer = fileOK(filepath.Join(comp, "composer.json"))
+			}
 		case "wordpress":
 			wp, err := wpStatus(req.Username, root, req.Domain)
 			if err != nil {
@@ -208,6 +223,61 @@ func (m *Manager) SiteApp(req rpc.SiteAppReq) (*rpc.SiteAppResp, error) {
 		return wpAction(req, out)
 	default:
 		out.Message = "this document root is not a Laravel or WordPress app"
+		return out, nil
+	}
+}
+
+func (m *Manager) resolveComposerRoot(user, doc, custom string) (string, error) {
+	custom = strings.TrimSpace(custom)
+	if custom != "" {
+		return validate.AccountPath(m.HomeRoot, user, custom, "")
+	}
+	doc = filepath.Clean(doc)
+	parent := filepath.Dir(doc)
+	if fileOK(filepath.Join(parent, "composer.json")) {
+		return parent, nil
+	}
+	if fileOK(filepath.Join(doc, "composer.json")) {
+		return doc, nil
+	}
+	return parent, nil
+}
+
+func composerOnly(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error) {
+	comp := out.ComposerRoot
+	switch strings.TrimSpace(req.Action) {
+	case "pkg-search":
+		q := strings.TrimSpace(req.Composer)
+		hits, err := pkgSearch("composer", q)
+		if err != nil {
+			return nil, err
+		}
+		out.PkgHits = hits
+		return out, nil
+	case "composer":
+		if !fileOK(filepath.Join(comp, "composer.json")) {
+			return nil, fmt.Errorf("composer.json not found in %s", comp)
+		}
+		if err := ensureComposer(); err != nil {
+			return nil, err
+		}
+		script, err := composerScript(req.Composer)
+		if err != nil {
+			return nil, err
+		}
+		msg, err := runAs(req.Username, comp, 10*time.Minute, script)
+		out.Output = msg
+		if err != nil {
+			return nil, err
+		}
+		out.Laravel = &rpc.LaravelStatus{HasComposer: true}
+		out.Laravel.ComposerPkgs = listComposerPkgs(req.Username, comp)
+		return out, nil
+	default:
+		out.Laravel = &rpc.LaravelStatus{HasComposer: fileOK(filepath.Join(comp, "composer.json"))}
+		if out.Laravel.HasComposer {
+			out.Laravel.ComposerPkgs = listComposerPkgs(req.Username, comp)
+		}
 		return out, nil
 	}
 }

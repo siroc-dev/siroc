@@ -362,6 +362,9 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 	if err := fillSiteFPM(&data, m.HomeRoot, req); err != nil {
 		return err
 	}
+	if err := applySitePHP(&data, req.Options.PHP); err != nil {
+		return err
+	}
 	if req.FPM != nil {
 		settings, err := normalizeFPM(*req.FPM)
 		if err != nil {

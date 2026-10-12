@@ -104,6 +104,13 @@ func laravelAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, 
 			return nil, err
 		}
 	case "composer":
+		dir := out.ComposerRoot
+		if dir == "" {
+			dir = root
+		}
+		if !fileOK(filepath.Join(dir, "composer.json")) {
+			return nil, fmt.Errorf("composer.json not found in %s", dir)
+		}
 		if err := ensureComposer(); err != nil {
 			return nil, err
 		}
@@ -111,7 +118,7 @@ func laravelAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, 
 		if err != nil {
 			return nil, err
 		}
-		msg, err := runAs(req.Username, root, 10*time.Minute, script)
+		msg, err := runAs(req.Username, dir, 10*time.Minute, script)
 		out.Output = msg
 		if err != nil {
 			return nil, err
@@ -149,7 +156,7 @@ func laravelAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, 
 		}
 	case "packages":
 		out.Laravel = laravelStatus(req.Username, req.Domain, root, req.PHPVersion)
-		fillPackages(out.Laravel, req.Username, root, req.PHPVersion)
+		fillPackages(out.Laravel, req.Username, root, out.ComposerRoot, req.PHPVersion)
 		return out, nil
 	case "pkg-search":
 		kind := strings.TrimSpace(req.Name)
@@ -192,7 +199,7 @@ func laravelAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, 
 	}
 	out.Laravel = laravelStatus(req.Username, req.Domain, root, req.PHPVersion)
 	if req.Action == "composer" || req.Action == "npm" {
-		fillPackages(out.Laravel, req.Username, root, req.PHPVersion)
+		fillPackages(out.Laravel, req.Username, root, out.ComposerRoot, req.PHPVersion)
 	}
 	if req.Action == "artisan" {
 		out.Laravel.ArtisanCmds = listArtisan(req.Username, root, req.PHPVersion)

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
+	"github.com/siroc-dev/siroc/internal/siteopts"
 	"github.com/siroc-dev/siroc/internal/software"
 	"github.com/siroc-dev/siroc/internal/validate"
 )
@@ -291,6 +292,40 @@ func fillSiteFPM(data *siteData, homeRoot string, req rpc.SiteWriteReq) error {
 	data.UserTmp = tmp
 	if custom {
 		data.PHPIniDir = filepath.Join(home, ".php", req.PHPVersion)
+	}
+	return nil
+}
+
+func applySitePHP(data *siteData, php *siteopts.PHP) error {
+	if data == nil || php == nil {
+		return nil
+	}
+	if php.MemoryLimit != "" {
+		data.MemoryLimit = php.MemoryLimit
+	}
+	if php.MaxExecutionTime > 0 {
+		data.MaxExecutionTime = php.MaxExecutionTime
+	}
+	if php.MaxInputTime > 0 {
+		data.MaxInputTime = php.MaxInputTime
+	}
+	if php.PostMaxSize != "" {
+		data.PostMaxSize = php.PostMaxSize
+	}
+	if php.UploadMaxFilesize != "" {
+		data.UploadMaxFilesize = php.UploadMaxFilesize
+	}
+	if php.Timezone != "" {
+		data.Timezone = php.Timezone
+	}
+	if php.DisplayErrors != nil {
+		data.DisplayErrors = "off"
+		if *php.DisplayErrors {
+			data.DisplayErrors = "on"
+		}
+	}
+	if php.DisableFunctions != "" {
+		data.DisableFunctions = php.DisableFunctions
 	}
 	return nil
 }

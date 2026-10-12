@@ -9,6 +9,9 @@ vi.mock("@/lib/api", () => ({
       if (String(url).includes("/config")) {
         return { ok: true, nginx: "server { listen 80; }\n", apache: "", custom: false };
       }
+      if (String(url).includes("/php")) {
+        return { settings: { memoryLimit: "256M", maxExecutionTime: 60, timezone: "UTC" } };
+      }
       return {
         ok: true,
         subject: "test.com",
@@ -18,6 +21,16 @@ vi.mock("@/lib/api", () => ({
         dnsNames: ["test.com", "www.test.com"],
         serial: "abc",
       };
+    }),
+    post: vi.fn(async (url: string) => {
+      if (String(url).includes("/app")) {
+        return {
+          ok: true,
+          composerRoot: "/home/demo/domains/test.com",
+          laravel: { hasComposer: true, composerPkgs: [{ name: "laravel/framework", constraint: "^11.0" }] },
+        };
+      }
+      return {};
     }),
   },
 }));
@@ -102,8 +115,20 @@ describe("SiteSettings", () => {
   it("switches to PHP and maintenance", () => {
     renderSettings();
     fireEvent.click(screen.getByRole("tab", { name: "PHP" }));
+    expect(screen.getByText("memory_limit")).toBeTruthy();
+    expect(screen.getByText("upload_max_filesize")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "Maintenance" }));
     expect(screen.getByText(/HTTP 503/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Hotlink" }));
+    expect(screen.getByText("www.test.com")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add" })).toBeTruthy();
+  });
+
+  it("shows composer packages and the composer.json directory", async () => {
+    renderSettings("composer");
+    expect(screen.getByText("composer.json directory")).toBeTruthy();
+    expect(await screen.findByText("laravel/framework")).toBeTruthy();
+    expect(screen.getByPlaceholderText("/home/demo/domains/test.com")).toBeTruthy();
   });
 });

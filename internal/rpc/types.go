@@ -285,49 +285,51 @@ type SiteCustomSSLReq struct {
 }
 
 type SiteAppReq struct {
-	Username   string            `json:"username"`
-	Domain     string            `json:"domain"`
-	DocRoot    string            `json:"docRoot"`
-	PHPVersion string            `json:"phpVersion"`
-	Action     string            `json:"action"`
-	Queue      *bool             `json:"queue,omitempty"`
-	QueueName  string            `json:"queueName,omitempty"`
-	Workers    int               `json:"workers,omitempty"`
-	Queues     []LaravelQueueRow `json:"queues,omitempty"`
-	Scheduler  *bool             `json:"scheduler,omitempty"`
-	Env        string            `json:"env,omitempty"`
-	Composer   string            `json:"composer,omitempty"`
-	NPM        string            `json:"npm,omitempty"`
-	Artisan    string            `json:"artisan,omitempty"`
-	URL        string            `json:"url,omitempty"`
-	Name       string            `json:"name,omitempty"`
-	Plugin     string            `json:"plugin,omitempty"`
-	UserID     int64             `json:"userId,omitempty"`
-	AdminUser  string            `json:"adminUser,omitempty"`
-	AdminPass  string            `json:"adminPass,omitempty"`
-	AdminEmail string            `json:"adminEmail,omitempty"`
-	DBName     string            `json:"dbName,omitempty"`
-	DBUser     string            `json:"dbUser,omitempty"`
-	DBPass     string            `json:"dbPass,omitempty"`
-	Prefix     string            `json:"prefix,omitempty"`
-	WPCLI      string            `json:"wpcli,omitempty"`
-	Login      string            `json:"login,omitempty"`
-	XMLRPC     *bool             `json:"xmlrpc,omitempty"`
-	Pingbacks  *bool             `json:"pingbacks,omitempty"`
-	UploadsPHP *bool             `json:"uploadsPhp,omitempty"`
+	Username     string            `json:"username"`
+	Domain       string            `json:"domain"`
+	DocRoot      string            `json:"docRoot"`
+	PHPVersion   string            `json:"phpVersion"`
+	Action       string            `json:"action"`
+	Queue        *bool             `json:"queue,omitempty"`
+	QueueName    string            `json:"queueName,omitempty"`
+	Workers      int               `json:"workers,omitempty"`
+	Queues       []LaravelQueueRow `json:"queues,omitempty"`
+	Scheduler    *bool             `json:"scheduler,omitempty"`
+	Env          string            `json:"env,omitempty"`
+	Composer     string            `json:"composer,omitempty"`
+	NPM          string            `json:"npm,omitempty"`
+	Artisan      string            `json:"artisan,omitempty"`
+	URL          string            `json:"url,omitempty"`
+	Name         string            `json:"name,omitempty"`
+	Plugin       string            `json:"plugin,omitempty"`
+	UserID       int64             `json:"userId,omitempty"`
+	AdminUser    string            `json:"adminUser,omitempty"`
+	AdminPass    string            `json:"adminPass,omitempty"`
+	AdminEmail   string            `json:"adminEmail,omitempty"`
+	DBName       string            `json:"dbName,omitempty"`
+	DBUser       string            `json:"dbUser,omitempty"`
+	DBPass       string            `json:"dbPass,omitempty"`
+	Prefix       string            `json:"prefix,omitempty"`
+	WPCLI        string            `json:"wpcli,omitempty"`
+	Login        string            `json:"login,omitempty"`
+	XMLRPC       *bool             `json:"xmlrpc,omitempty"`
+	Pingbacks    *bool             `json:"pingbacks,omitempty"`
+	UploadsPHP   *bool             `json:"uploadsPhp,omitempty"`
+	ComposerRoot string            `json:"composerRoot,omitempty"`
 }
 
 type SiteAppResp struct {
-	OK        bool           `json:"ok"`
-	Kind      string         `json:"kind"`
-	AppRoot   string         `json:"appRoot,omitempty"`
-	DocRoot   string         `json:"docRoot,omitempty"`
-	Message   string         `json:"message,omitempty"`
-	Output    string         `json:"output,omitempty"`
-	LoginURLs []string       `json:"loginUrls,omitempty"`
-	Laravel   *LaravelStatus `json:"laravel,omitempty"`
-	WordPress *WPStatus      `json:"wordpress,omitempty"`
-	PkgHits   []PkgHit       `json:"pkgHits,omitempty"`
+	OK           bool           `json:"ok"`
+	Kind         string         `json:"kind"`
+	AppRoot      string         `json:"appRoot,omitempty"`
+	ComposerRoot string         `json:"composerRoot,omitempty"`
+	DocRoot      string         `json:"docRoot,omitempty"`
+	Message      string         `json:"message,omitempty"`
+	Output       string         `json:"output,omitempty"`
+	LoginURLs    []string       `json:"loginUrls,omitempty"`
+	Laravel      *LaravelStatus `json:"laravel,omitempty"`
+	WordPress    *WPStatus      `json:"wordpress,omitempty"`
+	PkgHits      []PkgHit       `json:"pkgHits,omitempty"`
 }
 
 type LaravelStatus struct {
@@ -1358,9 +1360,9 @@ type RcloneStatus struct {
 }
 
 type RcloneRemoteReq struct {
-	Name    string            `json:"name"`
-	Type    string            `json:"type"`
-	Params  map[string]string `json:"params,omitempty"`
+	Name     string            `json:"name"`
+	Type     string            `json:"type"`
+	Params   map[string]string `json:"params,omitempty"`
 	Key      string            `json:"key,omitempty"`
 	KeyPass  string            `json:"keyPass,omitempty"`
 	ClearKey bool              `json:"clearKey,omitempty"`

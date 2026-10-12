@@ -6,23 +6,43 @@ import (
 	"net"
 	"net/url"
 	"strings"
+
+	"github.com/siroc-dev/siroc/internal/validate"
 )
 
 // Options are per-site nginx/apache settings edited from the site dialog.
 type Options struct {
-	Index       []string   `json:"index,omitempty"`
-	Access      string     `json:"access,omitempty"`
-	IPs         []string   `json:"ips,omitempty"`
-	Hotlink     bool       `json:"hotlink,omitempty"`
-	Maintenance bool       `json:"maintenance,omitempty"`
-	Redirects   []Redirect `json:"redirects,omitempty"`
-	Proxy       *Proxy     `json:"proxy,omitempty"`
+	Index   []string `json:"index,omitempty"`
+	Access  string   `json:"access,omitempty"`
+	IPs     []string `json:"ips,omitempty"`
+	Hotlink bool     `json:"hotlink,omitempty"`
+	// HotlinkDomains are extra referer hosts. The site name and its aliases are always allowed.
+	HotlinkDomains []string   `json:"hotlinkDomains,omitempty"`
+	Maintenance    bool       `json:"maintenance,omitempty"`
+	Redirects      []Redirect `json:"redirects,omitempty"`
+	Proxy          *Proxy     `json:"proxy,omitempty"`
 	// Static is nil when the site still uses the default (Nginx serves static files).
 	// A false pointer turns that off. StaticExt empty means the Plesk extension list.
 	Static    *bool  `json:"static,omitempty"`
 	StaticExt string `json:"staticExt,omitempty"`
 	// ForceHTTPS nil keeps the previous default: redirect when the certificate is Let's Encrypt or custom.
 	ForceHTTPS *bool `json:"forceHttps,omitempty"`
+	// PHP overrides this site's pool. Empty fields keep the account PHP settings.
+	PHP *PHP `json:"php,omitempty"`
+	// ComposerRoot is the directory that holds composer.json. Empty uses the app directory above the document root when that file is there.
+	ComposerRoot string `json:"composerRoot,omitempty"`
+}
+
+// PHP is a per-site php.ini override applied to this site's FPM pool.
+type PHP struct {
+	MemoryLimit       string `json:"memoryLimit,omitempty"`
+	MaxExecutionTime  int    `json:"maxExecutionTime,omitempty"`
+	MaxInputTime      int    `json:"maxInputTime,omitempty"`
+	PostMaxSize       string `json:"postMaxSize,omitempty"`
+	UploadMaxFilesize string `json:"uploadMaxFilesize,omitempty"`
+	Timezone          string `json:"timezone,omitempty"`
+	DisplayErrors     *bool  `json:"displayErrors,omitempty"`
+	DisableFunctions  string `json:"disableFunctions,omitempty"`
 }
 
 type Redirect struct {
@@ -60,7 +80,7 @@ func Marshal(o Options) (string, error) {
 }
 
 func IsZero(o Options) bool {
-	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && !o.Maintenance && len(o.Redirects) == 0 && o.Proxy == nil && !staticExplicitOff(o) && o.StaticExt == "" && o.ForceHTTPS == nil
+	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && len(o.HotlinkDomains) == 0 && !o.Maintenance && len(o.Redirects) == 0 && o.Proxy == nil && !staticExplicitOff(o) && o.StaticExt == "" && o.ForceHTTPS == nil && o.PHP == nil && o.ComposerRoot == ""
 }
 
 func Normalize(in Options) (Options, error) {
@@ -116,6 +136,11 @@ func Normalize(in Options) (Options, error) {
 	}
 	out.Access = access
 	out.Hotlink = in.Hotlink
+	hosts, err := cleanHotlinkDomains(in.HotlinkDomains)
+	if err != nil {
+		return Options{}, err
+	}
+	out.HotlinkDomains = hosts
 	out.Maintenance = in.Maintenance
 	seenFrom := map[string]struct{}{}
 	for _, r := range in.Redirects {
@@ -164,7 +189,140 @@ func Normalize(in Options) (Options, error) {
 		v := *in.ForceHTTPS
 		out.ForceHTTPS = &v
 	}
+	php, err := normalizePHP(in.PHP)
+	if err != nil {
+		return Options{}, err
+	}
+	out.PHP = php
+	root, err := cleanComposerRoot(in.ComposerRoot)
+	if err != nil {
+		return Options{}, err
+	}
+	out.ComposerRoot = root
 	return out, nil
+}
+
+func normalizePHP(in *PHP) (*PHP, error) {
+	if in == nil {
+		return nil, nil
+	}
+	out := &PHP{}
+	if s := strings.TrimSpace(in.MemoryLimit); s != "" {
+		if err := validate.PHPSize(s, "memory_limit"); err != nil {
+			return nil, err
+		}
+		out.MemoryLimit = s
+	}
+	if in.MaxExecutionTime != 0 {
+		if in.MaxExecutionTime < 0 || in.MaxExecutionTime > 3600 {
+			return nil, fmt.Errorf("max execution time must be 1-3600")
+		}
+		out.MaxExecutionTime = in.MaxExecutionTime
+	}
+	if in.MaxInputTime != 0 {
+		if in.MaxInputTime < 0 || in.MaxInputTime > 3600 {
+			return nil, fmt.Errorf("max input time must be 1-3600")
+		}
+		out.MaxInputTime = in.MaxInputTime
+	}
+	if s := strings.TrimSpace(in.PostMaxSize); s != "" {
+		if err := validate.PHPSize(s, "post_max_size"); err != nil {
+			return nil, err
+		}
+		out.PostMaxSize = s
+	}
+	if s := strings.TrimSpace(in.UploadMaxFilesize); s != "" {
+		if err := validate.PHPSize(s, "upload_max_filesize"); err != nil {
+			return nil, err
+		}
+		out.UploadMaxFilesize = s
+	}
+	if s := strings.TrimSpace(in.Timezone); s != "" {
+		if err := validate.PHPTimezone(s); err != nil {
+			return nil, err
+		}
+		out.Timezone = s
+	}
+	if in.DisplayErrors != nil {
+		v := *in.DisplayErrors
+		out.DisplayErrors = &v
+	}
+	if s := strings.TrimSpace(in.DisableFunctions); s != "" {
+		if err := validate.PHPDisableFunctions(s); err != nil {
+			return nil, err
+		}
+		out.DisableFunctions = s
+	}
+	if out.MemoryLimit == "" && out.MaxExecutionTime == 0 && out.MaxInputTime == 0 && out.PostMaxSize == "" && out.UploadMaxFilesize == "" && out.Timezone == "" && out.DisplayErrors == nil && out.DisableFunctions == "" {
+		return nil, nil
+	}
+	return out, nil
+}
+
+func cleanComposerRoot(raw string) (string, error) {
+	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if raw == "" {
+		return "", nil
+	}
+	if strings.ContainsAny(raw, "\r\n\x00") || strings.Contains(raw, "..") {
+		return "", fmt.Errorf("invalid composer path")
+	}
+	if len(raw) > 200 {
+		return "", fmt.Errorf("composer path is too long")
+	}
+	return raw, nil
+}
+
+func cleanHotlinkDomains(in []string) ([]string, error) {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, raw := range in {
+		name, err := hotlinkName(raw)
+		if err != nil {
+			return nil, err
+		}
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+		if len(out) > 40 {
+			return nil, fmt.Errorf("at most 40 hotlink domains")
+		}
+	}
+	return out, nil
+}
+
+func hotlinkName(raw string) (string, error) {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	raw = strings.TrimPrefix(raw, "https://")
+	raw = strings.TrimPrefix(raw, "http://")
+	if i := strings.IndexAny(raw, "/?#"); i >= 0 {
+		raw = raw[:i]
+	}
+	raw = strings.TrimSuffix(raw, ".")
+	if host, _, err := net.SplitHostPort(raw); err == nil {
+		raw = host
+	}
+	if raw == "" {
+		return "", nil
+	}
+	wild := strings.HasPrefix(raw, "*.")
+	check := raw
+	if wild {
+		check = strings.TrimPrefix(raw, "*.")
+	}
+	ascii, err := validate.ASCIIHost(check)
+	if err != nil {
+		return "", fmt.Errorf("hotlink domain %q is invalid", strings.TrimSpace(raw))
+	}
+	if wild {
+		return "*." + ascii, nil
+	}
+	return ascii, nil
 }
 
 // NginxExtra is a server-context snippet: maintenance, redirects, and hotlink.
@@ -189,7 +347,12 @@ func NginxExtra(o Options, proxy string) (string, error) {
 			return "", err
 		}
 		b.WriteString("    location ~* \\.(gif|jpg|jpeg|png|webp|svg|ico|css|js)$ {\n")
-		b.WriteString("        valid_referers none blocked server_names;\n")
+		b.WriteString("        valid_referers none blocked server_names")
+		for _, name := range norm.HotlinkDomains {
+			b.WriteByte(' ')
+			b.WriteString(name)
+		}
+		b.WriteString(";\n")
 		b.WriteString("        if ($invalid_referer) {\n")
 		b.WriteString("            return 403;\n")
 		b.WriteString("        }\n")

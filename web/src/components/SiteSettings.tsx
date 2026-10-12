@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, App, Button, Descriptions, Input, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, App, Button, Col, Descriptions, Input, InputNumber, Popconfirm, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/lib/nginxRewrites";
 import { ProxySettings, type ProxySettingsValue } from "@/components/ProxySettings";
+import { AppPackages, type PkgHit, type PkgRow } from "@/components/AppPackages";
 import { api, RequestError } from "@/lib/api";
 
 export type SiteOptions = {
@@ -9,12 +10,26 @@ export type SiteOptions = {
   access?: "" | "allow" | "deny";
   ips?: string[];
   hotlink?: boolean;
+  hotlinkDomains?: string[];
   maintenance?: boolean;
   redirects?: { from: string; to: string; code: number }[];
   proxy?: ProxySettingsValue;
   static?: boolean;
   staticExt?: string;
   forceHttps?: boolean;
+  php?: SitePHP;
+  composerRoot?: string;
+};
+
+export type SitePHP = {
+  memoryLimit?: string;
+  maxExecutionTime?: number;
+  maxInputTime?: number;
+  postMaxSize?: string;
+  uploadMaxFilesize?: string;
+  timezone?: string;
+  displayErrors?: boolean;
+  disableFunctions?: string;
 };
 
 export type SiteSettingsSite = {
@@ -125,6 +140,8 @@ export function isSiteSection(value: string | null): value is SiteSection {
   return !!value && NAV.some((item) => item.key === value);
 }
 
+const PHP_ZONES = ["UTC", "Asia/Bangkok", "Asia/Tokyo", "Asia/Singapore", "Europe/London", "Europe/Berlin", "America/New_York", "America/Los_Angeles"];
+
 const KINDS = [
   { value: "php", label: "PHP / Apache" },
   { value: "nginx", label: "Direct nginx" },
@@ -164,12 +181,15 @@ function baseOpts(site: SiteSettingsSite): SiteOptions {
     access: o.access || "",
     ips: o.ips || [],
     hotlink: !!o.hotlink,
+    hotlinkDomains: o.hotlinkDomains || [],
     maintenance: !!o.maintenance,
     redirects: o.redirects || [],
     proxy: o.proxy,
     static: o.static,
     staticExt: o.staticExt,
     forceHttps: o.forceHttps,
+    php: o.php,
+    composerRoot: o.composerRoot,
   };
 }
 
@@ -235,6 +255,21 @@ export function SiteSettings({
   const [docRoot, setDocRoot] = useState("");
   const [rewrite, setRewrite] = useState("");
   const [php, setPhp] = useState("");
+  const [phpMem, setPhpMem] = useState("");
+  const [phpExec, setPhpExec] = useState<number | null>(null);
+  const [phpInput, setPhpInput] = useState<number | null>(null);
+  const [phpPost, setPhpPost] = useState("");
+  const [phpUpload, setPhpUpload] = useState("");
+  const [phpZone, setPhpZone] = useState("");
+  const [phpErrors, setPhpErrors] = useState<"" | "on" | "off">("");
+  const [phpDisable, setPhpDisable] = useState("");
+  const [phpAccount, setPhpAccount] = useState<SitePHP>({});
+  const [composerPath, setComposerPath] = useState("");
+  const [composerDir, setComposerDir] = useState("");
+  const [composerPkgs, setComposerPkgs] = useState<PkgRow[]>([]);
+  const [hasComposer, setHasComposer] = useState(false);
+  const [composerOut, setComposerOut] = useState("");
+  const [composerBusy, setComposerBusy] = useState(false);
   const [sslInfo, setSslInfo] = useState<CertInfo | null>(null);
   const [certPEM, setCertPEM] = useState("");
   const [keyPEM, setKeyPEM] = useState("");
@@ -247,6 +282,8 @@ export function SiteSettings({
   const [ips, setIps] = useState("");
   const [index, setIndex] = useState("");
   const [hotlink, setHotlink] = useState(false);
+  const [hotlinkExtra, setHotlinkExtra] = useState<string[]>([]);
+  const [hotlinkDraft, setHotlinkDraft] = useState("");
   const [maintenance, setMaintenance] = useState(false);
   const [staticOn, setStaticOn] = useState(true);
   const [staticExt, setStaticExt] = useState(DEFAULT_STATIC_EXT);
@@ -305,10 +342,60 @@ export function SiteSettings({
   }, [tab, site.id, message]);
 
   useEffect(() => {
+    const phpHere = !APP.has(kind) && kind !== "proxy" && kind !== "nginx";
+    if (tab !== "php" || !phpHere) return;
+    let stop = false;
+    api
+      .get<{ settings?: SitePHP }>(`/api/accounts/${encodeURIComponent(site.username)}/php`)
+      .then((out) => {
+        if (!stop) setPhpAccount(out.settings || {});
+      })
+      .catch(() => {
+        if (!stop) setPhpAccount({});
+      });
+    return () => {
+      stop = true;
+    };
+  }, [tab, site.username, kind]);
+
+  useEffect(() => {
+    if (tab !== "composer") return;
+    let stop = false;
+    setComposerBusy(true);
+    api
+      .post<{ composerRoot?: string; laravel?: { hasComposer?: boolean; composerPkgs?: PkgRow[] }; output?: string }>(`/api/sites/${site.id}/app`, { action: "packages" })
+      .then((out) => {
+        if (stop) return;
+        setComposerDir(out.composerRoot || "");
+        setHasComposer(!!out.laravel?.hasComposer);
+        setComposerPkgs(out.laravel?.composerPkgs || []);
+      })
+      .catch((err: unknown) => {
+        if (!stop) message.error(err instanceof Error ? err.message : "Could not read composer.json");
+      })
+      .finally(() => {
+        if (!stop) setComposerBusy(false);
+      });
+    return () => {
+      stop = true;
+    };
+  }, [tab, site.id, site.options?.composerRoot, message]);
+
+  useEffect(() => {
     const o = baseOpts(site);
     setDocRoot(toRel(site.username, site.docRoot));
     setRewrite(site.rewrite || "");
     setPhp(site.phpVersion);
+    const phpOpt = o.php || {};
+    setPhpMem(phpOpt.memoryLimit || "");
+    setPhpExec(phpOpt.maxExecutionTime || null);
+    setPhpInput(phpOpt.maxInputTime || null);
+    setPhpPost(phpOpt.postMaxSize || "");
+    setPhpUpload(phpOpt.uploadMaxFilesize || "");
+    setPhpZone(phpOpt.timezone || "");
+    setPhpErrors(phpOpt.displayErrors === true ? "on" : phpOpt.displayErrors === false ? "off" : "");
+    setPhpDisable(phpOpt.disableFunctions || "");
+    setComposerPath(o.composerRoot || "");
     setKind(site.kind || "php");
     setProxyPass(site.proxyPass || "");
     setAppCmd(site.appCmd || "");
@@ -317,6 +404,8 @@ export function SiteSettings({
     setIps((o.ips || []).join("\n"));
     setIndex((o.index || []).join(" "));
     setHotlink(!!o.hotlink);
+    setHotlinkExtra(o.hotlinkDomains || []);
+    setHotlinkDraft("");
     setMaintenance(!!o.maintenance);
     setStaticOn(o.static !== false);
     setStaticExt(o.staticExt || DEFAULT_STATIC_EXT);
@@ -380,6 +469,58 @@ export function SiteSettings({
 
   function saveOpts(partial: SiteOptions, ok: string) {
     return onPatch({ options: { ...baseOpts(site), ...partial } }, ok);
+  }
+
+  function addHotlink() {
+    let name = hotlinkDraft.trim().toLowerCase();
+    name = name.replace(/^https?:\/\//, "").split(/[/?#]/)[0].replace(/\.$/, "");
+    if (!name) return;
+    const owned = new Set([site.domain, ...(site.aliases || [])].map((item) => item.toLowerCase()));
+    if (owned.has(name) || hotlinkExtra.some((item) => item.toLowerCase() === name)) {
+      setHotlinkDraft("");
+      return;
+    }
+    setHotlinkExtra((list) => [...list, name]);
+    setHotlinkDraft("");
+  }
+
+  function savePHP() {
+    const phpOpt: SitePHP = {};
+    if (phpMem.trim()) phpOpt.memoryLimit = phpMem.trim();
+    if (phpExec) phpOpt.maxExecutionTime = phpExec;
+    if (phpInput) phpOpt.maxInputTime = phpInput;
+    if (phpPost.trim()) phpOpt.postMaxSize = phpPost.trim();
+    if (phpUpload.trim()) phpOpt.uploadMaxFilesize = phpUpload.trim();
+    if (phpZone.trim()) phpOpt.timezone = phpZone.trim();
+    if (phpErrors === "on") phpOpt.displayErrors = true;
+    if (phpErrors === "off") phpOpt.displayErrors = false;
+    if (phpDisable.trim()) phpOpt.disableFunctions = phpDisable.trim();
+    return onPatch({ phpVersion: php, options: { ...baseOpts(site), php: Object.keys(phpOpt).length ? phpOpt : undefined } }, "PHP saved");
+  }
+
+  async function runComposer(command: string) {
+    setComposerBusy(true);
+    setComposerOut("");
+    try {
+      const out = await api.post<{ composerRoot?: string; output?: string; laravel?: { hasComposer?: boolean; composerPkgs?: PkgRow[] } }>(`/api/sites/${site.id}/app`, {
+        action: "composer",
+        composer: command,
+      });
+      setComposerOut(out.output || "");
+      setHasComposer(!!out.laravel?.hasComposer);
+      setComposerPkgs(out.laravel?.composerPkgs || []);
+      if (out.composerRoot) setComposerDir(out.composerRoot);
+      message.success("Composer finished");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Composer failed");
+    } finally {
+      setComposerBusy(false);
+    }
+  }
+
+  async function searchComposer(query: string): Promise<PkgHit[]> {
+    const out = await api.post<{ pkgHits?: PkgHit[] }>(`/api/sites/${site.id}/app`, { action: "pkg-search", name: "composer", composer: query });
+    return out.pkgHits || [];
   }
 
   async function saveConfig() {
@@ -665,10 +806,16 @@ export function SiteSettings({
                     : "Edit the files on disk. Save tests them first and writes them only when the test passes. A saved file is kept until you reset it."
                 }
               />
-              <Typography.Text type="secondary">Nginx</Typography.Text>
-              <textarea className="site-mod-config" value={nginxConf} spellCheck={false} onChange={(e) => setNginxConf(e.target.value)} />
-              <Typography.Text type="secondary">Apache</Typography.Text>
-              <textarea className="site-mod-config" value={apacheConf} spellCheck={false} onChange={(e) => setApacheConf(e.target.value)} />
+              <div className="site-mod-config-grid">
+                <label className="site-mod-config-col">
+                  <Typography.Text type="secondary">Nginx</Typography.Text>
+                  <textarea className="site-mod-config" value={nginxConf} spellCheck={false} onChange={(e) => setNginxConf(e.target.value)} />
+                </label>
+                <label className="site-mod-config-col">
+                  <Typography.Text type="secondary">Apache</Typography.Text>
+                  <textarea className="site-mod-config" value={apacheConf} spellCheck={false} onChange={(e) => setApacheConf(e.target.value)} />
+                </label>
+              </div>
               <Typography.Paragraph type="secondary">Leave Apache empty to keep the current Apache file.</Typography.Paragraph>
               <Space wrap>
                 <Button type="primary" loading={cfgBusy === "save"} disabled={cfgBusy !== "" && cfgBusy !== "save"} onClick={() => void saveConfig()}>
@@ -774,12 +921,65 @@ export function SiteSettings({
           {tab === "php" ? (
             phpSite ? (
               <>
-                <Select style={{ width: 220 }} value={php} options={phpVersions} onChange={setPhp} />
-                <div>
-                  <Button style={{ marginTop: 12 }} type="primary" loading={busy} onClick={() => onPatch({ phpVersion: php }, "PHP version saved")}>
-                    Save
-                  </Button>
-                </div>
+                <Typography.Paragraph type="secondary">Blank fields keep this account's PHP settings. Values here apply only to this site.</Typography.Paragraph>
+                <Row gutter={[16, 16]}>
+                  <Col xs={24} md={8}>
+                    <Typography.Text type="secondary">PHP version</Typography.Text>
+                    <Select style={{ width: "100%", marginTop: 4 }} value={php} options={phpVersions} onChange={setPhp} />
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Typography.Text type="secondary">memory_limit</Typography.Text>
+                    <Input style={{ marginTop: 4 }} value={phpMem} placeholder={phpAccount.memoryLimit || "256M"} onChange={(e) => setPhpMem(e.target.value)} />
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Typography.Text type="secondary">max_execution_time</Typography.Text>
+                    <InputNumber style={{ width: "100%", marginTop: 4 }} min={1} max={3600} value={phpExec} placeholder={phpAccount.maxExecutionTime ? String(phpAccount.maxExecutionTime) : "60"} onChange={(v) => setPhpExec(v)} />
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Typography.Text type="secondary">max_input_time</Typography.Text>
+                    <InputNumber style={{ width: "100%", marginTop: 4 }} min={1} max={3600} value={phpInput} placeholder={phpAccount.maxInputTime ? String(phpAccount.maxInputTime) : "60"} onChange={(v) => setPhpInput(v)} />
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Typography.Text type="secondary">post_max_size</Typography.Text>
+                    <Input style={{ marginTop: 4 }} value={phpPost} placeholder={phpAccount.postMaxSize || "64M"} onChange={(e) => setPhpPost(e.target.value)} />
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Typography.Text type="secondary">upload_max_filesize</Typography.Text>
+                    <Input style={{ marginTop: 4 }} value={phpUpload} placeholder={phpAccount.uploadMaxFilesize || "64M"} onChange={(e) => setPhpUpload(e.target.value)} />
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Typography.Text type="secondary">date.timezone</Typography.Text>
+                    <Select
+                      style={{ width: "100%", marginTop: 4 }}
+                      allowClear
+                      showSearch
+                      value={phpZone || undefined}
+                      placeholder={phpAccount.timezone || "UTC"}
+                      onChange={(v) => setPhpZone(v || "")}
+                      options={PHP_ZONES.map((z) => ({ value: z, label: z }))}
+                    />
+                  </Col>
+                  <Col xs={24} md={8}>
+                    <Typography.Text type="secondary">display_errors</Typography.Text>
+                    <Select
+                      style={{ width: "100%", marginTop: 4 }}
+                      value={phpErrors}
+                      onChange={setPhpErrors}
+                      options={[
+                        { value: "", label: "Account default" },
+                        { value: "on", label: "On" },
+                        { value: "off", label: "Off" },
+                      ]}
+                    />
+                  </Col>
+                  <Col span={24}>
+                    <Typography.Text type="secondary">disable_functions</Typography.Text>
+                    <Input style={{ marginTop: 4 }} value={phpDisable} placeholder={phpAccount.disableFunctions || "exec,passthru,shell_exec,system,popen,show_source"} onChange={(e) => setPhpDisable(e.target.value)} />
+                  </Col>
+                </Row>
+                <Button style={{ marginTop: 16 }} type="primary" loading={busy} onClick={() => void savePHP()}>
+                  Save
+                </Button>
               </>
             ) : (
               <Typography.Paragraph>
@@ -844,14 +1044,37 @@ export function SiteSettings({
           {tab === "composer" ? (
             <>
               <Typography.Paragraph type="secondary">
-                Composer runs as {site.username} inside the site directory. SSH can run composer install. Laravel sites also have queues and artisan.
+                Composer runs as {site.username}. Leave the directory empty to use the folder above the document root when composer.json is there.
               </Typography.Paragraph>
+              <Typography.Text type="secondary">composer.json directory</Typography.Text>
+              <Space.Compact style={{ width: "100%", marginTop: 4, marginBottom: 8 }}>
+                <Input value={composerPath} placeholder={composerDir || "domains/example.com"} onChange={(e) => setComposerPath(e.target.value)} />
+                <Button loading={busy} onClick={() => void saveOpts({ composerRoot: composerPath.trim() }, "Composer path saved")}>
+                  Save path
+                </Button>
+              </Space.Compact>
+              {composerDir ? (
+                <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+                  Using {composerDir}
+                </Typography.Paragraph>
+              ) : null}
+              {hasComposer ? (
+                <AppPackages
+                  kind="composer"
+                  busy={composerBusy}
+                  packages={composerPkgs}
+                  onRun={runComposer}
+                  onSearch={searchComposer}
+                  onUpdate={(name) => void runComposer(`update ${name}`)}
+                />
+              ) : (
+                <Typography.Paragraph>No composer.json in this directory.</Typography.Paragraph>
+              )}
+              {composerOut ? <pre className="cmd-out">{composerOut}</pre> : null}
               <Space wrap>
                 <Button onClick={onSSH}>Open SSH</Button>
                 {phpSite ? (
-                  <Button type="primary" onClick={onLaravel}>
-                    Laravel tools
-                  </Button>
+                  <Button onClick={onLaravel}>Laravel tools</Button>
                 ) : null}
               </Space>
             </>
@@ -974,14 +1197,36 @@ export function SiteSettings({
           {tab === "hotlink" ? (
             <>
               <Typography.Paragraph type="secondary">
-                Block image, CSS, and JS requests whose Referer is another site. Empty and blocked referers are still allowed.
+                Block image, CSS, and JS requests whose Referer is another site. Empty and blocked referers are still allowed. This site's primary name and aliases are allowed. Add any other site that may embed these files.
               </Typography.Paragraph>
               <Space>
                 <Switch checked={hotlink} onChange={setHotlink} />
                 <span>{hotlink ? "On" : "Off"}</span>
               </Space>
+              <div style={{ marginTop: 12 }}>
+                <Space wrap>
+                  <Tag>{site.displayName || site.domain}</Tag>
+                  {(site.aliases || []).map((name, i) => (
+                    <Tag key={name}>{site.displayAliases?.[i] || name}</Tag>
+                  ))}
+                  {hotlinkExtra.map((name) => (
+                    <Tag key={name} closable onClose={() => setHotlinkExtra((list) => list.filter((item) => item !== name))}>
+                      {name}
+                    </Tag>
+                  ))}
+                </Space>
+                <Space.Compact style={{ width: "100%", maxWidth: 420, marginTop: 12 }}>
+                  <Input
+                    value={hotlinkDraft}
+                    placeholder="cdn.example.com"
+                    onChange={(e) => setHotlinkDraft(e.target.value)}
+                    onPressEnter={addHotlink}
+                  />
+                  <Button onClick={addHotlink}>Add</Button>
+                </Space.Compact>
+              </div>
               <div>
-                <Button style={{ marginTop: 12 }} type="primary" loading={busy} onClick={() => saveOpts({ hotlink }, "Hotlink protection saved")}>
+                <Button style={{ marginTop: 12 }} type="primary" loading={busy} onClick={() => saveOpts({ hotlink, hotlinkDomains: hotlinkExtra }, "Hotlink protection saved")}>
                   Save
                 </Button>
               </div>

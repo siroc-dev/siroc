@@ -41,6 +41,33 @@ func TestNormalizeRedirectsAndAccess(t *testing.T) {
 	}
 }
 
+func TestNormalizePHPAndComposerPath(t *testing.T) {
+	on := true
+	got, err := Normalize(Options{
+		PHP:          &PHP{MemoryLimit: "512M", MaxExecutionTime: 120, DisplayErrors: &on, DisableFunctions: "exec,system"},
+		ComposerRoot: "domains/shop",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PHP == nil || got.PHP.MemoryLimit != "512M" || got.PHP.MaxExecutionTime != 120 || got.PHP.DisplayErrors == nil || !*got.PHP.DisplayErrors {
+		t.Fatalf("php %#v", got.PHP)
+	}
+	if got.ComposerRoot != "domains/shop" {
+		t.Fatalf("root %q", got.ComposerRoot)
+	}
+	if _, err := Normalize(Options{PHP: &PHP{MemoryLimit: "lots"}}); err == nil {
+		t.Fatal("expected invalid memory_limit")
+	}
+	if _, err := Normalize(Options{ComposerRoot: "../etc"}); err == nil {
+		t.Fatal("expected invalid composer path")
+	}
+	cleared, err := Normalize(Options{PHP: &PHP{}})
+	if err != nil || cleared.PHP != nil {
+		t.Fatalf("empty php %#v %v", cleared.PHP, err)
+	}
+}
+
 func TestRejectUnsafe(t *testing.T) {
 	if _, err := Normalize(Options{Redirects: []Redirect{{From: "/a;rm", To: "/b"}}}); err == nil {
 		t.Fatal("expected bad path")
@@ -69,6 +96,16 @@ func TestMaintenanceAndHotlink(t *testing.T) {
 	}
 	if !contains(extra, "valid_referers") || !contains(extra, "proxy_pass http://127.0.0.1:3000/;") {
 		t.Fatalf("hotlink missing:\n%s", extra)
+	}
+	withHost, err := NginxExtra(Options{Hotlink: true, HotlinkDomains: []string{"https://CDN.Example.com/img", "*.assets.example.com"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(withHost, "valid_referers none blocked server_names cdn.example.com *.assets.example.com;") {
+		t.Fatalf("hotlink domains:\n%s", withHost)
+	}
+	if _, err := Normalize(Options{HotlinkDomains: []string{"not a domain"}}); err == nil {
+		t.Fatal("expected invalid hotlink domain")
 	}
 }
 

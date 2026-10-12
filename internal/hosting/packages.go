@@ -24,10 +24,14 @@ var (
 	npmPkgRe      = regexp.MustCompile(`^(?:@[a-z0-9][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*$`)
 )
 
-func fillPackages(st *rpc.LaravelStatus, user, root, phpVer string) {
+func fillPackages(st *rpc.LaravelStatus, user, root, composerRoot, phpVer string) {
 	if st == nil {
 		return
 	}
+	if strings.TrimSpace(composerRoot) == "" {
+		composerRoot = root
+	}
+	st.HasComposer = fileOK(filepath.Join(composerRoot, "composer.json"))
 	var wg sync.WaitGroup
 	var composer []rpc.PkgRow
 	var npm []rpc.PkgRow
@@ -37,7 +41,7 @@ func fillPackages(st *rpc.LaravelStatus, user, root, phpVer string) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			composer = listComposerPkgs(user, root)
+			composer = listComposerPkgs(user, composerRoot)
 		}()
 	}
 	if st.HasPackage {

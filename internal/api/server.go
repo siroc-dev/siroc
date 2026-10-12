@@ -1963,6 +1963,7 @@ func (s *Server) siteApp(w http.ResponseWriter, r *http.Request) {
 	body.Domain = st.Domain
 	body.DocRoot = st.DocRoot
 	body.PHPVersion = st.PHPVersion
+	body.ComposerRoot = st.Options.ComposerRoot
 	out, err := s.Agent.SiteApp(body)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
