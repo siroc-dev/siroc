@@ -133,6 +133,7 @@ export function App() {
         <Route path="/logs" element={<Logs />} />
         <Route path="/scan-logs" element={<Navigate to="/logs?tab=scan" replace />} />
         <Route path="/sites" element={<Sites />} />
+        <Route path="/sites/:id/settings" element={<Sites />} />
         <Route path="/sites/:id" element={<Sites />} />
         <Route path="/php" element={<PHP />} />
         <Route path="/databases" element={<Databases />} />

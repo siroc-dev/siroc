@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, App, Button, Descriptions, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, App, Button, Descriptions, Input, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/lib/nginxRewrites";
 import { ProxySettings, type ProxySettingsValue } from "@/components/ProxySettings";
 import { api, RequestError } from "@/lib/api";
@@ -121,6 +121,10 @@ const NAV: { key: SiteSection; label: string }[] = [
   { key: "logs", label: "Logs" },
 ];
 
+export function isSiteSection(value: string | null): value is SiteSection {
+  return !!value && NAV.some((item) => item.key === value);
+}
+
 const KINDS = [
   { value: "php", label: "PHP / Apache" },
   { value: "nginx", label: "Direct nginx" },
@@ -203,6 +207,7 @@ export function SiteSettings({
   onLogs,
   onSSH,
   onLaravel,
+  onSection,
 }: {
   site: SiteSettingsSite;
   section: SiteSection;
@@ -220,6 +225,7 @@ export function SiteSettings({
   onLogs: () => void;
   onSSH: () => void;
   onLaravel: () => void;
+  onSection?: (section: SiteSection) => void;
 }) {
   const [tab, setTab] = useState<SiteSection>(section);
   const [draft, setDraft] = useState("");
@@ -446,15 +452,33 @@ export function SiteSettings({
   const phpSite = !APP.has(kind) && kind !== "proxy" && kind !== "nginx";
 
   return (
-    <Modal className="site-mod" width={920} title={label} open onCancel={onClose} footer={null} destroyOnHidden>
-      {meta ? (
-        <Typography.Paragraph type="secondary" className="site-mod-meta">
-          {meta}
-        </Typography.Paragraph>
-      ) : null}
+    <div className="site-mod-page">
+      <div className="site-mod-head">
+        <Button onClick={onClose}>Back</Button>
+        <div>
+          <Typography.Title level={3} style={{ margin: 0 }}>
+            {label}
+          </Typography.Title>
+          {meta ? (
+            <Typography.Paragraph type="secondary" className="site-mod-meta">
+              {meta}
+            </Typography.Paragraph>
+          ) : null}
+        </div>
+      </div>
       <div className="site-mod-pills" role="tablist">
         {NAV.map((item) => (
-          <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} className={tab === item.key ? "active" : ""} onClick={() => setTab(item.key)}>
+          <button
+            key={item.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.key}
+            className={tab === item.key ? "active" : ""}
+            onClick={() => {
+              setTab(item.key);
+              onSection?.(item.key);
+            }}
+          >
             {item.label}
           </button>
         ))}
@@ -988,6 +1012,6 @@ export function SiteSettings({
             </>
           ) : null}
         </div>
-    </Modal>
+    </div>
   );
 }

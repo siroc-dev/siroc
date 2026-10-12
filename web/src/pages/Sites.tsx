@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom";
+import { Link, useMatch, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import { MoreOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Card, Col, Dropdown, Flex, Form, Input, InputNumber, Modal, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api, RequestError } from "@/lib/api";
@@ -15,7 +15,7 @@ import { LaravelQueues, type LaravelQueueRow, type LaravelSchedule } from "@/com
 import { SiteLogs } from "@/components/SiteLogs";
 import { SiteWAFRules } from "@/components/SiteWAFRules";
 import { SiteGit } from "@/components/SiteGit";
-import { SiteSettings, type SiteOptions, type SiteSection } from "@/components/SiteSettings";
+import { SiteSettings, isSiteSection, type SiteOptions, type SiteSection } from "@/components/SiteSettings";
 import type { FormInstance } from "antd/es/form";
 
 type Account = { username: string; wafEnabled?: boolean };
@@ -307,6 +307,9 @@ export function Sites() {
   const { message, modal } = App.useApp();
   const nav = useNavigate();
   const [search, setSearch] = useSearchParams();
+  const settingsOn = !!useMatch("/sites/:id/settings");
+  const sectionParam = search.get("section");
+  const settingsSection: SiteSection = isSiteSection(sectionParam) ? sectionParam : "domain";
   const { id: siteIdParam } = useParams();
   const { admin } = useOutletContext<{ user: string; admin?: boolean }>();
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -317,8 +320,6 @@ export function Sites() {
   const [phps, setPhps] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [edit, setEdit] = useState<Site | null>(null);
-  const [settingsSection, setSettingsSection] = useState<SiteSection>("domain");
   const [logSite, setLogSite] = useState<Site | null>(null);
   const [gitSite, setGitSite] = useState<Site | null>(null);
   const [stats, setStats] = useState<Site | null>(null);
@@ -489,19 +490,22 @@ export function Sites() {
     }
   }
 
+  function routeSite() {
+    return sites.find((s) => String(s.id) === siteIdParam) || null;
+  }
+
   function openEdit(s: Site, section: SiteSection = "domain") {
     setSslLog("");
-    setSettingsSection(section);
-    setEdit(s);
+    nav(`/sites/${s.id}/settings?section=${section}`);
   }
 
   async function patchSite(body: Record<string, unknown>, ok: string) {
-    if (!edit) return;
+    const current = routeSite();
+    if (!current) return;
     setBusy(true);
     try {
-      const st = await api.patch<Site>(`/api/sites/${edit.id}`, body);
+      const st = await api.patch<Site>(`/api/sites/${current.id}`, body);
       message.success(ok);
-      setEdit(st);
       await load();
       return st;
     } catch (err) {
@@ -569,14 +573,14 @@ export function Sites() {
   }
 
   async function issueSSL() {
-    if (!edit) return;
+    const current = routeSite();
+    if (!current) return;
     setBusy(true);
     setSslLog("");
     try {
-      const st = await api.post<Site & { log?: string }>(`/api/sites/${edit.id}/ssl`, {});
+      const st = await api.post<Site & { log?: string }>(`/api/sites/${current.id}/ssl`, {});
       setSslLog(st.log || "");
-      message.success(`Let's Encrypt issued for ${siteLabel(edit)}`);
-      setEdit(st);
+      message.success(`Let's Encrypt issued for ${siteLabel(current)}`);
       await load();
     } catch (err) {
       if (err instanceof RequestError && err.log) setSslLog(err.log);
@@ -587,12 +591,12 @@ export function Sites() {
   }
 
   async function useLocalSSL() {
-    if (!edit) return;
+    const current = routeSite();
+    if (!current) return;
     setBusy(true);
     try {
-      const st = await api.patch<Site>(`/api/sites/${edit.id}`, { ssl: true, sslKind: "local" });
-      message.success(`Local HTTPS enabled for ${siteLabel(edit)}`);
-      setEdit(st);
+      await api.patch<Site>(`/api/sites/${current.id}`, { ssl: true, sslKind: "local" });
+      message.success(`Local HTTPS enabled for ${siteLabel(current)}`);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -602,12 +606,12 @@ export function Sites() {
   }
 
   async function customSSL(cert: string, key: string) {
-    if (!edit) return;
+    const current = routeSite();
+    if (!current) return;
     setBusy(true);
     try {
-      const st = await api.post<Site>(`/api/sites/${edit.id}/ssl/custom`, { cert, key });
-      message.success(`Certificate installed for ${siteLabel(edit)}`);
-      setEdit(st);
+      await api.post<Site>(`/api/sites/${current.id}/ssl/custom`, { cert, key });
+      message.success(`Certificate installed for ${siteLabel(current)}`);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -618,12 +622,12 @@ export function Sites() {
   }
 
   async function disableSSL() {
-    if (!edit) return;
+    const current = routeSite();
+    if (!current) return;
     setBusy(true);
     try {
-      const st = await api.delete<Site>(`/api/sites/${edit.id}/ssl`);
-      message.success(`HTTPS disabled for ${siteLabel(edit)}`);
-      setEdit(st);
+      await api.delete<Site>(`/api/sites/${current.id}/ssl`);
+      message.success(`HTTPS disabled for ${siteLabel(current)}`);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -1055,6 +1059,7 @@ export function Sites() {
 
   return (
     <div className="cp-page">
+      {settingsOn ? null : (
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
         <div>
           <Typography.Title level={3} style={{ margin: 0 }}>
@@ -1068,7 +1073,8 @@ export function Sites() {
           Add domain
         </Button>
       </div>
-      {openSite ? (
+      )}
+      {!settingsOn && openSite ? (
         <Card>
           <SiteDash
             site={openSite}
@@ -1096,7 +1102,7 @@ export function Sites() {
       >
         {openSite ? <SiteWAFRules siteId={openSite.id} domain={openSite.domain} /> : null}
       </Modal>
-      {openSite ? null : admin ? (
+      {settingsOn || openSite ? null : admin ? (
         <Tabs
           activeKey={["le", "optimize", "waf"].includes(search.get("tab") || "") ? search.get("tab")! : "sites"}
           onChange={(key) => {
@@ -1250,25 +1256,28 @@ export function Sites() {
         </Form>
       </Modal>
 
-      {edit ? (
+      {settingsOn && openSite ? (
         <SiteSettings
-          site={edit}
+          site={openSite}
           section={settingsSection}
           busy={busy}
-          phpVersions={phpOptions(edit.phpVersion)}
-          publicName={publicHostname(edit.domain)}
-          onClose={() => setEdit(null)}
+          phpVersions={phpOptions(openSite.phpVersion)}
+          publicName={publicHostname(openSite.domain)}
+          onClose={() => nav(`/sites/${openSite.id}`)}
+          onSection={(section) => setSearch({ section }, { replace: true })}
           onPatch={patchSite}
           onIssueSSL={issueSSL}
           sslLog={sslLog}
           onLocalSSL={useLocalSSL}
           onDisableSSL={disableSSL}
           onCustomSSL={customSSL}
-          onGit={() => setGitSite(edit)}
-          onLogs={() => setLogSite(edit)}
-          onSSH={() => nav(`/terminal?user=${encodeURIComponent(edit.username)}`)}
-          onLaravel={() => void openApp(edit, "laravel")}
+          onGit={() => setGitSite(openSite)}
+          onLogs={() => setLogSite(openSite)}
+          onSSH={() => nav(`/terminal?user=${encodeURIComponent(openSite.username)}`)}
+          onLaravel={() => void openApp(openSite, "laravel")}
         />
+      ) : settingsOn ? (
+        <Button onClick={() => nav("/sites")}>Back</Button>
       ) : null}
 
       <Modal

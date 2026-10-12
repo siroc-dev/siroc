@@ -70,6 +70,7 @@ describe("SiteSettings", () => {
 
   it("opens on Domain Manager with the primary name locked", () => {
     renderSettings();
+    expect(screen.getByRole("button", { name: "Back" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Domains" })).toBeTruthy();
     expect(screen.getByText("Added 2025-07-09 16:13:54")).toBeTruthy();
     expect(screen.getByText("www.test.com")).toBeTruthy();

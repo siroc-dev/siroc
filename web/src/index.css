@@ -1334,12 +1334,21 @@ html[data-theme="dark"] .log-list button.is-on {
   max-width: calc(100vw - 32px);
 }
 
-.site-mod .ant-modal-body {
-  padding-top: 8px;
+.site-mod-page {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.site-mod-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
 .site-mod-meta {
-  margin-bottom: 12px;
+  margin: 2px 0 0;
 }
 
 .site-mod-pills {
