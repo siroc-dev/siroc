@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, App, Button, Descriptions, Input, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, App, Button, Descriptions, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/lib/nginxRewrites";
 import { ProxySettings, type ProxySettingsValue } from "@/components/ProxySettings";
 import { api, RequestError } from "@/lib/api";
@@ -26,6 +26,7 @@ export type SiteSettingsSite = {
   docRoot: string;
   phpVersion: string;
   aliases: string[];
+  aliasAdded?: string[];
   ssl: boolean;
   sslKind?: string;
   sslExpiry?: string;
@@ -322,10 +323,10 @@ export function SiteSettings({
   const port = site.ssl ? "80, 443" : "80";
   const rows = useMemo(
     () => [
-      { name: site.domain, label: site.displayName || site.domain, primary: true },
-      ...(site.aliases || []).map((name, i) => ({ name, label: site.displayAliases?.[i] || name, primary: false })),
+      { name: site.domain, label: site.displayName || site.domain, primary: true, added: addedAt(site.createdAt) },
+      ...(site.aliases || []).map((name, i) => ({ name, label: site.displayAliases?.[i] || name, primary: false, added: addedAt(site.aliasAdded?.[i]) })),
     ],
-    [site.domain, site.displayName, site.aliases, site.displayAliases],
+    [site.domain, site.displayName, site.aliases, site.displayAliases, site.aliasAdded, site.createdAt],
   );
 
   async function addDomains() {
@@ -365,8 +366,8 @@ export function SiteSettings({
   async function deletePicked() {
     const drop = new Set(picked);
     const next = (site.aliases || []).filter((a) => !drop.has(a));
-    await onPatch({ aliases: next }, "Domains removed");
-    setPicked([]);
+    const saved = await onPatch({ aliases: next }, picked.length === 1 ? "Alias removed" : "Aliases removed");
+    if (saved) setPicked([]);
   }
 
   function saveOpts(partial: SiteOptions, ok: string) {
@@ -463,9 +464,23 @@ export function SiteSettings({
                 One domain per line, up to 500 aliases. Duplicate names are skipped. The site listens on ports 80 and 443. A Let's Encrypt certificate covers the primary name and the first 99 aliases. A wildcard looks like *.example.com. Rename the site to change the primary name.
               </Typography.Paragraph>
               <Input.TextArea rows={3} value={draft} placeholder={"www.example.com\n*.example.com"} onChange={(e) => setDraft(e.target.value)} />
-              <Button style={{ marginTop: 12 }} type="primary" loading={busy} onClick={() => void addDomains()}>
-                Add names
-              </Button>
+              <Space wrap style={{ marginTop: 12, marginBottom: 16 }}>
+                <Button type="primary" loading={busy} onClick={() => void addDomains()}>
+                  Add names
+                </Button>
+                <Popconfirm
+                  title={picked.length === 1 ? "Remove this alias?" : `Remove ${picked.length} aliases?`}
+                  description="The primary name stays on the site."
+                  okText="Remove"
+                  okButtonProps={{ danger: true }}
+                  disabled={!picked.length}
+                  onConfirm={() => void deletePicked()}
+                >
+                  <Button danger disabled={!picked.length} loading={busy}>
+                    {picked.length ? `Remove ${picked.length} selected` : "Remove selected"}
+                  </Button>
+                </Popconfirm>
+              </Space>
               <Table
                 size="small"
                 rowKey="name"
@@ -473,6 +488,7 @@ export function SiteSettings({
                 dataSource={rows}
                 rowSelection={{
                   selectedRowKeys: picked,
+                  preserveSelectedRowKeys: true,
                   onChange: (keys) => setPicked(keys.map(String)),
                   getCheckboxProps: (row) => ({ disabled: row.primary }),
                 }}
@@ -487,6 +503,7 @@ export function SiteSettings({
                       </span>
                     ),
                   },
+                  { title: "Added", dataIndex: "added", width: 170, render: (v: string) => v || "—" },
                   { title: "Port", width: 110, render: () => port },
                   {
                     title: "",
@@ -505,9 +522,6 @@ export function SiteSettings({
                   },
                 ]}
               />
-              <Button style={{ marginTop: 12 }} disabled={!picked.length} loading={busy} onClick={() => void deletePicked()}>
-                Remove selected
-              </Button>
             </>
           ) : null}
 

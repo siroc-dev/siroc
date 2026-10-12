@@ -87,7 +87,7 @@ describe("SiteSettings", () => {
   it("shows the deployed certificate without a business-certificate tab", async () => {
     renderSettings("ssl", { ssl: true, sslKind: "custom" });
     expect(await screen.findByRole("tab", { name: "Certificate" })).toBeTruthy();
-    expect(screen.getByText(/Other certificate/)).toBeTruthy();
+    expect(await screen.findByText(/Other certificate/)).toBeTruthy();
     expect(screen.getByText(/Test CA/)).toBeTruthy();
     expect(screen.getByText(/test.com, www.test.com/)).toBeTruthy();
     expect(screen.getByText("Redirect HTTP to HTTPS")).toBeTruthy();

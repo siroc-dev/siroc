@@ -69,6 +69,7 @@ type Site struct {
 	PHPVersion     string           `json:"phpVersion"`
 	Enabled        bool             `json:"enabled"`
 	Aliases        []string         `json:"aliases"`
+	AliasAdded     []string         `json:"aliasAdded,omitempty"`
 	DisplayAliases []string         `json:"displayAliases,omitempty"`
 	Skipped        []string         `json:"skipped,omitempty"`
 	SSL            bool             `json:"ssl"`
@@ -665,7 +666,7 @@ func (s *Store) CountDatabases(accountID int64) (int, error) {
 }
 
 func (s *Store) CreateSite(accountID int64, domain, docroot, php string, aliases []string, kind, proxyPass, rewrite string, appPort int, appCmd string) (*Site, error) {
-	raw, err := json.Marshal(aliasesOrEmpty(aliases))
+	raw, err := encodeAliases("", aliasesOrEmpty(aliases), time.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -698,7 +699,7 @@ func scanSite(scan func(dest ...any) error) (*Site, error) {
 	st.WAFEnabled = waf == 1
 	st.WAFDisabledIDs = parseWAFRuleIDs(disabled)
 	st.Options = siteopts.Parse(opts)
-	st.Aliases = parseAliases(aliases)
+	st.Aliases, st.AliasAdded = parseAliasStore(aliases)
 	st.DisplayName = validate.DisplayDomain(st.Domain)
 	st.DisplayAliases = displayAliases(st.Aliases)
 	st.Rewrite = parseRewriteText(rewrites)
@@ -763,7 +764,9 @@ func (s *Store) UpdateSite(id int64, php, docroot string, enabled bool, aliases 
 	if !ssl {
 		kind = ""
 	}
-	raw, err := json.Marshal(aliasesOrEmpty(aliases))
+	var prev string
+	_ = s.DB.QueryRow(`SELECT aliases_json FROM sites WHERE id = ?`, id).Scan(&prev)
+	raw, err := encodeAliases(prev, aliasesOrEmpty(aliases), time.Now())
 	if err != nil {
 		return err
 	}
@@ -958,15 +961,67 @@ func (s *Store) HostnameTaken(name string, exceptID int64) (bool, error) {
 	return false, nil
 }
 
+type aliasStored struct {
+	Name  string `json:"name"`
+	Added string `json:"added,omitempty"`
+}
+
+func parseAliasStore(raw string) (names []string, added []string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "null" || raw == "[]" {
+		return []string{}, nil
+	}
+	var recs []aliasStored
+	if json.Unmarshal([]byte(raw), &recs) == nil && len(recs) > 0 && recs[0].Name != "" {
+		names = make([]string, 0, len(recs))
+		added = make([]string, 0, len(recs))
+		for _, rec := range recs {
+			if rec.Name == "" {
+				continue
+			}
+			names = append(names, rec.Name)
+			added = append(added, rec.Added)
+		}
+		return names, added
+	}
+	var list []string
+	if json.Unmarshal([]byte(raw), &list) != nil || list == nil {
+		return []string{}, nil
+	}
+	return list, nil
+}
+
+func encodeAliases(prevRaw string, names []string, now time.Time) (string, error) {
+	prevNames, prevAdded := parseAliasStore(prevRaw)
+	had := map[string]string{}
+	seen := map[string]bool{}
+	for i, name := range prevNames {
+		seen[name] = true
+		if i < len(prevAdded) {
+			had[name] = prevAdded[i]
+		}
+	}
+	stamp := now.UTC().Format("2006-01-02 15:04:05")
+	out := make([]aliasStored, 0, len(names))
+	for _, name := range names {
+		rec := aliasStored{Name: name}
+		if seen[name] {
+			rec.Added = had[name]
+		} else {
+			rec.Added = stamp
+		}
+		out = append(out, rec)
+	}
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
 func parseAliases(raw string) []string {
-	if strings.TrimSpace(raw) == "" {
-		return []string{}
-	}
-	var out []string
-	if err := json.Unmarshal([]byte(raw), &out); err != nil || out == nil {
-		return []string{}
-	}
-	return out
+	names, _ := parseAliasStore(raw)
+	return names
 }
 
 func aliasesOrEmpty(in []string) []string {

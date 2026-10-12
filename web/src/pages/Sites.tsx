@@ -63,6 +63,7 @@ type Site = {
   phpVersion: string;
   enabled: boolean;
   aliases: string[];
+  aliasAdded?: string[];
   skipped?: string[];
   ssl: boolean;
   sslKind?: string;
