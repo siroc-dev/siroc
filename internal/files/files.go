@@ -175,7 +175,7 @@ func (m *Manager) List(username, rel string, root bool) (*rpc.FileListResp, erro
 	if resp.Entries == nil {
 		resp.Entries = []rpc.FileEntry{}
 	}
-	return &rpc.FileListResp{Path: showPath, AbsPath: abs, Jail: jail, Entries: resp.Entries}, nil
+	return &rpc.FileListResp{Path: showPath, AbsPath: abs, Jail: jail, Roots: m.allow(), Entries: resp.Entries}, nil
 }
 
 func (m *Manager) Read(username, rel string, root bool) (*rpc.FileContentResp, error) {

@@ -1,6 +1,6 @@
 /** @vitest-environment node */
 import { describe, expect, it } from "vitest";
-import { accountAbs, isSystemPath, joinPath, moveDestinations, normalizeFileJump, parentFilePath } from "./filePaths";
+import { accountAbs, fileCrumbs, isSystemPath, joinPath, moveDestinations, normalizeFileJump, parentFilePath } from "./filePaths";
 
 describe("moveDestinations", () => {
   it("keeps folder + name for one item", () => {
@@ -60,5 +60,14 @@ describe("external document root", () => {
     expect(parentFilePath("/mnt/data/plyxxx", "/mnt/data/plyxxx")).toBe("/");
     expect(parentFilePath("/mnt/data/plyxxx/css", "/mnt/data/plyxxx")).toBe("/mnt/data/plyxxx");
     expect(parentFilePath("/domains/a", "")).toBe("/domains");
+  });
+
+  it("does not offer /mnt or /mnt/data as folders inside the home", () => {
+    expect(fileCrumbs("/mnt/data/plyxxx", "/mnt/data/plyxxx").map((c) => c.path)).toEqual(["/", "/mnt/data/plyxxx"]);
+    expect(fileCrumbs("/mnt/data/plyxxx/css", "/mnt/data/plyxxx").map((c) => c.path)).toEqual([
+      "/",
+      "/mnt/data/plyxxx",
+      "/mnt/data/plyxxx/css",
+    ]);
   });
 });

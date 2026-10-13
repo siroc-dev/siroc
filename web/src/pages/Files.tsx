@@ -47,7 +47,7 @@ import {
 import { api, redirectIfSessionExpired } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { languageFromPath } from "@/lib/fileLang";
-import { accountAbs, isSystemPath, joinPath, moveDestinations, normalizeFileJump, parentFilePath } from "@/lib/filePaths";
+import { accountAbs, fileCrumbs, isSystemPath, joinPath, moveDestinations, normalizeFileJump, parentFilePath } from "@/lib/filePaths";
 import { editorWorkspace, formatBytes } from "@/lib/usage";
 import { SSHTerminal } from "@/components/SSHTerminal";
 
@@ -55,7 +55,7 @@ const MonacoFileEditor = lazy(() => import("@/components/MonacoFileEditor").then
 
 type Account = { username: string };
 type Entry = { name: string; path: string; isDir: boolean; size: number; mode: string; modTime: string };
-type Listing = { path: string; absPath?: string; root?: boolean; jail?: string; entries: Entry[] };
+type Listing = { path: string; absPath?: string; root?: boolean; jail?: string; roots?: string[]; entries: Entry[] };
 type Clip = { items: { path: string; name: string; isDir: boolean }[]; op: "copy" | "move" };
 
 const rootShortcuts = ["/", "/etc", "/home", "/opt/siroc", "/var/log", "/etc/nginx", "/etc/php"];
@@ -102,17 +102,6 @@ function fmtTime(s: string) {
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return s;
   return d.toLocaleString();
-}
-
-function crumbParts(path: string) {
-  const parts = path.split("/").filter(Boolean);
-  const items: { title: string; path: string }[] = [{ title: "Home directory", path: "/" }];
-  let cur = "";
-  for (const part of parts) {
-    cur += "/" + part;
-    items.push({ title: part, path: cur });
-  }
-  return items;
 }
 
 function isSafeName(name: string) {
@@ -938,6 +927,14 @@ export function Files() {
                 </Button>
               ))}
             </div>
+          ) : listing.roots && listing.roots.length ? (
+            <div className="fm-tree-shortcuts">
+              {listing.roots.map((p) => (
+                <Button key={p} type="link" size="small" onClick={() => void load(p)}>
+                  {p}
+                </Button>
+              ))}
+            </div>
           ) : null}
           <Tree.DirectoryTree
             blockNode
@@ -1029,7 +1026,7 @@ export function Files() {
               Open
             </Button>
             <Breadcrumb
-              items={crumbParts(listing.path).map((c) => ({
+              items={fileCrumbs(listing.path, listing.jail).map((c) => ({
                 title: (
                   <button type="button" className="fm-crumb-btn" onClick={() => void load(c.path)}>
                     {c.path === "/" ? <HomeOutlined /> : null} {c.title}

@@ -37,6 +37,27 @@ export function parentFilePath(path: string, jail?: string) {
   return next || "/";
 }
 
+export function fileCrumbs(path: string, jail?: string) {
+  const cur = (path || "/").replace(/\/+$/, "") || "/";
+  const root = (jail || "").replace(/\/+$/, "");
+  const items: { title: string; path: string }[] = [{ title: "Home directory", path: "/" }];
+  if (root && (cur === root || cur.startsWith(root + "/"))) {
+    items.push({ title: root, path: root });
+    let at = root;
+    for (const part of cur.slice(root.length).split("/").filter(Boolean)) {
+      at += "/" + part;
+      items.push({ title: part, path: at });
+    }
+    return items;
+  }
+  let at = "";
+  for (const part of cur.split("/").filter(Boolean)) {
+    at += "/" + part;
+    items.push({ title: part, path: at });
+  }
+  return items;
+}
+
 export function accountAbs(home: string, path: string, jail?: string) {
   const base = home.replace(/\/+$/, "") || "/";
   const p = (path || "/").replace(/\/+$/, "") || "/";

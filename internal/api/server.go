@@ -865,7 +865,7 @@ func (s *Server) fileRoots(username string, root bool) []string {
 			continue
 		}
 		p := strings.TrimSpace(strings.ReplaceAll(site.DocRoot, "\\", "/"))
-		if !strings.HasPrefix(p, "/") {
+		if p == "" || p == "/" || strings.Contains(p, "..") {
 			continue
 		}
 		if _, ok := seen[p]; ok {

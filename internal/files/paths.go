@@ -69,8 +69,38 @@ func cleanSiteRoots(homeRoot, username string, roots []string) []string {
 		// Keep the stored path and, when it is a symlink, the resolved path.
 		add(abs)
 		add(raw)
+		// A directory saved as /home/<user>/mnt/data/... is the mount /mnt/data/...,
+		// not a folder under the home.
+		if alt := mountAlias(home, abs); alt != "" {
+			if cleaned, err := validate.DocRoot(homeRoot, username, alt, ""); err == nil {
+				add(cleaned)
+				add(alt)
+			}
+		}
 	}
 	return out
+}
+
+// mountAlias returns /mnt/... when a document root was stored under the account home
+// by joining that absolute path onto the home.
+func mountAlias(home, doc string) string {
+	home = slashClean(home)
+	doc = slashClean(doc)
+	if home == "" || home == "/" || doc == "" {
+		return ""
+	}
+	if doc != home && !strings.HasPrefix(doc, home+"/") {
+		return ""
+	}
+	rel := strings.TrimPrefix(doc, home+"/")
+	if !strings.HasPrefix(rel, "mnt/") {
+		return ""
+	}
+	rest := strings.TrimPrefix(rel, "mnt/")
+	if rest == "" || strings.Contains(rest, "..") {
+		return ""
+	}
+	return "/" + rel
 }
 
 func pathAllowed(home, abs string, roots []string) bool {

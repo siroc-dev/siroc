@@ -25,6 +25,13 @@ func TestExternalDocRootIsNotJoinedOntoHome(t *testing.T) {
 	if sub != "/mnt/data/plyxxx/index.php" {
 		t.Fatalf("child got %s", sub)
 	}
+	bare, err := candidatePath(home, "mnt/data/plyxxx", roots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bare != "/mnt/data/plyxxx" {
+		t.Fatalf("relative mount path got %s", bare)
+	}
 }
 
 func TestHomeRelativePathStillJoinsHome(t *testing.T) {
@@ -52,6 +59,14 @@ func TestCleanSiteRoots(t *testing.T) {
 	})
 	if len(got) != 1 || got[0] != "/mnt/data/plyxxx" {
 		t.Fatalf("got %#v", got)
+	}
+	joined := cleanSiteRoots("/home", "abraventure", []string{"/home/abraventure/mnt/data/plyxxx"})
+	if len(joined) != 1 || joined[0] != "/mnt/data/plyxxx" {
+		t.Fatalf("home-joined docroot: %#v", joined)
+	}
+	homeOnly := cleanSiteRoots("/home", "abraventure", []string{"/home/abraventure/domains/abraventure.com/public_html"})
+	if len(homeOnly) != 0 {
+		t.Fatalf("home directory leaked: %#v", homeOnly)
 	}
 }
 

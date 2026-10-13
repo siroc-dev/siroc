@@ -99,6 +99,7 @@ type FileListResp struct {
 	AbsPath string      `json:"absPath,omitempty"`
 	Root    bool        `json:"root,omitempty"`
 	Jail    string      `json:"jail,omitempty"`
+	Roots   []string    `json:"roots,omitempty"`
 	Entries []FileEntry `json:"entries"`
 }
 
