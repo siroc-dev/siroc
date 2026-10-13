@@ -16,6 +16,12 @@ func TestWithinHome(t *testing.T) {
 	if withinHome(home, filepath.Join(string(filepath.Separator), "etc", "ssh")) {
 		t.Fatal("system path must stay outside")
 	}
+	if docInAccount(home, filepath.Join(string(filepath.Separator), "mnt", "data", "plyxxx")) {
+		t.Fatal("a mounted document root must not be treated as the account tree")
+	}
+	if !docInAccount(home, filepath.Join(home, "domains", "abraventure.com", "public_html")) {
+		t.Fatal("a site inside the home is the account tree")
+	}
 }
 
 func TestChmodWebTreeFollowsStorageLink(t *testing.T) {

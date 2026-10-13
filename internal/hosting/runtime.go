@@ -56,7 +56,7 @@ func (m *Manager) writeApp(req rpc.SiteWriteReq) error {
 	if err := seedApp(kind, doc); err != nil {
 		return err
 	}
-	_ = exec.Command("chown", "-R", req.Username+":"+req.Username, doc).Run()
+	m.ownDoc(req.Username, doc)
 	if kind == "docker" {
 		_ = exec.Command("usermod", "-aG", "docker", req.Username).Run()
 	}

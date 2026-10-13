@@ -8,7 +8,6 @@ Environment=HOME=/root
 Environment=SIROC_UPDATE_URL=https://get.siroc.dev
 RuntimeDirectory=siroc
 RuntimeDirectoryMode=0750
-RuntimeDirectoryGroup=siroc
 ExecStart=/usr/local/bin/siroc-agent
 Restart=on-failure
 RestartSec=2

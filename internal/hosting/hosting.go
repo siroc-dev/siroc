@@ -317,9 +317,8 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 	own := req.Username + ":" + req.Username
 	domainDir := filepath.Join(m.HomeRoot, req.Username, "domains", req.Domain)
 	_ = exec.Command("chown", "-R", own, domainDir).Run()
-	_ = exec.Command("chown", "-R", own, doc).Run()
+	m.ownDoc(req.Username, doc)
 	_ = exec.Command("chown", own, tmp).Run()
-	_ = m.FixWebPerms(req.Username, doc)
 
 	sock := fmt.Sprintf("/run/php/php%s-%s-%s.sock", req.PHPVersion, req.Username, slug(req.Domain))
 	serverRewrite, innerRewrite, skipRoot, err := validate.SplitNginxRewrite(req.Rewrite)
@@ -534,7 +533,7 @@ func (m *Manager) writeDirect(req rpc.SiteWriteReq) error {
 		_ = os.WriteFile(idx, []byte("<!doctype html><meta charset=\"utf-8\"><title>"+req.Domain+"</title>\n"), 0644)
 	}
 	_ = exec.Command("chown", "-R", req.Username+":"+req.Username, filepath.Join(m.HomeRoot, req.Username, "domains", req.Domain)).Run()
-	_ = exec.Command("chown", "-R", req.Username+":"+req.Username, doc).Run()
+	m.ownDoc(req.Username, doc)
 	aliases, err := validate.DomainAliases(req.Domain, req.Aliases)
 	if err != nil {
 		return err
@@ -640,7 +639,7 @@ func (m *Manager) writeProxy(req rpc.SiteWriteReq) error {
 		return err
 	}
 	_ = exec.Command("chown", "-R", req.Username+":"+req.Username, filepath.Join(m.HomeRoot, req.Username, "domains", req.Domain)).Run()
-	_ = exec.Command("chown", "-R", req.Username+":"+req.Username, doc).Run()
+	m.ownDoc(req.Username, doc)
 	aliases, err := validate.DomainAliases(req.Domain, req.Aliases)
 	if err != nil {
 		return err
@@ -871,6 +870,22 @@ func testReload(service, bin string, args ...string) error {
 
 func slug(domain string) string {
 	return strings.ReplaceAll(domain, ".", "_")
+}
+
+func (m *Manager) ownDoc(username, doc string) {
+	doc = filepath.Clean(doc)
+	if doc == "" || doc == "/" || doc == "." {
+		return
+	}
+	own := username + ":" + username
+	home, _, err := validate.HomeJail(m.HomeRoot, username)
+	if err != nil || !docInAccount(home, doc) {
+		_ = exec.Command("chown", own, doc).Run()
+		_ = os.Chmod(doc, 0755)
+		return
+	}
+	_ = exec.Command("chown", "-R", own, doc).Run()
+	_ = m.FixWebPerms(username, doc)
 }
 
 func (m *Manager) FixWebPerms(username, doc string) error {

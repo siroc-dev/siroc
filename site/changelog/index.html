@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.58">0.2.58</a>
           <a href="#v0.2.57">0.2.57</a>
           <a href="#v0.2.56">0.2.56</a>
           <a href="#v0.2.55">0.2.55</a>
@@ -86,6 +87,15 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.58">
+          <h2><a href="#v0.2.58">0.2.58</a></h2>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Creating a site on another disk no longer changes the owner of every file there, so the request finishes.</li>
+            <li>The agent service file no longer sets RuntimeDirectoryGroup. systemd before 256 ignored that line. An installed unit drops it the next time the agent starts.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.57">
           <h2><a href="#v0.2.57">0.2.57</a></h2>

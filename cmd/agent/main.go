@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"os/user"
 	"path/filepath"
@@ -97,6 +98,7 @@ func main() {
 		log.Fatal("siroc-agent must run as root")
 	}
 	log.Printf("siroc-agent %s", version.Current())
+	repairAgentUnit()
 
 	cfg := config.Load()
 	sockDir := filepath.Dir(cfg.SocketPath)
@@ -1451,6 +1453,25 @@ func goAccessInfo(domain string, refresh bool) rpc.GoAccessInfo {
 	out.Bytes = size
 	out.GeneratedAt = gen.Format("2006-01-02 15:04:05")
 	return out
+}
+
+func repairAgentUnit() {
+	const path = "/etc/systemd/system/siroc-agent.service"
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	next, changed := update.StripRuntimeDirectoryGroup(string(b))
+	if !changed {
+		return
+	}
+	if err := os.WriteFile(path, []byte(next), 0644); err != nil {
+		log.Printf("agent unit: %v", err)
+		return
+	}
+	if out, err := exec.Command("systemctl", "daemon-reload").CombinedOutput(); err != nil {
+		log.Printf("daemon-reload: %s", strings.TrimSpace(string(out)))
+	}
 }
 
 func lookupGID(name string) int {

@@ -85,3 +85,12 @@ func withinHome(home, path string) bool {
 	}
 	return true
 }
+
+// docInAccount is true when the document root lives under the account home.
+// A path on another disk is not walked: recursive chown and chmod never finish on a large mount.
+func docInAccount(home, doc string) bool {
+	if home == "" || doc == "" {
+		return false
+	}
+	return withinHome(home, doc)
+}
