@@ -47,7 +47,7 @@ import {
 import { api, redirectIfSessionExpired } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { languageFromPath } from "@/lib/fileLang";
-import { isSystemPath, joinPath, moveDestinations, normalizeFileJump } from "@/lib/filePaths";
+import { accountAbs, isSystemPath, joinPath, moveDestinations, normalizeFileJump, parentFilePath } from "@/lib/filePaths";
 import { editorWorkspace, formatBytes } from "@/lib/usage";
 import { SSHTerminal } from "@/components/SSHTerminal";
 
@@ -55,7 +55,7 @@ const MonacoFileEditor = lazy(() => import("@/components/MonacoFileEditor").then
 
 type Account = { username: string };
 type Entry = { name: string; path: string; isDir: boolean; size: number; mode: string; modTime: string };
-type Listing = { path: string; absPath?: string; root?: boolean; entries: Entry[] };
+type Listing = { path: string; absPath?: string; root?: boolean; jail?: string; entries: Entry[] };
 type Clip = { items: { path: string; name: string; isDir: boolean }[]; op: "copy" | "move" };
 
 const rootShortcuts = ["/", "/etc", "/home", "/opt/siroc", "/var/log", "/etc/nginx", "/etc/php"];
@@ -185,7 +185,7 @@ export function Files() {
       keys.push(cur);
     }
     setExpanded((prev) => Array.from(new Set([...prev, ...keys])));
-    void prefetchTree(data.path);
+    if (!data.jail) void prefetchTree(data.path);
   }
 
   async function prefetchTree(path: string) {
@@ -265,9 +265,7 @@ export function Files() {
   }
 
   function parent() {
-    const parts = listing.path.split("/").filter(Boolean);
-    parts.pop();
-    return "/" + parts.join("/");
+    return parentFilePath(listing.path, listing.jail);
   }
 
   function closePreview() {
@@ -765,10 +763,7 @@ export function Files() {
     if (rel && rel.startsWith("/") && root) return rel;
     if (listing.absPath && (!rel || rel === listing.path)) return listing.absPath;
     if (root) return rel || listing.path || "/";
-    const home = `/home/${user}`;
-    const p = (rel || listing.path || "/").replace(/\/+$/, "") || "/";
-    if (p === "/") return home;
-    return `${home}${p.startsWith("/") ? p : "/" + p}`;
+    return accountAbs(`/home/${user}`, rel || listing.path || "/", listing.jail);
   }
 
   function openTerminal(path?: string) {

@@ -848,12 +848,41 @@ func (s *Server) fileUser(w http.ResponseWriter, r *http.Request, username strin
 	return acc.Username, false, true
 }
 
+// fileRoots are this account's document roots that sit outside the home.
+// The file manager opens those paths as themselves instead of joining them onto the home.
+func (s *Server) fileRoots(username string, root bool) []string {
+	if root || username == "" || username == "root" || s.Store == nil {
+		return nil
+	}
+	sites, err := s.Store.ListSites()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	seen := map[string]struct{}{}
+	for _, site := range sites {
+		if site.Username != username {
+			continue
+		}
+		p := strings.TrimSpace(strings.ReplaceAll(site.DocRoot, "\\", "/"))
+		if !strings.HasPrefix(p, "/") {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out
+}
+
 func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
 	username, root, ok := s.fileUser(w, r, r.URL.Query().Get("user"))
 	if !ok {
 		return
 	}
-	out, err := s.Agent.FileList(username, r.URL.Query().Get("path"), root)
+	out, err := s.Agent.FileList(username, r.URL.Query().Get("path"), root, s.fileRoots(username, root)...)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -866,7 +895,7 @@ func (s *Server) readFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	out, err := s.Agent.FileRead(username, r.URL.Query().Get("path"), root)
+	out, err := s.Agent.FileRead(username, r.URL.Query().Get("path"), root, s.fileRoots(username, root)...)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -887,7 +916,7 @@ func (s *Server) writeFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Agent.FileWrite(username, body.Path, body.Content, root); err != nil {
+	if err := s.Agent.FileWrite(username, body.Path, body.Content, root, s.fileRoots(username, root)...); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -906,7 +935,7 @@ func (s *Server) mkdir(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Agent.FileMkdir(username, body.Path, root); err != nil {
+	if err := s.Agent.FileMkdir(username, body.Path, root, s.fileRoots(username, root)...); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -926,7 +955,7 @@ func (s *Server) renameFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Agent.FileRename(username, body.Path, body.Dest, root); err != nil {
+	if err := s.Agent.FileRename(username, body.Path, body.Dest, root, s.fileRoots(username, root)...); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -946,7 +975,7 @@ func (s *Server) chmodFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Agent.FileChmod(username, body.Path, body.Mode, root); err != nil {
+	if err := s.Agent.FileChmod(username, body.Path, body.Mode, root, s.fileRoots(username, root)...); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -966,7 +995,7 @@ func (s *Server) copyFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Agent.FileCopy(username, body.Path, body.Dest, root); err != nil {
+	if err := s.Agent.FileCopy(username, body.Path, body.Dest, root, s.fileRoots(username, root)...); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -985,7 +1014,7 @@ func (s *Server) extractFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	out, err := s.Agent.FileExtract(username, body.Path, root)
+	out, err := s.Agent.FileExtract(username, body.Path, root, s.fileRoots(username, root)...)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -1005,7 +1034,7 @@ func (s *Server) archiveFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	out, err := s.Agent.FileArchive(username, body.Path, root)
+	out, err := s.Agent.FileArchive(username, body.Path, root, s.fileRoots(username, root)...)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -1018,7 +1047,7 @@ func (s *Server) deleteFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.Agent.FileDelete(username, r.URL.Query().Get("path"), root); err != nil {
+	if err := s.Agent.FileDelete(username, r.URL.Query().Get("path"), root, s.fileRoots(username, root)...); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -1063,7 +1092,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 			dest = "/" + name
 		}
 	}
-	if err := s.Agent.FileUpload(username, dest, name, f, root); err != nil {
+	if err := s.Agent.FileUpload(username, dest, name, f, root, s.fileRoots(username, root)...); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -1075,7 +1104,7 @@ func (s *Server) downloadFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	res, err := s.Agent.FileDownload(username, r.URL.Query().Get("path"), root)
+	res, err := s.Agent.FileDownload(username, r.URL.Query().Get("path"), root, s.fileRoots(username, root)...)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return

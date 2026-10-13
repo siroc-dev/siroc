@@ -27,6 +27,25 @@ export function joinPath(dir: string, name: string) {
   return `${base}/${leaf}`;
 }
 
+export function parentFilePath(path: string, jail?: string) {
+  const cur = (path || "/").replace(/\/+$/, "") || "/";
+  const parts = cur.split("/").filter(Boolean);
+  parts.pop();
+  const next = "/" + parts.join("/");
+  const root = (jail || "").replace(/\/+$/, "");
+  if (root && (cur === root || (next !== root && !next.startsWith(root + "/")))) return "/";
+  return next || "/";
+}
+
+export function accountAbs(home: string, path: string, jail?: string) {
+  const base = home.replace(/\/+$/, "") || "/";
+  const p = (path || "/").replace(/\/+$/, "") || "/";
+  if (p === "/") return base;
+  const root = (jail || "").replace(/\/+$/, "");
+  if (root && (p === root || p.startsWith(root + "/"))) return p;
+  return p.startsWith("/") ? `${base}${p}` : `${base}/${p}`;
+}
+
 export function moveDestinations(items: { path: string; name: string }[], dest: string) {
   dest = dest.trim().replace(/\/+$/, "") || "/";
   if (!items.length) return [];

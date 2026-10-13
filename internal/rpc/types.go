@@ -68,14 +68,15 @@ type UserCLIReq struct {
 }
 
 type FileReq struct {
-	Username string `json:"username"`
-	Path     string `json:"path"`
-	Dest     string `json:"dest,omitempty"`
-	Mode     string `json:"mode,omitempty"`
-	Content  string `json:"content,omitempty"`
-	URL      string `json:"url,omitempty"`
-	Query    string `json:"query,omitempty"`
-	Root     bool   `json:"root,omitempty"`
+	Username string   `json:"username"`
+	Path     string   `json:"path"`
+	Dest     string   `json:"dest,omitempty"`
+	Mode     string   `json:"mode,omitempty"`
+	Content  string   `json:"content,omitempty"`
+	URL      string   `json:"url,omitempty"`
+	Query    string   `json:"query,omitempty"`
+	Root     bool     `json:"root,omitempty"`
+	Roots    []string `json:"roots,omitempty"`
 }
 
 type FileOpResp struct {
@@ -97,6 +98,7 @@ type FileListResp struct {
 	Path    string      `json:"path"`
 	AbsPath string      `json:"absPath,omitempty"`
 	Root    bool        `json:"root,omitempty"`
+	Jail    string      `json:"jail,omitempty"`
 	Entries []FileEntry `json:"entries"`
 }
 

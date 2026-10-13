@@ -39,7 +39,8 @@ func (s *Server) fetchFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	out, err := s.Agent.FileFetch(rpc.FileReq{Username: username, Path: body.Path, URL: body.URL, Dest: body.Dest, Root: root})
+	req := rpc.FileReq{Username: username, Path: body.Path, URL: body.URL, Dest: body.Dest, Root: root, Roots: s.fileRoots(username, root)}
+	out, err := s.Agent.FileFetch(req)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -60,7 +61,8 @@ func (s *Server) searchFiles(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	out, err := s.Agent.FileSearch(rpc.FileReq{Username: username, Path: body.Path, Query: body.Query, Root: root})
+	req := rpc.FileReq{Username: username, Path: body.Path, Query: body.Query, Root: root, Roots: s.fileRoots(username, root)}
+	out, err := s.Agent.FileSearch(req)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return

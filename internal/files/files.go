@@ -25,19 +25,41 @@ import (
 )
 
 type Manager struct {
-	HomeRoot string
+	HomeRoot   string
+	user       string
+	extraRoots []string
+}
+
+// For returns a per-request manager that may also open this account's site
+// document roots when they live outside the home.
+func (m *Manager) For(username string, roots []string) *Manager {
+	if m == nil {
+		m = &Manager{}
+	}
+	cp := *m
+	cp.user = username
+	cp.extraRoots = append([]string(nil), roots...)
+	return &cp
+}
+
+func (m *Manager) allow() []string {
+	if m == nil || m.user == "" {
+		return nil
+	}
+	return cleanSiteRoots(m.HomeRoot, m.user, m.extraRoots)
 }
 
 type helperReq struct {
-	Op       string `json:"op"`
-	Path     string `json:"path"`
-	Dest     string `json:"dest,omitempty"`
-	Content  string `json:"content,omitempty"`
-	Encoding string `json:"encoding,omitempty"`
-	Mode     string `json:"mode,omitempty"`
-	URL      string `json:"url,omitempty"`
-	Query    string `json:"query,omitempty"`
-	Home     string `json:"home"`
+	Op       string   `json:"op"`
+	Path     string   `json:"path"`
+	Dest     string   `json:"dest,omitempty"`
+	Content  string   `json:"content,omitempty"`
+	Encoding string   `json:"encoding,omitempty"`
+	Mode     string   `json:"mode,omitempty"`
+	URL      string   `json:"url,omitempty"`
+	Query    string   `json:"query,omitempty"`
+	Home     string   `json:"home"`
+	Roots    []string `json:"roots,omitempty"`
 }
 
 type helperResp struct {
@@ -67,11 +89,11 @@ func (m *Manager) resolve(username, rel string) (abs, home string, uid, gid int,
 	if resolved, e := filepath.EvalSymlinks(home); e == nil {
 		home = resolved
 	}
-	if rel == "" || rel == "/" {
-		rel = "."
+	roots := m.allow()
+	candidate, err := candidatePath(filepath.ToSlash(home), rel, roots)
+	if err != nil {
+		return "", "", 0, 0, err
 	}
-	rel = strings.TrimPrefix(rel, "/")
-	candidate := filepath.Join(home, rel)
 	abs, err = filepath.Abs(candidate)
 	if err != nil {
 		return "", "", 0, 0, err
@@ -90,8 +112,7 @@ func (m *Manager) resolve(username, rel string) (abs, home string, uid, gid int,
 			check = filepath.Join(r, filepath.Base(abs))
 		}
 	}
-	relToHome, err := filepath.Rel(home, check)
-	if err != nil || strings.HasPrefix(relToHome, "..") {
+	if !pathAllowed(filepath.ToSlash(home), filepath.ToSlash(check), roots) {
 		return "", "", 0, 0, fmt.Errorf("path is outside the account home")
 	}
 	return abs, home, uid, gid, nil
@@ -101,6 +122,9 @@ func (m *Manager) call(uid, gid int, req helperReq) (*helperResp, error) {
 	self, err := os.Executable()
 	if err != nil {
 		return nil, err
+	}
+	if len(req.Roots) == 0 {
+		req.Roots = m.allow()
 	}
 	raw, err := json.Marshal(req)
 	if err != nil {
@@ -143,15 +167,15 @@ func (m *Manager) List(username, rel string, root bool) (*rpc.FileListResp, erro
 	if err != nil {
 		return nil, err
 	}
-	show, _ := filepath.Rel(home, abs)
-	showPath := "/"
-	if show != "." {
-		showPath = "/" + filepath.ToSlash(show)
+	showPath := displayPath(filepath.ToSlash(home), filepath.ToSlash(abs))
+	jail := ""
+	if !within(filepath.ToSlash(home), filepath.ToSlash(abs)) {
+		jail = matchedRoot(m.allow(), filepath.ToSlash(abs))
 	}
 	if resp.Entries == nil {
 		resp.Entries = []rpc.FileEntry{}
 	}
-	return &rpc.FileListResp{Path: showPath, AbsPath: abs, Entries: resp.Entries}, nil
+	return &rpc.FileListResp{Path: showPath, AbsPath: abs, Jail: jail, Entries: resp.Entries}, nil
 }
 
 func (m *Manager) Read(username, rel string, root bool) (*rpc.FileContentResp, error) {
@@ -310,12 +334,12 @@ func HelperMain() {
 		writeHelper(helperResp{Error: err.Error()})
 		return
 	}
-	if err := stillJailed(req.Home, req.Path); err != nil {
+	if err := stillJailed(req.Home, req.Path, req.Roots); err != nil {
 		writeHelper(helperResp{Error: err.Error()})
 		return
 	}
 	if req.Dest != "" {
-		if err := stillJailed(req.Home, req.Dest); err != nil {
+		if err := stillJailed(req.Home, req.Dest, req.Roots); err != nil {
 			writeHelper(helperResp{Error: err.Error()})
 			return
 		}
@@ -328,9 +352,16 @@ func HelperMain() {
 	writeHelper(resp)
 }
 
-func stillJailed(home, path string) error {
-	rel, err := filepath.Rel(home, path)
-	if err != nil || strings.HasPrefix(rel, "..") {
+func stillJailed(home, target string, roots []string) error {
+	h := slashClean(home)
+	if h == "/" {
+		t := slashClean(target)
+		if t == "" || t == "." || strings.HasPrefix(t, "..") {
+			return fmt.Errorf("path is outside the account home")
+		}
+		return nil
+	}
+	if !pathAllowed(h, slashClean(target), roots) {
 		return fmt.Errorf("path is outside the account home")
 	}
 	return nil
@@ -349,10 +380,10 @@ func runHelper(req helperReq) (helperResp, error) {
 			if err != nil {
 				continue
 			}
-			rel, _ := filepath.Rel(req.Home, filepath.Join(req.Path, info.Name()))
+			full := filepath.Join(req.Path, info.Name())
 			entries = append(entries, rpc.FileEntry{
 				Name:    info.Name(),
-				Path:    "/" + filepath.ToSlash(rel),
+				Path:    displayPath(req.Home, filepath.ToSlash(full)),
 				IsDir:   info.IsDir(),
 				Size:    info.Size(),
 				Mode:    fmt.Sprintf("%04o", info.Mode().Perm()),

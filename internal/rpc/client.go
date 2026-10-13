@@ -138,60 +138,77 @@ func (c *Client) UserCLI(in UserCLIReq) error {
 	return c.do(http.MethodPost, "/users/cli", in, nil)
 }
 
-func (c *Client) FileList(username, path string, root bool) (*FileListResp, error) {
+func fileBody(username, path string, root bool, roots []string) FileReq {
+	return FileReq{Username: username, Path: path, Root: root, Roots: roots}
+}
+
+func (c *Client) FileList(username, path string, root bool, roots ...string) (*FileListResp, error) {
 	var out FileListResp
-	err := c.do(http.MethodPost, "/files/list", FileReq{Username: username, Path: path, Root: root}, &out)
+	err := c.do(http.MethodPost, "/files/list", fileBody(username, path, root, roots), &out)
 	return &out, err
 }
 
-func (c *Client) FileRead(username, path string, root bool) (*FileContentResp, error) {
+func (c *Client) FileRead(username, path string, root bool, roots ...string) (*FileContentResp, error) {
 	var out FileContentResp
-	err := c.do(http.MethodPost, "/files/read", FileReq{Username: username, Path: path, Root: root}, &out)
+	err := c.do(http.MethodPost, "/files/read", fileBody(username, path, root, roots), &out)
 	return &out, err
 }
 
-func (c *Client) FileWrite(username, path, content string, root bool) error {
-	return c.do(http.MethodPost, "/files/write", FileReq{Username: username, Path: path, Content: content, Root: root}, nil)
+func (c *Client) FileWrite(username, path, content string, root bool, roots ...string) error {
+	req := fileBody(username, path, root, roots)
+	req.Content = content
+	return c.do(http.MethodPost, "/files/write", req, nil)
 }
 
-func (c *Client) FileMkdir(username, path string, root bool) error {
-	return c.do(http.MethodPost, "/files/mkdir", FileReq{Username: username, Path: path, Root: root}, nil)
+func (c *Client) FileMkdir(username, path string, root bool, roots ...string) error {
+	return c.do(http.MethodPost, "/files/mkdir", fileBody(username, path, root, roots), nil)
 }
 
-func (c *Client) FileDelete(username, path string, root bool) error {
-	return c.do(http.MethodPost, "/files/delete", FileReq{Username: username, Path: path, Root: root}, nil)
+func (c *Client) FileDelete(username, path string, root bool, roots ...string) error {
+	return c.do(http.MethodPost, "/files/delete", fileBody(username, path, root, roots), nil)
 }
 
-func (c *Client) FileRename(username, path, dest string, root bool) error {
-	return c.do(http.MethodPost, "/files/rename", FileReq{Username: username, Path: path, Dest: dest, Root: root}, nil)
+func (c *Client) FileRename(username, path, dest string, root bool, roots ...string) error {
+	req := fileBody(username, path, root, roots)
+	req.Dest = dest
+	return c.do(http.MethodPost, "/files/rename", req, nil)
 }
 
-func (c *Client) FileChmod(username, path, mode string, root bool) error {
-	return c.do(http.MethodPost, "/files/chmod", FileReq{Username: username, Path: path, Mode: mode, Root: root}, nil)
+func (c *Client) FileChmod(username, path, mode string, root bool, roots ...string) error {
+	req := fileBody(username, path, root, roots)
+	req.Mode = mode
+	return c.do(http.MethodPost, "/files/chmod", req, nil)
 }
 
-func (c *Client) FileCopy(username, path, dest string, root bool) error {
-	return c.do(http.MethodPost, "/files/copy", FileReq{Username: username, Path: path, Dest: dest, Root: root}, nil)
+func (c *Client) FileCopy(username, path, dest string, root bool, roots ...string) error {
+	req := fileBody(username, path, root, roots)
+	req.Dest = dest
+	return c.do(http.MethodPost, "/files/copy", req, nil)
 }
 
-func (c *Client) FileExtract(username, path string, root bool) (*FileOpResp, error) {
+func (c *Client) FileExtract(username, path string, root bool, roots ...string) (*FileOpResp, error) {
 	var out FileOpResp
-	err := c.do(http.MethodPost, "/files/extract", FileReq{Username: username, Path: path, Root: root}, &out)
+	err := c.do(http.MethodPost, "/files/extract", fileBody(username, path, root, roots), &out)
 	return &out, err
 }
 
-func (c *Client) FileArchive(username, path string, root bool) (*FileOpResp, error) {
+func (c *Client) FileArchive(username, path string, root bool, roots ...string) (*FileOpResp, error) {
 	var out FileOpResp
-	err := c.do(http.MethodPost, "/files/archive", FileReq{Username: username, Path: path, Root: root}, &out)
+	err := c.do(http.MethodPost, "/files/archive", fileBody(username, path, root, roots), &out)
 	return &out, err
 }
 
-func (c *Client) FileDownload(username, path string, root bool) (*http.Response, error) {
+func (c *Client) FileDownload(username, path string, root bool, roots ...string) (*http.Response, error) {
 	q := url.Values{}
 	q.Set("username", username)
 	q.Set("path", path)
 	if root {
 		q.Set("root", "1")
+	}
+	for _, rootPath := range roots {
+		if rootPath != "" {
+			q.Add("roots", rootPath)
+		}
 	}
 	req, err := http.NewRequest(http.MethodGet, c.base+"/files/download?"+q.Encode(), nil)
 	if err != nil {
@@ -221,7 +238,7 @@ func (c *Client) FileLSPStatus(lang string) (bool, error) {
 	return out.OK, err
 }
 
-func (c *Client) FileUpload(username, path, filename string, r io.Reader, root bool) error {
+func (c *Client) FileUpload(username, path, filename string, r io.Reader, root bool, roots ...string) error {
 	pr, pw := io.Pipe()
 	w := multipart.NewWriter(pw)
 	errCh := make(chan error, 1)
@@ -240,6 +257,14 @@ func (c *Client) FileUpload(username, path, filename string, r io.Reader, root b
 		}
 		if root {
 			if err = w.WriteField("root", "1"); err != nil {
+				return
+			}
+		}
+		for _, rootPath := range roots {
+			if rootPath == "" {
+				continue
+			}
+			if err = w.WriteField("roots", rootPath); err != nil {
 				return
 			}
 		}

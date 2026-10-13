@@ -50,11 +50,9 @@ func (m *Manager) Fetch(username, dir, rawURL, dest string, root bool) (*rpc.Fil
 		return nil, err
 	}
 	m.ownPath(abs)
-	show := target
+	show := displayPath(filepath.ToSlash(home), filepath.ToSlash(abs))
 	if resp != nil && resp.Dest != "" {
-		if rel, e := filepath.Rel(home, resp.Dest); e == nil {
-			show = "/" + filepath.ToSlash(rel)
-		}
+		show = displayPath(filepath.ToSlash(home), filepath.ToSlash(resp.Dest))
 	}
 	return &rpc.FileOpResp{OK: true, Dest: show, Path: show}, nil
 }
@@ -120,12 +118,7 @@ func runSearch(root, home, query string) ([]rpc.FileSearchHit, bool) {
 		if path == "" {
 			continue
 		}
-		rel := path
-		if home != "" && home != "/" {
-			if r, err := filepath.Rel(home, path); err == nil {
-				rel = "/" + filepath.ToSlash(r)
-			}
-		}
+		rel := displayPath(home, path)
 		hits = append(hits, rpc.FileSearchHit{Path: rel, Line: ln, Text: text})
 		if len(hits) >= 200 {
 			return hits, true

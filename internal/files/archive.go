@@ -88,7 +88,7 @@ func (m *Manager) Extract(username, rel string, root bool) (string, error) {
 		return "", err
 	}
 	destAbs := uniquePath(filepath.Join(filepath.Dir(abs), stripArchiveName(filepath.Base(abs))))
-	if err := stillJailed(home, destAbs); err != nil {
+	if err := stillJailed(home, destAbs, m.allow()); err != nil {
 		return "", err
 	}
 	resp, err := m.call(uid, gid, helperReq{Op: "extract", Path: abs, Dest: destAbs, Home: home})
@@ -99,13 +99,7 @@ func (m *Manager) Extract(username, rel string, root bool) (string, error) {
 		destAbs = resp.Dest
 	}
 	m.ownPath(destAbs)
-	show, _ := filepath.Rel(home, destAbs)
-	if resp != nil && resp.Dest != "" {
-		if relShow, e := filepath.Rel(home, resp.Dest); e == nil {
-			show = relShow
-		}
-	}
-	return "/" + filepath.ToSlash(show), nil
+	return displayPath(filepath.ToSlash(home), filepath.ToSlash(destAbs)), nil
 }
 
 func (m *Manager) Archive(username, rel string, root bool) (string, error) {
@@ -120,7 +114,7 @@ func (m *Manager) Archive(username, rel string, root bool) (string, error) {
 		return "", fmt.Errorf("cannot archive the home directory")
 	}
 	destAbs := uniquePath(abs + ".zip")
-	if err := stillJailed(home, destAbs); err != nil {
+	if err := stillJailed(home, destAbs, m.allow()); err != nil {
 		return "", err
 	}
 	if err := zipTo(abs, destAbs); err != nil {
@@ -128,11 +122,7 @@ func (m *Manager) Archive(username, rel string, root bool) (string, error) {
 		return "", err
 	}
 	m.ownPath(destAbs)
-	show, err := filepath.Rel(home, destAbs)
-	if err != nil {
-		return "", err
-	}
-	return "/" + filepath.ToSlash(show), nil
+	return displayPath(filepath.ToSlash(home), filepath.ToSlash(destAbs)), nil
 }
 
 func (m *Manager) rootArchive(rel string) (string, error) {

@@ -1,6 +1,6 @@
 /** @vitest-environment node */
 import { describe, expect, it } from "vitest";
-import { isSystemPath, joinPath, moveDestinations, normalizeFileJump } from "./filePaths";
+import { accountAbs, isSystemPath, joinPath, moveDestinations, normalizeFileJump, parentFilePath } from "./filePaths";
 
 describe("moveDestinations", () => {
   it("keeps folder + name for one item", () => {
@@ -44,5 +44,21 @@ describe("joinPath", () => {
   it("joins under home", () => {
     expect(joinPath("/composer", "assets")).toBe("/composer/assets");
     expect(joinPath("/", "assets")).toBe("/assets");
+  });
+});
+
+describe("external document root", () => {
+  it("does not prefix the account home onto a mounted document root", () => {
+    expect(accountAbs("/home/abraventure", "/mnt/data/plyxxx", "/mnt/data/plyxxx")).toBe("/mnt/data/plyxxx");
+    expect(accountAbs("/home/abraventure", "/mnt/data/plyxxx/index.php", "/mnt/data/plyxxx")).toBe("/mnt/data/plyxxx/index.php");
+    expect(accountAbs("/home/abraventure", "/domains/abraventure.com/public_html")).toBe(
+      "/home/abraventure/domains/abraventure.com/public_html",
+    );
+  });
+
+  it("goes up to the account home from the document root", () => {
+    expect(parentFilePath("/mnt/data/plyxxx", "/mnt/data/plyxxx")).toBe("/");
+    expect(parentFilePath("/mnt/data/plyxxx/css", "/mnt/data/plyxxx")).toBe("/mnt/data/plyxxx");
+    expect(parentFilePath("/domains/a", "")).toBe("/domains");
   });
 });

@@ -395,7 +395,7 @@ func main() {
 		username := r.URL.Query().Get("username")
 		path := r.URL.Query().Get("path")
 		root := r.URL.Query().Get("root") == "1"
-		if err := filesMgr.ServeDownload(w, username, path, root); err != nil {
+		if err := filesMgr.For(username, r.URL.Query()["roots"]).ServeDownload(w, username, path, root); err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 		}
 	})
@@ -420,7 +420,7 @@ func main() {
 			return
 		}
 		defer f.Close()
-		if err := filesMgr.Upload(username, path, f, r.FormValue("root") == "1"); err != nil {
+		if err := filesMgr.For(username, r.Form["roots"]).Upload(username, path, f, r.FormValue("root") == "1"); err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
@@ -1159,7 +1159,7 @@ func main() {
 		if !decode(w, r, &req) {
 			return
 		}
-		out, err := filesMgr.Fetch(req.Username, req.Path, req.URL, req.Dest, req.Root)
+		out, err := filesMgr.For(req.Username, req.Roots).Fetch(req.Username, req.Path, req.URL, req.Dest, req.Root)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return
@@ -1171,7 +1171,7 @@ func main() {
 		if !decode(w, r, &req) {
 			return
 		}
-		out, err := filesMgr.Search(req.Username, req.Path, req.Query, req.Root)
+		out, err := filesMgr.For(req.Username, req.Roots).Search(req.Username, req.Path, req.Query, req.Root)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return
@@ -1369,39 +1369,40 @@ func fileHandler(m *files.Manager, op string) http.HandlerFunc {
 		if !decode(w, r, &req) {
 			return
 		}
+		mgr := m.For(req.Username, req.Roots)
 		var (
 			out any
 			err error
 		)
 		switch op {
 		case "list":
-			out, err = m.List(req.Username, req.Path, req.Root)
+			out, err = mgr.List(req.Username, req.Path, req.Root)
 		case "read":
-			out, err = m.Read(req.Username, req.Path, req.Root)
+			out, err = mgr.Read(req.Username, req.Path, req.Root)
 		case "write":
-			err = m.Write(req.Username, req.Path, req.Content, req.Root)
+			err = mgr.Write(req.Username, req.Path, req.Content, req.Root)
 			out = rpc.OKResp{OK: true}
 		case "mkdir":
-			err = m.Mkdir(req.Username, req.Path, req.Root)
+			err = mgr.Mkdir(req.Username, req.Path, req.Root)
 			out = rpc.OKResp{OK: true}
 		case "delete":
-			err = m.Delete(req.Username, req.Path, req.Root)
+			err = mgr.Delete(req.Username, req.Path, req.Root)
 			out = rpc.OKResp{OK: true}
 		case "rename":
-			err = m.Rename(req.Username, req.Path, req.Dest, req.Root)
+			err = mgr.Rename(req.Username, req.Path, req.Dest, req.Root)
 			out = rpc.OKResp{OK: true}
 		case "chmod":
-			err = m.Chmod(req.Username, req.Path, req.Mode, req.Root)
+			err = mgr.Chmod(req.Username, req.Path, req.Mode, req.Root)
 			out = rpc.OKResp{OK: true}
 		case "copy":
-			err = m.Copy(req.Username, req.Path, req.Dest, req.Root)
+			err = mgr.Copy(req.Username, req.Path, req.Dest, req.Root)
 			out = rpc.OKResp{OK: true}
 		case "extract":
-			dest, e := m.Extract(req.Username, req.Path, req.Root)
+			dest, e := mgr.Extract(req.Username, req.Path, req.Root)
 			err = e
 			out = rpc.FileOpResp{OK: err == nil, Dest: dest, Path: dest}
 		case "archive":
-			dest, e := m.Archive(req.Username, req.Path, req.Root)
+			dest, e := mgr.Archive(req.Username, req.Path, req.Root)
 			err = e
 			out = rpc.FileOpResp{OK: err == nil, Dest: dest, Path: dest}
 		}
