@@ -1191,6 +1191,155 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Get("/sysops/hosts", func(w http.ResponseWriter, _ *http.Request) {
+		out, err := sysops.ListHostEntries()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/sysops/hosts", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.HostsReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := sysops.ChangeHosts("add", 0, req.IP, req.Names)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Put("/sysops/hosts/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.HostsReq
+		if !decode(w, r, &req) {
+			return
+		}
+		id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+		out, err := sysops.ChangeHosts("update", id, req.IP, req.Names)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Delete("/sysops/hosts/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+		out, err := sysops.ChangeHosts("delete", id, "", nil)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Get("/sysops/nfs", func(w http.ResponseWriter, _ *http.Request) {
+		out, err := sysops.ListNFS()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/sysops/nfs/install", func(w http.ResponseWriter, _ *http.Request) {
+		out, err := sysops.InstallNFS()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/sysops/nfs/service", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Action string `json:"action"`
+		}
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := sysops.ControlNFS(req.Action)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/sysops/nfs/exports", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.NFSExportReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := sysops.ChangeExport("add", 0, req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Put("/sysops/nfs/exports/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.NFSExportReq
+		if !decode(w, r, &req) {
+			return
+		}
+		id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+		out, err := sysops.ChangeExport("update", id, req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Delete("/sysops/nfs/exports/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+		out, err := sysops.ChangeExport("delete", id, rpc.NFSExportReq{})
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/sysops/nfs/mounts", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.NFSMountReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := sysops.ChangeMount("add", 0, req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Put("/sysops/nfs/mounts/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.NFSMountReq
+		if !decode(w, r, &req) {
+			return
+		}
+		id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+		out, err := sysops.ChangeMount("update", id, req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Delete("/sysops/nfs/mounts/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+		out, err := sysops.ChangeMount("delete", id, rpc.NFSMountReq{})
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/sysops/nfs/mounts/{id}/{action}", func(w http.ResponseWriter, r *http.Request) {
+		id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+		out, err := sysops.ChangeMount(chi.URLParam(r, "action"), id, rpc.NFSMountReq{})
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Get("/sysops/disk", func(w http.ResponseWriter, _ *http.Request) {
 		out, err := sysops.Disk()
 		if err != nil {

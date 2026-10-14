@@ -21,7 +21,7 @@ const items = [
   { key: "/logs", label: "Logs", blurb: "Clear one file or every log for a site." },
   { key: "/databases", label: "Databases", blurb: "MySQL users, import, and Redis." },
   { key: "/backup", label: "Backup", blurb: "Archives, schedules, and rclone." },
-  { key: "/tools", label: "System tools", blurb: "DNS, time, disk, and network." },
+  { key: "/tools", label: "System tools", blurb: "DNS, time, disk, network, and NFS." },
   { key: "/os", label: "OS updates", blurb: "apt update and upgrade. The list is checked every day." },
   { key: "/settings", label: "Settings", blurb: "Theme, logo, and services." },
   { key: "/monitoring", label: "Monitoring", blurb: "Load history and alerts." },

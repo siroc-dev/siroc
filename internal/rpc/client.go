@@ -798,6 +798,90 @@ func (c *Client) Sysops(in SysopsReq) (*SysopsStatus, error) {
 	return &out, err
 }
 
+func (c *Client) Hosts() (*HostsResp, error) {
+	var out HostsResp
+	err := c.do(http.MethodGet, "/sysops/hosts", nil, &out)
+	return &out, err
+}
+
+func (c *Client) HostCreate(in HostsReq) (*HostsResp, error) {
+	var out HostsResp
+	err := c.do(http.MethodPost, "/sysops/hosts", in, &out)
+	return &out, err
+}
+
+func (c *Client) HostUpdate(id int, in HostsReq) (*HostsResp, error) {
+	var out HostsResp
+	err := c.do(http.MethodPut, fmt.Sprintf("/sysops/hosts/%d", id), in, &out)
+	return &out, err
+}
+
+func (c *Client) HostDelete(id int) (*HostsResp, error) {
+	var out HostsResp
+	err := c.do(http.MethodDelete, fmt.Sprintf("/sysops/hosts/%d", id), nil, &out)
+	return &out, err
+}
+
+func (c *Client) NFS() (*NFSStatus, error) {
+	var out NFSStatus
+	err := c.do(http.MethodGet, "/sysops/nfs", nil, &out)
+	return &out, err
+}
+
+func (c *Client) NFSInstall() (*NFSStatus, error) {
+	var out NFSStatus
+	err := c.do(http.MethodPost, "/sysops/nfs/install", map[string]bool{"install": true}, &out)
+	return &out, err
+}
+
+func (c *Client) NFSService(action string) (*NFSStatus, error) {
+	var out NFSStatus
+	err := c.do(http.MethodPost, "/sysops/nfs/service", map[string]string{"action": action}, &out)
+	return &out, err
+}
+
+func (c *Client) NFSExportCreate(in NFSExportReq) (*NFSStatus, error) {
+	var out NFSStatus
+	err := c.do(http.MethodPost, "/sysops/nfs/exports", in, &out)
+	return &out, err
+}
+
+func (c *Client) NFSExportUpdate(id int, in NFSExportReq) (*NFSStatus, error) {
+	var out NFSStatus
+	err := c.do(http.MethodPut, fmt.Sprintf("/sysops/nfs/exports/%d", id), in, &out)
+	return &out, err
+}
+
+func (c *Client) NFSExportDelete(id int) (*NFSStatus, error) {
+	var out NFSStatus
+	err := c.do(http.MethodDelete, fmt.Sprintf("/sysops/nfs/exports/%d", id), nil, &out)
+	return &out, err
+}
+
+func (c *Client) NFSMountCreate(in NFSMountReq) (*NFSStatus, error) {
+	var out NFSStatus
+	err := c.do(http.MethodPost, "/sysops/nfs/mounts", in, &out)
+	return &out, err
+}
+
+func (c *Client) NFSMountUpdate(id int, in NFSMountReq) (*NFSStatus, error) {
+	var out NFSStatus
+	err := c.do(http.MethodPut, fmt.Sprintf("/sysops/nfs/mounts/%d", id), in, &out)
+	return &out, err
+}
+
+func (c *Client) NFSMountDelete(id int) (*NFSStatus, error) {
+	var out NFSStatus
+	err := c.do(http.MethodDelete, fmt.Sprintf("/sysops/nfs/mounts/%d", id), nil, &out)
+	return &out, err
+}
+
+func (c *Client) NFSMountAct(id int, action string) (*NFSStatus, error) {
+	var out NFSStatus
+	err := c.do(http.MethodPost, fmt.Sprintf("/sysops/nfs/mounts/%d/%s", id, action), map[string]bool{"ok": true}, &out)
+	return &out, err
+}
+
 func (c *Client) Disk() (*DiskAnalysis, error) {
 	var out DiskAnalysis
 	err := c.do(http.MethodGet, "/sysops/disk", nil, &out)

@@ -31,6 +31,9 @@ type Options struct {
 	PHP *PHP `json:"php,omitempty"`
 	// ComposerRoot is the directory that holds composer.json. Empty uses the app directory above the document root when that file is there.
 	ComposerRoot string `json:"composerRoot,omitempty"`
+	// AccessLog and ErrorLog are nil when that log stays on. A false pointer turns that log off.
+	AccessLog *bool `json:"accessLog,omitempty"`
+	ErrorLog  *bool `json:"errorLog,omitempty"`
 }
 
 // PHP is a per-site php.ini override applied to this site's FPM pool.
@@ -80,7 +83,7 @@ func Marshal(o Options) (string, error) {
 }
 
 func IsZero(o Options) bool {
-	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && len(o.HotlinkDomains) == 0 && !o.Maintenance && len(o.Redirects) == 0 && o.Proxy == nil && !staticExplicitOff(o) && o.StaticExt == "" && o.ForceHTTPS == nil && o.PHP == nil && o.ComposerRoot == ""
+	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && len(o.HotlinkDomains) == 0 && !o.Maintenance && len(o.Redirects) == 0 && o.Proxy == nil && !staticExplicitOff(o) && o.StaticExt == "" && o.ForceHTTPS == nil && o.PHP == nil && o.ComposerRoot == "" && o.AccessLog == nil && o.ErrorLog == nil
 }
 
 func Normalize(in Options) (Options, error) {
@@ -199,7 +202,21 @@ func Normalize(in Options) (Options, error) {
 		return Options{}, err
 	}
 	out.ComposerRoot = root
+	out.AccessLog = offOnly(in.AccessLog)
+	out.ErrorLog = offOnly(in.ErrorLog)
 	return out, nil
+}
+
+func offOnly(p *bool) *bool {
+	if p == nil || *p {
+		return nil
+	}
+	v := false
+	return &v
+}
+
+func LogOn(p *bool) bool {
+	return p == nil || *p
 }
 
 func normalizePHP(in *PHP) (*PHP, error) {

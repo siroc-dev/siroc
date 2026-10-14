@@ -1498,25 +1498,27 @@ type SysopsReq struct {
 }
 
 type SysopsStatus struct {
-	Hostname  string           `json:"hostname"`
-	Time      string           `json:"time"`
-	Timezone  string           `json:"timezone"`
-	NTP       bool             `json:"ntp"`
-	Timezones []string         `json:"timezones,omitempty"`
-	DNS       []string         `json:"dns"`
-	Search    string           `json:"search,omitempty"`
-	Swap      *SwapInfo        `json:"swap,omitempty"`
-	IPs       []NetAddr        `json:"ips,omitempty"`
-	Routes    []string         `json:"routes,omitempty"`
-	Ifaces    []string         `json:"ifaces,omitempty"`
-	Mounts    []MountInfo      `json:"mounts,omitempty"`
-	Fstab     []FstabEntry     `json:"fstab,omitempty"`
-	Fail2ban  *Fail2banStatus  `json:"fail2ban,omitempty"`
-	Threats   *ThreatStatus    `json:"threats,omitempty"`
-	FFmpeg    *FFmpegStatus    `json:"ffmpeg,omitempty"`
-	Memcached *MemcachedStatus `json:"memcached,omitempty"`
-	Quota     bool             `json:"quota"`
-	Message   string           `json:"message,omitempty"`
+	Hostname        string           `json:"hostname"`
+	Time            string           `json:"time"`
+	Timezone        string           `json:"timezone"`
+	NTP             bool             `json:"ntp"`
+	Timezones       []string         `json:"timezones,omitempty"`
+	DNS             []string         `json:"dns"`
+	Search          string           `json:"search,omitempty"`
+	Swap            *SwapInfo        `json:"swap,omitempty"`
+	IPs             []NetAddr        `json:"ips,omitempty"`
+	Routes          []string         `json:"routes,omitempty"`
+	Ifaces          []string         `json:"ifaces,omitempty"`
+	Mounts          []MountInfo      `json:"mounts,omitempty"`
+	Fstab           []FstabEntry     `json:"fstab,omitempty"`
+	Fail2ban        *Fail2banStatus  `json:"fail2ban,omitempty"`
+	Threats         *ThreatStatus    `json:"threats,omitempty"`
+	FFmpeg          *FFmpegStatus    `json:"ffmpeg,omitempty"`
+	Memcached       *MemcachedStatus `json:"memcached,omitempty"`
+	Quota           bool             `json:"quota"`
+	Message         string           `json:"message,omitempty"`
+	DiskOptions     []NFSOption      `json:"diskOptions,omitempty"`
+	DiskFilesystems []NFSChoice      `json:"diskFilesystems,omitempty"`
 }
 
 type SwapInfo struct {
@@ -1552,6 +1554,98 @@ type FstabEntry struct {
 	Dump       string `json:"dump,omitempty"`
 	Pass       string `json:"pass,omitempty"`
 	Raw        string `json:"raw,omitempty"`
+}
+
+type HostEntry struct {
+	ID      int      `json:"id"`
+	IP      string   `json:"ip"`
+	Names   []string `json:"names"`
+	Created string   `json:"created,omitempty"`
+}
+
+type HostsResp struct {
+	Entries []HostEntry `json:"entries"`
+}
+
+type HostsReq struct {
+	IP    string   `json:"ip"`
+	Names []string `json:"names"`
+}
+
+type NFSOption struct {
+	Key       string `json:"key"`
+	Group     string `json:"group"`
+	Exclusive bool   `json:"exclusive,omitempty"`
+	Label     string `json:"label"`
+	Detail    string `json:"detail"`
+}
+
+type NFSChoice struct {
+	Value  string `json:"value"`
+	Label  string `json:"label"`
+	Detail string `json:"detail"`
+}
+
+type NFSExport struct {
+	ID      int      `json:"id"`
+	Path    string   `json:"path"`
+	Client  string   `json:"client"`
+	Options []string `json:"options"`
+	AnonUID string   `json:"anonUid,omitempty"`
+	AnonGID string   `json:"anonGid,omitempty"`
+	FSID    string   `json:"fsid,omitempty"`
+	Extra   []string `json:"extra,omitempty"`
+}
+
+type NFSMount struct {
+	ID         int      `json:"id"`
+	Source     string   `json:"source"`
+	MountPoint string   `json:"mountPoint"`
+	Options    []string `json:"options"`
+	NFSVers    string   `json:"nfsvers,omitempty"`
+	Proto      string   `json:"proto,omitempty"`
+	Timeo      int      `json:"timeo,omitempty"`
+	Retrans    int      `json:"retrans,omitempty"`
+	RSize      int      `json:"rsize,omitempty"`
+	WSize      int      `json:"wsize,omitempty"`
+	Persisted  bool     `json:"persisted"`
+	Mounted    bool     `json:"mounted"`
+}
+
+type NFSStatus struct {
+	Installed       bool        `json:"installed"`
+	ClientInstalled bool        `json:"clientInstalled"`
+	Active          bool        `json:"active"`
+	Message         string      `json:"message,omitempty"`
+	Exports         []NFSExport `json:"exports"`
+	Mounts          []NFSMount  `json:"mounts"`
+	ExportOptions   []NFSOption `json:"exportOptions"`
+	MountOptions    []NFSOption `json:"mountOptions"`
+	Versions        []NFSChoice `json:"versions"`
+	Protos          []NFSChoice `json:"protos"`
+}
+
+type NFSExportReq struct {
+	Path    string   `json:"path"`
+	Client  string   `json:"client"`
+	Options []string `json:"options"`
+	AnonUID string   `json:"anonUid,omitempty"`
+	AnonGID string   `json:"anonGid,omitempty"`
+	FSID    string   `json:"fsid,omitempty"`
+}
+
+type NFSMountReq struct {
+	Source     string   `json:"source"`
+	MountPoint string   `json:"mountPoint"`
+	Options    []string `json:"options"`
+	NFSVers    string   `json:"nfsvers,omitempty"`
+	Proto      string   `json:"proto,omitempty"`
+	Timeo      int      `json:"timeo,omitempty"`
+	Retrans    int      `json:"retrans,omitempty"`
+	RSize      int      `json:"rsize,omitempty"`
+	WSize      int      `json:"wsize,omitempty"`
+	Persist    bool     `json:"persist"`
+	MountNow   bool     `json:"mountNow"`
 }
 
 type DiskAnalysis struct {

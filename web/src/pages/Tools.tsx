@@ -5,6 +5,9 @@ import { formatBytes } from "@/lib/usage";
 import { PanelUpdate } from "@/components/PanelUpdate";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { Fail2banBans, type Fail2banBan } from "@/components/Fail2banBans";
+import { HostsEditor } from "@/components/HostsEditor";
+import { NFSManager } from "@/components/NFSManager";
+import { OptionList, type CheckOption } from "@/components/OptionChecks";
 
 type Status = {
   hostname: string;
@@ -26,6 +29,8 @@ type Status = {
   memcached?: { installed: boolean; active: boolean; memoryMB: number; listen: string; port: number; stats?: Record<string, string> };
   quota?: boolean;
   message?: string;
+  diskOptions?: CheckOption[];
+  diskFilesystems?: { value: string; label: string; detail: string }[];
 };
 
 type Disk = {
@@ -54,6 +59,9 @@ export function Tools() {
   const [ffForm] = Form.useForm();
   const [mcForm] = Form.useForm();
   const [ready, setReady] = useState(false);
+  const [diskFlags, setDiskFlags] = useState<string[]>([]);
+  const [diskFS, setDiskFS] = useState("");
+  const [diskKeep, setDiskKeep] = useState(true);
 
   async function load() {
     const data = await api.get<Status>("/api/sysops");
@@ -232,6 +240,16 @@ export function Tools() {
             ),
           },
           {
+            key: "hosts",
+            label: "Hosts",
+            children: <HostsEditor />,
+          },
+          {
+            key: "nfs",
+            label: "NFS",
+            children: <NFSManager />,
+          },
+          {
             key: "disk",
             label: "Disk",
             children: (
@@ -260,18 +278,49 @@ export function Tools() {
                       },
                     ]}
                   />
-                  <Form form={mntForm} layout="inline" style={{ marginTop: 12 }} onFinish={(v) => apply({ action: "mount", persist: true, ...v })}>
-                    <Form.Item name="device" rules={[{ required: true }]}>
+                  <Form
+                    form={mntForm}
+                    layout="vertical"
+                    style={{ marginTop: 12 }}
+                    onFinish={(v) => {
+                      void apply({
+                        action: "mount",
+                        persist: diskKeep,
+                        device: v.device,
+                        mountPoint: diskFS === "swap" ? "none" : v.mountPoint,
+                        fsType: diskFS,
+                        options: diskFlags.join(","),
+                      });
+                    }}
+                  >
+                    <Form.Item name="device" label="Device" rules={[{ required: true }]} extra="A disk such as /dev/sdb1, or UUID=… from blkid.">
                       <Input placeholder="/dev/sdb1" />
                     </Form.Item>
-                    <Form.Item name="mountPoint" rules={[{ required: true }]}>
-                      <Input placeholder="/mnt/data" />
+                    {diskFS !== "swap" ? (
+                      <Form.Item name="mountPoint" label="Mount point" rules={[{ required: true }]} extra="Directory on this server. It is created if it does not exist.">
+                        <Input placeholder="/mnt/data" />
+                      </Form.Item>
+                    ) : null}
+                    <Form.Item label="Filesystem">
+                      <Select
+                        value={diskFS}
+                        options={(st?.diskFilesystems || [{ value: "", label: "Detect" }]).map((item) => ({ value: item.value, label: item.label }))}
+                        onChange={setDiskFS}
+                      />
+                      <span className="nfs-option-detail">{(st?.diskFilesystems || []).find((item) => item.value === diskFS)?.detail}</span>
                     </Form.Item>
-                    <Form.Item name="fsType">
-                      <Input placeholder="ext4" style={{ width: 100 }} />
+                    {diskFS !== "swap" ? (
+                      <Form.Item label="Options">
+                        <OptionList options={st?.diskOptions || []} value={diskFlags} onChange={setDiskFlags} />
+                        <Typography.Text type="secondary">Leave every box empty to use defaults.</Typography.Text>
+                      </Form.Item>
+                    ) : null}
+                    <Form.Item>
+                      <Switch checked={diskKeep} onChange={setDiskKeep} /> <Typography.Text>Keep after reboot</Typography.Text>
+                      <span className="nfs-option-detail">Write a line in /etc/fstab so this disk mounts at boot.</span>
                     </Form.Item>
-                    <Button htmlType="submit" loading={busy}>
-                      Mount + fstab
+                    <Button type="primary" htmlType="submit" loading={busy}>
+                      Mount
                     </Button>
                   </Form>
                 </Card>

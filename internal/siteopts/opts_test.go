@@ -109,6 +109,27 @@ func TestMaintenanceAndHotlink(t *testing.T) {
 	}
 }
 
+func TestLogSwitchesStaySeparate(t *testing.T) {
+	off := false
+	raw, err := Marshal(Options{AccessLog: &off, Hotlink: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := Parse(raw)
+	if LogOn(got.AccessLog) || !LogOn(got.ErrorLog) || !got.Hotlink {
+		t.Fatalf("%#v", got)
+	}
+	on := true
+	raw, err = Marshal(Options{ErrorLog: &on})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = Parse(raw)
+	if got.ErrorLog != nil || !IsZero(got) {
+		t.Fatalf("on is the default: %#v", got)
+	}
+}
+
 func TestForceHTTPSKept(t *testing.T) {
 	on := true
 	raw, err := Marshal(Options{ForceHTTPS: &on, Hotlink: true})

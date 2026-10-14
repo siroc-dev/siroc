@@ -69,6 +69,10 @@ type siteData struct {
 	Static            string
 	Direct            bool
 	HTTP2On           bool
+	AccessLog         string
+	ErrorLog          string
+	ApacheError       string
+	ApacheAccess      string
 }
 
 const nginxTmpl = `server {
@@ -77,8 +81,8 @@ const nginxTmpl = `server {
     server_name {{.AllNames}};
     root {{.DocRoot}};
     client_max_body_size {{.PostMaxSize}};
-    access_log /var/log/nginx/sites/{{.Domain}}-access.log combined;
-    error_log /var/log/nginx/sites/{{.Domain}}-error.log;
+{{.AccessLog}}
+{{.ErrorLog}}
 
     location ^~ /.well-known/acme-challenge/ {
         root /var/www/letsencrypt;
@@ -149,8 +153,8 @@ server {
     ssl_session_timeout 1d;
     ssl_session_cache shared:SSL:10m;
     ssl_protocols TLSv1.2 TLSv1.3;
-    access_log /var/log/nginx/sites/{{.Domain}}-access.log combined;
-    error_log /var/log/nginx/sites/{{.Domain}}-error.log;
+{{.AccessLog}}
+{{.ErrorLog}}
 
     location ^~ /server-status { return 404; }
     location ^~ /nginx-status { return 404; }
@@ -217,8 +221,8 @@ const apacheTmpl = `<VirtualHost 127.0.0.1:8080>
         SetHandler "proxy:unix:{{.PHPSocket}}|fcgi://localhost"
     </FilesMatch>
 {{- end}}
-    ErrorLog ${APACHE_LOG_DIR}/sites/{{.Domain}}-error.log
-    CustomLog ${APACHE_LOG_DIR}/sites/{{.Domain}}-access.log combined
+{{.ApacheError}}
+{{.ApacheAccess}}
     <IfModule security2_module>
         SecAuditLogType Serial
         SecAuditLog ${APACHE_LOG_DIR}/sites/{{.Domain}}-modsec.log
@@ -453,6 +457,10 @@ func applyGuards(data *siteData, opt siteopts.Options, proxy string) error {
 	data.Extra = extra
 	data.Access = access
 	data.Index = index
+	data.AccessLog = nginxAccessLine(data.Domain, siteopts.LogOn(opt.AccessLog))
+	data.ErrorLog = nginxErrorLine(data.Domain, siteopts.LogOn(opt.ErrorLog))
+	data.ApacheError = apacheErrorLine(data.Domain, siteopts.LogOn(opt.ErrorLog))
+	data.ApacheAccess = apacheAccessLine(data.Domain, siteopts.LogOn(opt.AccessLog))
 	if strings.TrimSpace(proxy) == "" {
 		static, err := siteopts.NginxStatic(opt)
 		if err != nil {
@@ -831,6 +839,9 @@ func writeNginxConf(domain, custom string, data any) error {
 				body = next
 			}
 		}
+		if access, errLog, ok := nginxLogLines(data); ok {
+			body = applyNginxLogLines(body, access, errLog)
+		}
 		return writeConfFile(path, body)
 	}
 	switch row := data.(type) {
@@ -843,10 +854,38 @@ func writeNginxConf(domain, custom string, data any) error {
 	return writeTemplate(path, nginxTmpl, data, 0644)
 }
 
+func nginxLogLines(data any) (access, errLog string, ok bool) {
+	switch row := data.(type) {
+	case siteData:
+		access, errLog = row.AccessLog, row.ErrorLog
+	case *siteData:
+		access, errLog = row.AccessLog, row.ErrorLog
+	default:
+		return "", "", false
+	}
+	return access, errLog, access != "" && errLog != ""
+}
+
+func apacheLogLines(data any) (errLog, access string, ok bool) {
+	switch row := data.(type) {
+	case siteData:
+		errLog, access = row.ApacheError, row.ApacheAccess
+	case *siteData:
+		errLog, access = row.ApacheError, row.ApacheAccess
+	default:
+		return "", "", false
+	}
+	return errLog, access, errLog != "" && access != ""
+}
+
 func writeApacheConf(domain, custom string, data any) error {
 	path := filepath.Join("/etc/apache2/sites-available", domain+".conf")
 	if strings.TrimSpace(custom) != "" {
-		return writeConfFile(path, custom)
+		body := custom
+		if errLog, access, ok := apacheLogLines(data); ok {
+			body = applyApacheLogLines(body, errLog, access)
+		}
+		return writeConfFile(path, body)
 	}
 	return writeTemplate(path, apacheTmpl, data, 0644)
 }

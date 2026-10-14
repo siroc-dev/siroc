@@ -42,6 +42,8 @@ func Status() (*rpc.SysopsStatus, error) {
 		Quota:     quotaReady(),
 	}
 	st.Timezones = listTimezones()
+	st.DiskOptions = DiskMountOptions()
+	st.DiskFilesystems = DiskFilesystems()
 	return st, nil
 }
 
@@ -696,18 +698,33 @@ func fstab() []rpc.FstabEntry {
 }
 
 func doMount(req rpc.SysopsReq) error {
-	if req.Device == "" || req.MountPoint == "" {
+	fs, opt, err := CleanDiskOptions(req.FSType, req.Options)
+	if err != nil {
+		return err
+	}
+	req.FSType, req.Options = fs, opt
+	if req.Device == "" || (fs != "swap" && req.MountPoint == "") {
 		return fmt.Errorf("device and mount point required")
+	}
+	if strings.ContainsAny(req.Device, "\r\n") || strings.ContainsAny(req.MountPoint, " \t\r\n") {
+		return fmt.Errorf("device and mount point cannot contain spaces or new lines")
+	}
+	if fs == "swap" {
+		req.MountPoint = "none"
+		if out, err := exec.Command("swapon", req.Device).CombinedOutput(); err != nil {
+			return fmt.Errorf("swapon: %s", strings.TrimSpace(string(out)))
+		}
+		if req.Persist {
+			return addFstab(req)
+		}
+		return nil
 	}
 	if err := os.MkdirAll(req.MountPoint, 0755); err != nil {
 		return err
 	}
-	args := []string{req.Device, req.MountPoint}
-	if req.FSType != "" {
-		args = append([]string{"-t", req.FSType}, args...)
-	}
-	if req.Options != "" {
-		args = append([]string{"-o", req.Options}, args...)
+	args := []string{"-o", opt, req.Device, req.MountPoint}
+	if fs != "" {
+		args = append([]string{"-t", fs}, args...)
 	}
 	if out, err := exec.Command("mount", args...).CombinedOutput(); err != nil {
 		return fmt.Errorf("mount: %s", strings.TrimSpace(string(out)))
@@ -732,21 +749,23 @@ func addFstab(req rpc.SysopsReq) error {
 	if req.Device == "" || req.MountPoint == "" {
 		return fmt.Errorf("device and mount point required")
 	}
-	fs := req.FSType
+	fs, opt, err := CleanDiskOptions(req.FSType, req.Options)
+	if err != nil {
+		return err
+	}
 	if fs == "" {
 		fs = "auto"
 	}
-	opt := req.Options
-	if opt == "" {
-		if fs == "swap" {
-			opt = "sw"
-		} else {
-			opt = "defaults"
-		}
+	if fs == "swap" {
+		req.MountPoint = "none"
 	}
+	req.FSType = fs
 	line := fmt.Sprintf("%s %s %s %s 0 0\n", req.Device, req.MountPoint, fs, opt)
 	for _, e := range fstab() {
-		if e.MountPoint == req.MountPoint || (fs == "swap" && e.Device == req.Device) {
+		if fs == "swap" && e.Device == req.Device {
+			return nil
+		}
+		if fs != "swap" && e.MountPoint == req.MountPoint {
 			return nil
 		}
 	}

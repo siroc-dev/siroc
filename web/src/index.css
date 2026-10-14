@@ -615,6 +615,27 @@ html[data-theme="dark"] .fm-crumb {
   color: #8c8c8c;
 }
 
+.nfs-options {
+  max-height: 280px;
+  overflow: auto;
+  padding-right: 8px;
+}
+
+.nfs-option {
+  margin-top: 6px;
+}
+
+.nfs-option-detail {
+  display: block;
+  margin: 2px 0 8px;
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.nfs-option .nfs-option-detail {
+  margin-left: 24px;
+}
+
 .fm-crumb-btn {
   border: 0;
   background: none;

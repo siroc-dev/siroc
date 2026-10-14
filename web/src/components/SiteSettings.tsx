@@ -17,6 +17,8 @@ export type SiteOptions = {
   static?: boolean;
   staticExt?: string;
   forceHttps?: boolean;
+  accessLog?: boolean;
+  errorLog?: boolean;
   php?: SitePHP;
   composerRoot?: string;
 };
@@ -188,6 +190,8 @@ function baseOpts(site: SiteSettingsSite): SiteOptions {
     static: o.static,
     staticExt: o.staticExt,
     forceHttps: o.forceHttps,
+    accessLog: o.accessLog,
+    errorLog: o.errorLog,
     php: o.php,
     composerRoot: o.composerRoot,
   };
@@ -1250,10 +1254,32 @@ export function SiteSettings({
 
           {tab === "logs" ? (
             <>
-              <Typography.Paragraph type="secondary">Access, error, and panel response logs for this domain.</Typography.Paragraph>
-              <Button type="primary" onClick={onLogs}>
-                Open logs
-              </Button>
+              <Typography.Paragraph type="secondary">Turn each log on or off for this site. Nginx and Apache use the same choice.</Typography.Paragraph>
+              <Space direction="vertical" size={12}>
+                <div>
+                  <Space>
+                    <Switch checked={site.options?.accessLog !== false} loading={busy} onChange={(on) => void saveOpts({ accessLog: on }, on ? "Access log on" : "Access log off")} />
+                    <span>Access log</span>
+                  </Space>
+                  <div>
+                    <Typography.Text type="secondary">Records each request. Off writes nothing for this site.</Typography.Text>
+                  </div>
+                </div>
+                <div>
+                  <Space>
+                    <Switch checked={site.options?.errorLog !== false} loading={busy} onChange={(on) => void saveOpts({ errorLog: on }, on ? "Error log on" : "Error log off")} />
+                    <span>Error log</span>
+                  </Space>
+                  <div>
+                    <Typography.Text type="secondary">Records server errors. Off discards them for this site.</Typography.Text>
+                  </div>
+                </div>
+              </Space>
+              <div>
+                <Button style={{ marginTop: 16 }} type="primary" onClick={onLogs}>
+                  Open logs
+                </Button>
+              </div>
             </>
           ) : null}
         </div>
