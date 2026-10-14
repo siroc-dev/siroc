@@ -99,6 +99,7 @@ func main() {
 	}
 	log.Printf("siroc-agent %s", version.Current())
 	repairAgentUnit()
+	hosting.RepairNginxHTTP2()
 
 	cfg := config.Load()
 	sockDir := filepath.Dir(cfg.SocketPath)

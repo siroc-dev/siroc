@@ -316,6 +316,7 @@ export function Sites() {
   const [sites, setSites] = useState<Site[]>([]);
   const [usage, setUsage] = useState<UserUsage[]>([]);
   const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<number[]>([]);
   const [infoSite, setInfoSite] = useState<Site | null>(null);
   const [phps, setPhps] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -660,7 +661,24 @@ export function Sites() {
   async function remove(id: number) {
     try {
       await api.delete(`/api/sites/${id}`);
+      setPicked((cur) => cur.filter((x) => x !== id));
       if (siteIdParam && String(id) === siteIdParam) nav("/sites");
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  async function removePicked() {
+    const ids = sites.filter((s) => picked.includes(s.id)).map((s) => s.id);
+    if (!ids.length) return;
+    try {
+      const out = await api.post<{ deleted: number; failed?: string[] }>("/api/sites/delete", { ids });
+      const failed = out.failed?.filter(Boolean) || [];
+      if (failed.length) message.warning(failed[0]);
+      else message.success(ids.length === 1 ? "Website deleted" : `${out.deleted || ids.length} websites deleted`);
+      setPicked([]);
+      if (siteIdParam && ids.some((id) => String(id) === siteIdParam)) nav("/sites");
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -802,7 +820,26 @@ export function Sites() {
   const sitesTable = (
     <Card>
       <div className="site-list-toolbar">
-        <Typography.Text type="secondary">{filtered.length} {filtered.length === 1 ? "domain" : "domains"}</Typography.Text>
+        <Space>
+          <Typography.Text type="secondary">{filtered.length} {filtered.length === 1 ? "domain" : "domains"}</Typography.Text>
+          <Button
+            danger
+            disabled={!picked.length}
+            onClick={() => {
+              const rows = sites.filter((s) => picked.includes(s.id));
+              if (!rows.length) return;
+              modal.confirm({
+                title: rows.length === 1 ? `Delete ${siteLabel(rows[0])}?` : `Delete ${rows.length} websites?`,
+                content: rows.map((s) => siteLabel(s)).join(", "),
+                okText: "Delete",
+                okButtonProps: { danger: true },
+                onOk: () => removePicked(),
+              });
+            }}
+          >
+            {picked.length ? `Delete ${picked.length} selected` : "Delete selected"}
+          </Button>
+        </Space>
         <Input.Search
           allowClear
           placeholder="Find domain…"
@@ -815,6 +852,11 @@ export function Sites() {
         rowKey="id"
         dataSource={filtered}
         pagination={false}
+        rowSelection={{
+          selectedRowKeys: picked,
+          preserveSelectedRowKeys: true,
+          onChange: (keys) => setPicked(keys.map((key) => Number(key))),
+        }}
         locale={{ emptyText: "No websites yet. Install nginx, Apache, and PHP first." }}
         columns={[
           {

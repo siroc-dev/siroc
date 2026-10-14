@@ -171,6 +171,7 @@ func (s *Server) Router() http.Handler {
 
 		r.Get("/api/sites", s.listSites)
 		r.Post("/api/sites", s.createSite)
+		r.Post("/api/sites/delete", s.deleteSites)
 		r.Patch("/api/sites/{id}", s.updateSite)
 		r.Post("/api/sites/{id}/rename", s.renameSite)
 		r.Post("/api/sites/{id}/ssl", s.issueSiteSSL)
@@ -2152,12 +2153,8 @@ func (s *Server) deleteSite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
 		return
 	}
-	st, err := s.Store.GetSite(id)
-	if err != nil {
-		writeErr(w, http.StatusNotFound, fmt.Errorf("site not found"))
-		return
-	}
-	if !s.allowAccount(w, r, st.Username) {
+	st, ok := s.siteForDelete(w, r, id)
+	if !ok {
 		return
 	}
 	if err := s.Agent.SiteDelete(st.Username, st.Domain); err != nil {
@@ -2166,6 +2163,74 @@ func (s *Server) deleteSite(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Store.DeleteSite(id)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) deleteSites(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []int64 `json:"ids"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	seen := map[int64]struct{}{}
+	ids := make([]int64, 0, len(body.IDs))
+	for _, id := range body.IDs {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("select at least one website"))
+		return
+	}
+	if len(ids) > 200 {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("select at most 200 websites"))
+		return
+	}
+	todo := make([]*store.Site, 0, len(ids))
+	for _, id := range ids {
+		st, ok := s.siteForDelete(w, r, id)
+		if !ok {
+			return
+		}
+		todo = append(todo, st)
+	}
+	var failed []string
+	deleted := 0
+	for _, st := range todo {
+		if err := s.Agent.SiteDelete(st.Username, st.Domain); err != nil {
+			failed = append(failed, st.Domain+": "+err.Error())
+			continue
+		}
+		_ = s.Store.DeleteSite(st.ID)
+		deleted++
+	}
+	if deleted == 0 {
+		msg := "could not delete the selected websites"
+		if len(failed) > 0 {
+			msg = failed[0]
+		}
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("%s", msg))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": deleted, "failed": failed})
+}
+
+func (s *Server) siteForDelete(w http.ResponseWriter, r *http.Request, id int64) (*store.Site, bool) {
+	st, err := s.Store.GetSite(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, fmt.Errorf("site not found"))
+		return nil, false
+	}
+	if !s.allowAccount(w, r, st.Username) {
+		return nil, false
+	}
+	return st, true
 }
 
 func replaceSiteDomainPath(home, oldDomain, newDomain, doc string) string {

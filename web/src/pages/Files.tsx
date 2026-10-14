@@ -47,6 +47,8 @@ import {
 import { api, redirectIfSessionExpired } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { languageFromPath } from "@/lib/fileLang";
+import { filesFromDrop } from "@/lib/dropFiles";
+import { uploadGroups, uploadPercent } from "@/lib/uploadGroups";
 import { accountAbs, fileCrumbs, isSystemPath, joinPath, moveDestinations, normalizeFileJump, parentFilePath } from "@/lib/filePaths";
 import { editorWorkspace, formatBytes } from "@/lib/usage";
 import { SSHTerminal } from "@/components/SSHTerminal";
@@ -125,8 +127,7 @@ export function Files() {
   const [busy, setBusy] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [lspOn, setLspOn] = useState(false);
-  const [upPct, setUpPct] = useState(0);
-  const [upLabel, setUpLabel] = useState("");
+  const [upItems, setUpItems] = useState<{ key: string; name: string; folder: boolean; count: number; pct: number; status?: "active" | "success" | "exception" }[]>([]);
   const [upOpen, setUpOpen] = useState(false);
   const [clip, setClip] = useState<Clip | null>(null);
   const [perm, setPerm] = useState<Entry | null>(null);
@@ -394,99 +395,72 @@ export function Files() {
     return rel.replace(/^\/+/, "");
   }
 
+  function patchUpload(key: string, patch: { pct?: number; status?: "active" | "success" | "exception" }) {
+    setUpItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...patch } : it)));
+  }
+
   async function uploadMany(files: File[]) {
     const list = files.filter((f) => f && !skipFile(f.name));
     if (!list.length || !user) return;
+    const groups = uploadGroups(list);
     setBusy(true);
-    setUpPct(0);
-    setUpLabel(`Uploading 0/${list.length}`);
+    setUpItems(groups.map((g) => ({ key: g.key, name: g.name, folder: g.folder, count: g.files.length, pct: 0 })));
     let ok = 0;
     try {
-      for (let i = 0; i < list.length; i++) {
-        const f = list[i];
-        const fd = new FormData();
-        fd.append("user", user);
-        fd.append("path", listing.path);
-        const rel = relOf(f);
-        if (rel) fd.append("relpath", rel);
-        fd.append("file", f, f.name);
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open("POST", "/api/files/upload");
-          xhr.withCredentials = true;
-          xhr.upload.onprogress = (ev) => {
-            const filePct = ev.lengthComputable && ev.total > 0 ? ev.loaded / ev.total : 0;
-            const pct = Math.round(((i + filePct) / list.length) * 100);
-            setUpPct(pct);
-            setUpLabel(`${f.name} · ${pct}%`);
-          };
-          xhr.onload = () => {
-            let data: { error?: string } = {};
-            try {
-              data = JSON.parse(xhr.responseText || "{}");
-            } catch {
-              data = {};
-            }
-            if (xhr.status >= 200 && xhr.status < 300) resolve();
-            else if (redirectIfSessionExpired(xhr.status, "/api/files/upload")) return;
-            else reject(new Error(data.error || `Upload failed: ${f.name}`));
-          };
-          xhr.onerror = () => reject(new Error(`Upload failed: ${f.name}`));
-          xhr.send(fd);
-        });
-        ok++;
-        setUpPct(Math.round(((i + 1) / list.length) * 100));
-        setUpLabel(`${f.name} · ${Math.round(((i + 1) / list.length) * 100)}%`);
+      for (const g of groups) {
+        const totalBytes = g.files.reduce((n, f) => n + f.size, 0);
+        let doneBytes = 0;
+        let doneCount = 0;
+        patchUpload(g.key, { pct: 0, status: "active" });
+        for (const f of g.files) {
+          const fd = new FormData();
+          fd.append("user", user);
+          fd.append("path", listing.path);
+          const rel = relOf(f);
+          if (rel) fd.append("relpath", rel);
+          fd.append("file", f, f.name);
+          try {
+            await new Promise<void>((resolve, reject) => {
+              const xhr = new XMLHttpRequest();
+              xhr.open("POST", "/api/files/upload");
+              xhr.withCredentials = true;
+              xhr.upload.onprogress = (ev) => {
+                const loaded = ev.lengthComputable ? ev.loaded : 0;
+                patchUpload(g.key, { pct: uploadPercent(doneBytes + loaded, totalBytes, doneCount, g.files.length, false), status: "active" });
+              };
+              xhr.onload = () => {
+                let data: { error?: string } = {};
+                try {
+                  data = JSON.parse(xhr.responseText || "{}");
+                } catch {
+                  data = {};
+                }
+                if (xhr.status >= 200 && xhr.status < 300) resolve();
+                else if (redirectIfSessionExpired(xhr.status, "/api/files/upload")) return;
+                else reject(new Error(data.error || `Upload failed: ${f.name}`));
+              };
+              xhr.onerror = () => reject(new Error(`Upload failed: ${f.name}`));
+              xhr.send(fd);
+            });
+          } catch (err) {
+            patchUpload(g.key, { status: "exception" });
+            throw err;
+          }
+          doneBytes += f.size;
+          doneCount++;
+          ok++;
+          patchUpload(g.key, { pct: uploadPercent(doneBytes, totalBytes, doneCount, g.files.length, doneCount === g.files.length), status: doneCount === g.files.length ? "success" : "active" });
+        }
       }
       message.success(ok === 1 ? "Uploaded" : `Uploaded ${ok} files`);
       setUpOpen(false);
+      setUpItems([]);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Upload failed");
       if (ok) await load();
     } finally {
       setBusy(false);
-      setUpPct(0);
-      setUpLabel("");
-    }
-  }
-
-  async function filesFromDrop(dt: DataTransfer) {
-    const out: File[] = [];
-    const items = [...dt.items];
-    const walked = items.some((it) => typeof it.webkitGetAsEntry === "function" && it.webkitGetAsEntry());
-    if (walked) {
-      for (const it of items) {
-        const entry = it.webkitGetAsEntry?.();
-        if (entry) await walkEntry(entry, out);
-      }
-    } else {
-      out.push(...[...dt.files]);
-    }
-    return out;
-  }
-
-  async function walkEntry(entry: FileSystemEntry, out: File[]) {
-    if (entry.isFile) {
-      const file = await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject));
-      const rel = entry.fullPath.replace(/^\/+/, "");
-      if (rel && !file.webkitRelativePath) {
-        try {
-          Object.defineProperty(file, "webkitRelativePath", { value: rel });
-        } catch {
-          (file as File & { webkitRelativePath?: string }).webkitRelativePath = rel;
-        }
-      }
-      out.push(file);
-      return;
-    }
-    if (!entry.isDirectory) return;
-    const reader = (entry as FileSystemDirectoryEntry).createReader();
-    const readBatch = () => new Promise<FileSystemEntry[]>((resolve, reject) => reader.readEntries(resolve, reject));
-    let batch = await readBatch();
-    while (batch.length) {
-      for (const child of batch) await walkEntry(child, out);
-      batch = await readBatch();
     }
   }
 
@@ -1195,7 +1169,11 @@ export function Files() {
       <Modal
         title={`Upload to ${listing.path}`}
         open={upOpen}
-        onCancel={() => !busy && setUpOpen(false)}
+        onCancel={() => {
+          if (busy) return;
+          setUpOpen(false);
+          setUpItems([]);
+        }}
         footer={null}
         destroyOnHidden
       >
@@ -1226,7 +1204,19 @@ export function Files() {
             </Button>
           </Upload>
         </Space>
-        {upLabel ? <Progress percent={upPct} size="small" style={{ marginBottom: 12 }} format={() => upLabel} /> : null}
+        {upItems.length ? (
+          <div className="fm-upload-list">
+            {upItems.map((it) => (
+              <div key={it.key} className="fm-upload-row">
+                <span className="fm-upload-name" title={it.name}>
+                  {it.name}
+                  {it.folder ? <span className="fm-upload-meta">{` · ${it.count} file${it.count === 1 ? "" : "s"}`}</span> : null}
+                </span>
+                <Progress percent={it.pct} size="small" status={it.status} />
+              </div>
+            ))}
+          </div>
+        ) : null}
         <Upload.Dragger
           openFileDialogOnClick={false}
           showUploadList={false}

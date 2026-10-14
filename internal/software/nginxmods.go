@@ -195,19 +195,30 @@ func ensureVodRuntime() (bool, error) {
 		return false, nil
 	}
 	var lines []string
-	if nginxBuiltWith("--with-file-aio") {
-		lines = append(lines, "aio on;")
-	}
 	if nginxBuiltWith("--with-threads") {
 		lines = append(lines, "vod_open_file_thread_pool default;")
 	}
-	if len(lines) == 0 {
-		return false, nil
+	body := ""
+	if len(lines) > 0 {
+		body = "# Siroc nginx-vod-module\n" + strings.Join(lines, "\n") + "\n"
 	}
-	body := "# Siroc nginx-vod-module\n" + strings.Join(lines, "\n") + "\n"
 	prev, _ := os.ReadFile(path)
 	if string(prev) == body {
 		return false, nil
+	}
+	if body == "" {
+		if len(prev) == 0 {
+			return false, nil
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return false, err
+		}
+		if err := nginxConfigTest(); err != nil {
+			_ = os.WriteFile(path, prev, 0644)
+			noteInstall("vod runtime config skipped: " + err.Error())
+			return false, nil
+		}
+		return true, nil
 	}
 	if err := os.MkdirAll("/etc/nginx/conf.d", 0755); err != nil {
 		return false, err

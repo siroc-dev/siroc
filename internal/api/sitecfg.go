@@ -24,6 +24,7 @@ func (s *Server) siteConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out.Custom = strings.TrimSpace(st.NginxConf) != "" || strings.TrimSpace(st.ApacheConf) != ""
+	out.Nginx = validate.FormatNginx(out.Nginx)
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -127,7 +128,7 @@ func (s *Server) configBody(w http.ResponseWriter, r *http.Request) (rpc.SiteCon
 	if !decode(w, r, &body) {
 		return body, false
 	}
-	body.Nginx = strings.ReplaceAll(body.Nginx, "\r\n", "\n")
+	body.Nginx = validate.FormatNginx(body.Nginx)
 	body.Apache = strings.ReplaceAll(body.Apache, "\r\n", "\n")
 	if err := validate.SiteConfigText("nginx", body.Nginx); err != nil {
 		writeErr(w, http.StatusBadRequest, err)

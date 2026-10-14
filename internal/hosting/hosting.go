@@ -68,6 +68,7 @@ type siteData struct {
 	Index             string
 	Static            string
 	Direct            bool
+	HTTP2On           bool
 }
 
 const nginxTmpl = `server {
@@ -132,8 +133,14 @@ const nginxTmpl = `server {
 {{- if .SSL}}
 
 server {
+{{- if .HTTP2On}}
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+{{- else}}
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
+{{- end}}
     server_name {{.AllNames}};
     root {{.DocRoot}};
     client_max_body_size {{.PostMaxSize}};
@@ -818,7 +825,20 @@ func dropSitePools(username, domain, keep string) {
 func writeNginxConf(domain, custom string, data any) error {
 	path := filepath.Join("/etc/nginx/sites-available", domain+".conf")
 	if strings.TrimSpace(custom) != "" {
-		return writeConfFile(path, custom)
+		body := custom
+		if nginxSeparateHTTP2() {
+			if next, ok := rewriteListenHTTP2(custom); ok {
+				body = next
+			}
+		}
+		return writeConfFile(path, body)
+	}
+	switch row := data.(type) {
+	case siteData:
+		row.HTTP2On = nginxSeparateHTTP2()
+		data = row
+	case *siteData:
+		row.HTTP2On = nginxSeparateHTTP2()
 	}
 	return writeTemplate(path, nginxTmpl, data, 0644)
 }

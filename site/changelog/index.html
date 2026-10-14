@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.61">0.2.61</a>
           <a href="#v0.2.60">0.2.60</a>
           <a href="#v0.2.59">0.2.59</a>
           <a href="#v0.2.58">0.2.58</a>
@@ -89,6 +90,22 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.61">
+          <h2><a href="#v0.2.61">0.2.61</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Websites can be selected and deleted together.</li>
+            <li>File manager uploads show a progress bar for each file. A folder is one bar for the whole folder.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Nginx 1.25.1 and newer use the http2 directive instead of listen ... http2. Existing site files are rewritten the next time the agent starts.</li>
+            <li>The nginx VOD runtime config no longer sets aio on.</li>
+            <li>An nginx config opened or saved from site settings is formatted.</li>
+            <li>Dropping several files in the file manager uploads every file.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.60">
           <h2><a href="#v0.2.60">0.2.60</a></h2>

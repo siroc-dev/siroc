@@ -41,3 +41,17 @@ func TestPHPTemplateStillProxies(t *testing.T) {
 		t.Fatal("php site should proxy to Apache")
 	}
 }
+
+func TestSSLHTTP2Directive(t *testing.T) {
+	old := renderSite(t, siteData{Domain: "site.test", AllNames: "site.test", DocRoot: "/var/www/site", SSL: true, PostMaxSize: "64M"})
+	if !strings.Contains(old, "listen 443 ssl http2;") {
+		t.Fatal("older nginx keeps http2 on the listen line")
+	}
+	body := renderSite(t, siteData{Domain: "site.test", AllNames: "site.test", DocRoot: "/var/www/site", SSL: true, HTTP2On: true, PostMaxSize: "64M"})
+	if strings.Contains(body, "listen 443 ssl http2;") || !strings.Contains(body, "http2 on;") {
+		t.Fatalf("new nginx should use http2 on:\n%s", body)
+	}
+	if !strings.Contains(body, "listen 443 ssl;") || !strings.Contains(body, "listen [::]:443 ssl;") {
+		t.Fatalf("missing ssl listeners:\n%s", body)
+	}
+}

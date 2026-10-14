@@ -598,6 +598,23 @@ html[data-theme="dark"] .fm-crumb {
   object-fit: contain;
 }
 
+.fm-upload-list {
+  max-height: 220px;
+  margin-bottom: 12px;
+  overflow: auto;
+}
+
+.fm-upload-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fm-upload-meta {
+  color: #8c8c8c;
+}
+
 .fm-crumb-btn {
   border: 0;
   background: none;
