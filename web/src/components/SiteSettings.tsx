@@ -995,45 +995,84 @@ export function SiteSettings({
           ) : null}
 
           {tab === "server" ? (
-            phpSite ? (
-              <>
-                <Typography.Paragraph type="secondary">
-                  Nginx listens on ports 80 and 443. PHP still goes to Apache. Static files are read from the document root, and a missing file is sent to Apache.
+            <>
+              <Typography.Text type="secondary">Type</Typography.Text>
+              <Select
+                style={{ width: 240, display: "block", margin: "8px 0 16px" }}
+                value={kind}
+                options={KINDS}
+                onChange={(v) => {
+                  setKind(v);
+                  if (APP.has(v) && !appCmd) setAppCmd(defaultCmd(v));
+                }}
+              />
+              {phpSite ? (
+                <>
+                  <Typography.Paragraph type="secondary">
+                    Nginx listens on ports 80 and 443. PHP still goes to Apache. Static files are read from the document root, and a missing file is sent to Apache.
+                  </Typography.Paragraph>
+                  <Space>
+                    <Switch checked={staticOn} onChange={setStaticOn} />
+                    <span>Serve static files directly by nginx</span>
+                  </Space>
+                  <Input.TextArea
+                    rows={4}
+                    style={{ marginTop: 12, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}
+                    value={staticExt}
+                    disabled={!staticOn}
+                    onChange={(e) => setStaticExt(e.target.value)}
+                  />
+                  <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+                    One extension per word. PHP stays on Apache.
+                  </Typography.Paragraph>
+                </>
+              ) : null}
+              {kind === "nginx" ? (
+                <Typography.Paragraph>
+                  Nginx serves files from the document root. A missing file returns 404, and PHP files are not executed.
                 </Typography.Paragraph>
-                <Space>
-                  <Switch checked={staticOn} onChange={setStaticOn} />
-                  <span>Serve static files directly by nginx</span>
+              ) : null}
+              {kind === "proxy" ? (
+                <>
+                  <Typography.Text type="secondary">Proxy URL</Typography.Text>
+                  <Input style={{ marginTop: 8 }} value={proxyPass} placeholder="https://doujinfast.com" onChange={(e) => setProxyPass(e.target.value)} />
+                </>
+              ) : null}
+              {APP.has(kind) ? (
+                <Space direction="vertical" style={{ width: "100%" }}>
+                  <Input placeholder={defaultCmd(kind)} value={appCmd} onChange={(e) => setAppCmd(e.target.value)} />
+                  <Input placeholder="port, empty = auto" value={appPort} onChange={(e) => setAppPort(e.target.value)} />
                 </Space>
-                <Input.TextArea
-                  rows={4}
-                  style={{ marginTop: 12, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}
-                  value={staticExt}
-                  disabled={!staticOn}
-                  onChange={(e) => setStaticExt(e.target.value)}
-                />
-                <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-                  One extension per word. PHP stays on Apache.
-                </Typography.Paragraph>
-                <Button
-                  type="primary"
-                  loading={busy}
-                  onClick={() => {
-                    const ext = staticExt.trim().replace(/\s+/g, " ");
-                    return saveOpts({ static: staticOn, staticExt: ext === DEFAULT_STATIC_EXT ? "" : ext }, "Web server saved");
-                  }}
-                >
-                  Save
-                </Button>
-              </>
-            ) : kind === "nginx" ? (
-              <Typography.Paragraph>
-                Nginx serves files from the document root. A missing file returns 404, and PHP files are not executed.
-              </Typography.Paragraph>
-            ) : (
-              <Typography.Paragraph>
-                Nginx listens on ports 80 and 443 and proxies this site to {site.proxyPass || "the app port"}.
-              </Typography.Paragraph>
-            )
+              ) : null}
+              <Button
+                style={{ marginTop: 16 }}
+                type="primary"
+                loading={busy}
+                onClick={() => {
+                  if (kind === "proxy") {
+                    return onPatch({ kind: "proxy", proxyPass: proxyPass.trim(), appCmd: "", appPort: 0 }, "Web server saved");
+                  }
+                  if (APP.has(kind)) {
+                    return onPatch({ kind, proxyPass: "", appCmd, appPort: appPort ? Number(appPort) : 0 }, "Web server saved");
+                  }
+                  const ext = staticExt.trim().replace(/\s+/g, " ");
+                  return onPatch(
+                    {
+                      kind: kind === "nginx" ? "nginx" : "php",
+                      proxyPass: "",
+                      appCmd: "",
+                      appPort: 0,
+                      ...(kind === "nginx"
+                        ? {}
+                        : { options: { ...baseOpts(site), static: staticOn, staticExt: ext === DEFAULT_STATIC_EXT ? "" : ext } }),
+                    },
+                    "Web server saved",
+                  );
+                }}
+              >
+                Save
+              </Button>
+            </>
           ) : null}
 
           {tab === "git" ? (
