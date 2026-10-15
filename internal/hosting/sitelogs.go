@@ -6,11 +6,18 @@ import (
 	"strings"
 )
 
+const assetLogMap = "map $uri $siroc_asset_log {\n    default 1;\n    ~*\\.(?:css|js|mjs|gif|jpe?g|png|bmp|ico|svg|webp|avif|mp4|m4v|webm|mkv|avi|mov|wmv|flv|mpeg|mpg)$ 0;\n}\n"
+
 func nginxAccessLine(domain string, on bool) string {
 	if !on {
 		return "    access_log off;"
 	}
-	return fmt.Sprintf("    access_log /var/log/nginx/sites/%s-access.log combined;", domain)
+	return fmt.Sprintf("    access_log /var/log/nginx/sites/%s-access.log combined if=$siroc_asset_log;", domain)
+}
+
+// quietAssetAccessLogs stops access-log lines for images, video, CSS, and JavaScript.
+func quietAssetAccessLogs(body string) string {
+	return assetAccessRe.ReplaceAllString(body, "${1} if=$$siroc_asset_log;")
 }
 
 func nginxErrorLine(domain string, on bool) string {
@@ -36,6 +43,7 @@ func apacheAccessLine(domain string, on bool) string {
 
 var (
 	nginxAccessRe  = regexp.MustCompile(`(?m)^[ \t]*access_log\s+[^;\n]*;`)
+	assetAccessRe  = regexp.MustCompile(`(?m)^([ \t]*access_log\s+/var/log/nginx/sites/\S+\s+combined)(?:\s+if=\$siroc_asset_log)?;`)
 	nginxErrorRe   = regexp.MustCompile(`(?m)^[ \t]*error_log\s+[^;\n]*;`)
 	apacheErrorRe  = regexp.MustCompile(`(?m)^[ \t]*ErrorLog\s+.*$`)
 	apacheAccessRe = regexp.MustCompile(`(?m)^[ \t]*CustomLog\s+.*$`)

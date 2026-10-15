@@ -6,7 +6,7 @@ import (
 )
 
 func TestNginxLogLines(t *testing.T) {
-	if got := nginxAccessLine("ex.com", true); !strings.Contains(got, "/var/log/nginx/sites/ex.com-access.log combined;") {
+	if got := nginxAccessLine("ex.com", true); !strings.Contains(got, "/var/log/nginx/sites/ex.com-access.log combined if=$siroc_asset_log;") {
 		t.Fatal(got)
 	}
 	if got := nginxAccessLine("ex.com", false); got != "    access_log off;" {
@@ -26,8 +26,15 @@ func TestNginxLogLines(t *testing.T) {
 	}
 	bare := "server {\n    server_name ex.com;\n}\n"
 	added := applyNginxLogLines(bare, nginxAccessLine("ex.com", true), nginxErrorLine("ex.com", false))
-	if !strings.Contains(added, "ex.com-access.log combined;") || !strings.Contains(added, "error_log /dev/null emerg;") {
+	if !strings.Contains(added, "ex.com-access.log combined if=$siroc_asset_log;") || !strings.Contains(added, "error_log /dev/null emerg;") {
 		t.Fatalf("insert:\n%s", added)
+	}
+	kept := quietAssetAccessLogs("    access_log off;\n    access_log /var/log/nginx/sites/ex.com-access.log combined;\n")
+	if !strings.Contains(kept, "access_log off;") || !strings.Contains(kept, "combined if=$siroc_asset_log;") {
+		t.Fatalf("quiet:\n%s", kept)
+	}
+	if again := quietAssetAccessLogs(kept); again != kept {
+		t.Fatalf("quiet second pass:\n%s", again)
 	}
 }
 

@@ -51,14 +51,16 @@ func TestProxyLocation(t *testing.T) {
 		"rewrite ^/aaa(.*)$ /bbb$1 break;",
 		"proxy_pass https://doujinsuki.com;",
 		"proxy_set_header Host doujinsuki.com;",
+		"proxy_set_header X-Real-Port $remote_port;",
+		"proxy_set_header REMOTE-HOST $remote_addr;",
 		"proxy_ssl_server_name on;",
 		"proxy_connect_timeout 60s;",
+		"proxy_set_header Connection \"upgrade\";",
 		"proxy_cache siroc_cache;",
 		"gzip on;",
 		"sub_filter 'old' 'new';",
 		"sub_filter_once off;",
 		"proxy_set_header X-Debug 1;",
-		"$connection_upgrade",
 	} {
 		if !contains(loc, want) {
 			t.Fatalf("missing %s\n%s", want, loc)
@@ -82,25 +84,33 @@ func TestProxyLocation(t *testing.T) {
 		t.Fatal("disk root should be rejected")
 	}
 	legacy, err := NginxProxyLocation(Options{}, "http://127.0.0.1:3000/")
-	if err != nil || !contains(legacy, "proxy_pass http://127.0.0.1:3000/;") || !contains(legacy, "proxy_read_timeout 300s;") {
+	if err != nil || !contains(legacy, "proxy_pass http://127.0.0.1:3000;") || !contains(legacy, "proxy_set_header Host $http_host;") {
 		t.Fatalf("legacy %v\n%s", err, legacy)
 	}
-	host, err := NginxProxyLocation(Options{}, "https://doujinfast.com")
+	host, err := NginxProxyLocation(Options{}, "https://doujinfast.com/")
 	if err != nil {
 		t.Fatal(err)
 	}
-	dialed := DialProxy(host, "https://doujinfast.com", "203.0.113.10")
 	for _, want := range []string{
-		"proxy_pass https://203.0.113.10:443;",
-		"proxy_ssl_server_name on;",
-		"proxy_ssl_name doujinfast.com;",
+		"proxy_pass https://doujinfast.com;",
 		"proxy_set_header Host doujinfast.com;",
+		"proxy_set_header X-Real-IP $remote_addr;",
+		"proxy_set_header X-Real-Port $remote_port;",
+		"proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+		"proxy_set_header REMOTE-HOST $remote_addr;",
+		"proxy_ssl_server_name on;",
+		"proxy_connect_timeout 60s;",
+		"proxy_send_timeout 600s;",
+		"proxy_read_timeout 600s;",
+		"proxy_http_version 1.1;",
+		"proxy_set_header Upgrade $http_upgrade;",
+		"proxy_set_header Connection \"upgrade\";",
 	} {
-		if !contains(dialed, want) {
-			t.Fatalf("missing %s\n%s", want, dialed)
+		if !contains(host, want) {
+			t.Fatalf("missing %s\n%s", want, host)
 		}
 	}
-	if contains(dialed, "proxy_pass https://doujinfast.com") {
-		t.Fatalf("hostname was left in proxy_pass\n%s", dialed)
+	if contains(host, "proxy_pass https://doujinfast.com/") || contains(host, "proxy_ssl_name") {
+		t.Fatalf("unexpected proxy line\n%s", host)
 	}
 }

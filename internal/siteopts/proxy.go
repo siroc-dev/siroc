@@ -329,23 +329,7 @@ func NginxProxyLocation(o Options, fallback string) (string, error) {
 		fmt.Fprintf(&b, "        rewrite ^%s(.*)$ %s$1 break;\n", trimSlash(rw.From), trimSlash(rw.To))
 		fmt.Fprintf(&b, "        proxy_redirect %s %s;\n", rw.From, rw.To)
 	}
-	fmt.Fprintf(&b, "        proxy_pass %s;\n", target)
-	b.WriteString("        proxy_http_version 1.1;\n")
-	fmt.Fprintf(&b, "        proxy_set_header Host %s;\n", host)
-	b.WriteString("        proxy_set_header X-Real-IP $remote_addr;\n")
-	b.WriteString("        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n")
-	b.WriteString("        proxy_set_header X-Forwarded-Proto $scheme;\n")
-	if u.Scheme == "https" {
-		b.WriteString("        proxy_ssl_server_name on;\n")
-		fmt.Fprintf(&b, "        proxy_ssl_name %s;\n", u.Hostname())
-	}
-	if p.Websocket {
-		b.WriteString("        proxy_set_header Upgrade $http_upgrade;\n")
-		b.WriteString("        proxy_set_header Connection $connection_upgrade;\n")
-	}
-	fmt.Fprintf(&b, "        proxy_connect_timeout %ds;\n", p.ConnectTimeout)
-	fmt.Fprintf(&b, "        proxy_send_timeout %ds;\n", p.SendTimeout)
-	fmt.Fprintf(&b, "        proxy_read_timeout %ds;\n", p.ReadTimeout)
+	writeProxyHeaders(&b, target, host, u.Scheme == "https", p.Websocket, p.ConnectTimeout, p.SendTimeout, p.ReadTimeout)
 	if p.Cache {
 		cachePath := p.CachePath
 		if cachePath == "" {
@@ -387,62 +371,62 @@ func NginxProxyLocation(o Options, fallback string) (string, error) {
 	return b.String(), nil
 }
 
-// DialProxy points proxy_pass at an IP from DNS or /etc/hosts and keeps the
-// original hostname for SNI and the Host header.
-func DialProxy(location, target, ip string) string {
-	target = strings.TrimSpace(target)
-	ip = strings.TrimSpace(ip)
-	if location == "" || target == "" || net.ParseIP(ip) == nil {
-		return location
+func writeProxyHeaders(b *strings.Builder, target, host string, https, websocket bool, connect, send, read int) {
+	fmt.Fprintf(b, "        proxy_pass %s;\n", proxyPassTarget(target))
+	fmt.Fprintf(b, "        proxy_set_header Host %s;\n", host)
+	b.WriteString("        proxy_set_header X-Real-IP $remote_addr;\n")
+	b.WriteString("        proxy_set_header X-Real-Port $remote_port;\n")
+	b.WriteString("        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n")
+	b.WriteString("        proxy_set_header REMOTE-HOST $remote_addr;\n")
+	if https {
+		b.WriteString("        proxy_ssl_server_name on;\n")
 	}
-	u, err := url.Parse(target)
-	if err != nil || u.Hostname() == "" || net.ParseIP(u.Hostname()) != nil {
-		return location
+	if connect < 1 {
+		connect = 60
 	}
-	port := u.Port()
-	if port == "" {
-		if u.Scheme == "https" {
-			port = "443"
-		} else {
-			port = "80"
-		}
+	if send < 1 {
+		send = 600
 	}
-	dialHost := ip
-	if strings.Contains(ip, ":") {
-		dialHost = "[" + ip + "]"
+	if read < 1 {
+		read = 600
 	}
-	uri := u.EscapedPath()
-	if uri == "" && strings.HasSuffix(target, "/") {
-		uri = "/"
+	fmt.Fprintf(b, "        proxy_connect_timeout %ds;\n", connect)
+	fmt.Fprintf(b, "        proxy_send_timeout %ds;\n", send)
+	fmt.Fprintf(b, "        proxy_read_timeout %ds;\n", read)
+	b.WriteString("        proxy_http_version 1.1;\n")
+	if websocket {
+		b.WriteString("        proxy_set_header Upgrade $http_upgrade;\n")
+		b.WriteString("        proxy_set_header Connection \"upgrade\";\n")
 	}
-	dial := u.Scheme + "://" + dialHost + ":" + port + uri
-	oldPass := "proxy_pass " + target + ";"
-	newPass := "proxy_pass " + dial + ";"
-	if !strings.Contains(location, oldPass) {
-		return location
+}
+
+// proxyPassTarget keeps a hostname such as https://doujinfast.com and drops a
+// trailing slash so nginx forwards the original request URI.
+func proxyPassTarget(raw string) string {
+	raw = strings.TrimSpace(raw)
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return raw
 	}
-	location = strings.Replace(location, oldPass, newPass, 1)
-	host := u.Hostname()
-	if u.Scheme == "https" && !strings.Contains(location, "proxy_ssl_name ") {
-		location = strings.Replace(location, newPass+"\n", newPass+"\n        proxy_ssl_server_name on;\n        proxy_ssl_name "+host+";\n", 1)
+	path := u.EscapedPath()
+	if path == "/" {
+		path = ""
 	}
-	location = strings.Replace(location, "proxy_set_header Host $http_host;", "proxy_set_header Host "+host+";", 1)
-	location = strings.Replace(location, "proxy_set_header Host $host;", "proxy_set_header Host "+host+";", 1)
-	return location
+	return u.Scheme + "://" + u.Host + path
 }
 
 func legacyProxy(target string) string {
-	return "    location / {\n" +
-		"        proxy_pass " + target + ";\n" +
-		"        proxy_http_version 1.1;\n" +
-		"        proxy_set_header Host $http_host;\n" +
-		"        proxy_set_header X-Real-IP $remote_addr;\n" +
-		"        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n" +
-		"        proxy_set_header X-Forwarded-Proto $scheme;\n" +
-		"        proxy_set_header Upgrade $http_upgrade;\n" +
-		"        proxy_set_header Connection \"upgrade\";\n" +
-		"        proxy_read_timeout 300s;\n" +
-		"    }\n"
+	host := "$http_host"
+	https := false
+	if u, err := url.Parse(strings.TrimSpace(target)); err == nil && u.Hostname() != "" && net.ParseIP(u.Hostname()) == nil {
+		host = u.Hostname()
+		https = u.Scheme == "https"
+	}
+	var b strings.Builder
+	b.WriteString("    location / {\n")
+	writeProxyHeaders(&b, target, host, https, true, 60, 600, 600)
+	b.WriteString("    }\n")
+	return b.String()
 }
 
 func trimSlash(p string) string {

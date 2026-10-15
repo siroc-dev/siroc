@@ -5,8 +5,6 @@ package hosting
 import (
 	"bytes"
 	"fmt"
-	"net"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -477,10 +475,6 @@ func applyGuards(data *siteData, opt siteopts.Options, proxy string) error {
 		if err != nil {
 			return err
 		}
-		loc, err = dialProxy(loc, opt, proxy)
-		if err != nil {
-			return err
-		}
 		data.ProxyLoc = loc
 		if err := ensureProxySupport(loc); err != nil {
 			return err
@@ -775,22 +769,6 @@ func (m *Manager) Rebuild(reqs []rpc.SiteWriteReq) (*rpc.SitesRebuildResp, error
 	return out, nil
 }
 
-func dialProxy(loc string, opt siteopts.Options, fallback string) (string, error) {
-	target := strings.TrimSpace(fallback)
-	if opt.Proxy != nil && strings.TrimSpace(opt.Proxy.Target) != "" {
-		target = strings.TrimSpace(opt.Proxy.Target)
-	}
-	u, err := url.Parse(target)
-	if err != nil || u.Hostname() == "" || net.ParseIP(u.Hostname()) != nil {
-		return loc, nil
-	}
-	ips, err := net.LookupHost(u.Hostname())
-	if err != nil || len(ips) == 0 {
-		return "", fmt.Errorf("%s does not resolve. Add its IP in System tools → Hosts, then save again", u.Hostname())
-	}
-	return siteopts.DialProxy(loc, target, ips[0]), nil
-}
-
 func (m *Manager) Delete(username, domain string) error {
 	if err := validate.LinuxUser(username); err != nil {
 		return err
@@ -892,6 +870,9 @@ func dropSitePools(username, domain, keep string) {
 }
 
 func writeNginxConf(domain, custom string, data any) error {
+	if err := ensureAssetLogMap(); err != nil {
+		return err
+	}
 	path := filepath.Join("/etc/nginx/sites-available", domain+".conf")
 	if strings.TrimSpace(custom) != "" {
 		body := custom
