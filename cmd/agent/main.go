@@ -597,6 +597,17 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Post("/sites/cache/purge", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.CachePurgeReq
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := hosting.PurgeNginxCache(req.Path); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
 	r.Post("/sites/write", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.SiteWriteReq
 		if !decode(w, r, &req) {

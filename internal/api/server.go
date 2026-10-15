@@ -191,6 +191,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/sites/{id}/stats.html", s.siteStatsHTML)
 		r.Get("/api/sites/{id}/logs", s.siteLogs)
 		r.Post("/api/sites/{id}/logs/clear", s.clearSiteLogs)
+		r.Post("/api/sites/{id}/cache/purge", s.purgeSiteCache)
 		r.Put("/api/sites/{id}/waf", s.setSiteWAF)
 		r.Get("/api/sites/{id}/waf/rules", s.siteWAFRules)
 		r.Put("/api/sites/{id}/waf/rules", s.siteWAFRules)

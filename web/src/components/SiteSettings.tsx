@@ -21,6 +21,7 @@ export type SiteOptions = {
   errorLog?: boolean;
   php?: SitePHP;
   composerRoot?: string;
+  cache?: { on?: boolean; valid?: string; path?: string };
 };
 
 export type SitePHP = {
@@ -157,6 +158,16 @@ const KINDS = [
 
 const APP = new Set(["nodejs", "python", "go", "rust", "docker"]);
 
+const CACHE_TIMES = [
+  { value: "10m", label: "10 minutes" },
+  { value: "30m", label: "30 minutes" },
+  { value: "1h", label: "1 hour" },
+  { value: "6h", label: "6 hours" },
+  { value: "12h", label: "12 hours" },
+  { value: "1d", label: "1 day" },
+  { value: "7d", label: "7 days" },
+];
+
 const DEFAULT_STATIC_EXT =
   "ac3 avi bmp bz2 css cue dat doc docx dts eot exe flv gif gz htm html ico img iso jpeg jpg js mkv mp3 mp4 mpeg mpg ogg pdf png ppt pptx qt rar rm svg swf tar tgz ttf txt wav webp woff woff2 xls xlsx zip";
 
@@ -194,6 +205,7 @@ function baseOpts(site: SiteSettingsSite): SiteOptions {
     errorLog: o.errorLog,
     php: o.php,
     composerRoot: o.composerRoot,
+    cache: o.cache,
   };
 }
 
@@ -282,6 +294,10 @@ export function SiteSettings({
   const [proxyPass, setProxyPass] = useState("");
   const [appCmd, setAppCmd] = useState("");
   const [appPort, setAppPort] = useState("");
+  const [cacheOn, setCacheOn] = useState(false);
+  const [cacheValid, setCacheValid] = useState("1h");
+  const [cachePath, setCachePath] = useState("");
+  const [cacheBusy, setCacheBusy] = useState(false);
   const [access, setAccess] = useState<"" | "allow" | "deny">("");
   const [ips, setIps] = useState("");
   const [index, setIndex] = useState("");
@@ -404,6 +420,9 @@ export function SiteSettings({
     setProxyPass(site.proxyPass || "");
     setAppCmd(site.appCmd || "");
     setAppPort(site.appPort ? String(site.appPort) : "");
+    setCacheOn(!!o.cache?.on);
+    setCacheValid(o.cache?.valid || "1h");
+    setCachePath(o.cache?.path || "");
     setAccess(o.access || "");
     setIps((o.ips || []).join("\n"));
     setIndex((o.index || []).join(" "));
@@ -473,6 +492,18 @@ export function SiteSettings({
 
   function saveOpts(partial: SiteOptions, ok: string) {
     return onPatch({ options: { ...baseOpts(site), ...partial } }, ok);
+  }
+
+  async function purgeCache() {
+    setCacheBusy(true);
+    try {
+      await api.post(`/api/sites/${site.id}/cache/purge`);
+      message.success("Cache cleared");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Could not clear the cache");
+    } finally {
+      setCacheBusy(false);
+    }
   }
 
   function addHotlink() {
@@ -1044,30 +1075,47 @@ export function SiteSettings({
                   <Input placeholder="port, empty = auto" value={appPort} onChange={(e) => setAppPort(e.target.value)} />
                 </Space>
               ) : null}
+              <Typography.Title level={5} style={{ marginTop: 8 }}>
+                Nginx cache
+              </Typography.Title>
+              <Space>
+                <Switch checked={cacheOn} onChange={setCacheOn} />
+                <span>Cache</span>
+              </Space>
+              <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+                Nginx stores successful responses and serves them again for the chosen time. A request with Authorization is not cached. A cookie from the backend is ignored, so a public page can be stored. Files served directly from disk are not stored. A reverse proxy that already has its own cache keeps that cache. A custom nginx file is left as written.
+              </Typography.Paragraph>
+              <Space wrap>
+                <Select style={{ width: 160 }} value={cacheValid} options={CACHE_TIMES} disabled={!cacheOn} onChange={setCacheValid} />
+                <Input
+                  style={{ width: 320 }}
+                  value={cachePath}
+                  disabled={!cacheOn}
+                  placeholder="/var/cache/nginx/siroc/this-site"
+                  onChange={(e) => setCachePath(e.target.value)}
+                />
+                <Popconfirm title="Clear the saved cache for this site?" onConfirm={() => void purgeCache()}>
+                  <Button loading={cacheBusy}>Clear cache</Button>
+                </Popconfirm>
+              </Space>
               <Button
                 style={{ marginTop: 16 }}
                 type="primary"
                 loading={busy}
                 onClick={() => {
+                  const ext = staticExt.trim().replace(/\s+/g, " ");
+                  const options = {
+                    ...baseOpts(site),
+                    ...(phpSite ? { static: staticOn, staticExt: ext === DEFAULT_STATIC_EXT ? "" : ext } : {}),
+                    cache: { on: cacheOn, valid: cacheValid === "1h" ? "" : cacheValid, path: cachePath.trim() },
+                  };
                   if (kind === "proxy") {
-                    return onPatch({ kind: "proxy", proxyPass: proxyPass.trim(), appCmd: "", appPort: 0 }, "Web server saved");
+                    return onPatch({ kind: "proxy", proxyPass: proxyPass.trim(), appCmd: "", appPort: 0, options }, "Web server saved");
                   }
                   if (APP.has(kind)) {
-                    return onPatch({ kind, proxyPass: "", appCmd, appPort: appPort ? Number(appPort) : 0 }, "Web server saved");
+                    return onPatch({ kind, proxyPass: "", appCmd, appPort: appPort ? Number(appPort) : 0, options }, "Web server saved");
                   }
-                  const ext = staticExt.trim().replace(/\s+/g, " ");
-                  return onPatch(
-                    {
-                      kind: kind === "nginx" ? "nginx" : "php",
-                      proxyPass: "",
-                      appCmd: "",
-                      appPort: 0,
-                      ...(kind === "nginx"
-                        ? {}
-                        : { options: { ...baseOpts(site), static: staticOn, staticExt: ext === DEFAULT_STATIC_EXT ? "" : ext } }),
-                    },
-                    "Web server saved",
-                  );
+                  return onPatch({ kind: kind === "nginx" ? "nginx" : "php", proxyPass: "", appCmd: "", appPort: 0, options }, "Web server saved");
                 }}
               >
                 Save

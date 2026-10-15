@@ -73,6 +73,7 @@ type siteData struct {
 	ErrorLog          string
 	ApacheError       string
 	ApacheAccess      string
+	Cache             string
 }
 
 const nginxTmpl = `server {
@@ -121,7 +122,7 @@ const nginxTmpl = `server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-    }
+{{.Cache}}    }
 {{- end}}
     location ~ \.php$ {
         proxy_pass http://127.0.0.1:8080;
@@ -130,7 +131,7 @@ const nginxTmpl = `server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-    }
+{{.Cache}}    }
 {{- end}}
 {{- end}}
 }
@@ -184,7 +185,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
-    }
+{{.Cache}}    }
 {{- end}}
     location ~ \.php$ {
         proxy_pass http://127.0.0.1:8080;
@@ -193,7 +194,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
-    }
+{{.Cache}}    }
 {{- end}}
 }
 {{- end}}
@@ -485,6 +486,29 @@ func applyGuards(data *siteData, opt siteopts.Options, proxy string) error {
 			}
 		}
 	}
+	if !data.Direct {
+		dir, zone, valid, err := siteopts.SiteCache(opt, data.Domain)
+		if err != nil {
+			return err
+		}
+		if dir != "" {
+			lines := siteopts.CacheDirectives(zone, valid)
+			if data.ProxyLoc != "" {
+				next := siteopts.InsertCache(data.ProxyLoc, lines)
+				if next != data.ProxyLoc {
+					data.ProxyLoc = next
+					if err := ensureProxyCache(dir, zone); err != nil {
+						return err
+					}
+				}
+			} else {
+				data.Cache = lines
+				if err := ensureProxyCache(dir, zone); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -503,6 +527,34 @@ func ensureProxySupport(loc string) error {
 			return err
 		}
 		if err := os.WriteFile("/etc/nginx/conf.d/siroc-upgrade.conf", []byte(body), 0644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// PurgeNginxCache removes files inside one site cache directory.
+func PurgeNginxCache(dir string) error {
+	dir, err := siteopts.CachePurgePath(dir)
+	if err != nil {
+		return err
+	}
+	info, err := os.Lstat(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("cache path is not a directory")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
 			return err
 		}
 	}

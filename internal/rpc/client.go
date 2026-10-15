@@ -340,6 +340,10 @@ func (c *Client) SiteWrite(in SiteWriteReq) error {
 	return c.do(http.MethodPost, "/sites/write", in, nil)
 }
 
+func (c *Client) PurgeSiteCache(in CachePurgeReq) error {
+	return c.do(http.MethodPost, "/sites/cache/purge", in, nil)
+}
+
 func (c *Client) SitesRebuild(sites []SiteWriteReq) (*SitesRebuildResp, error) {
 	var out SitesRebuildResp
 	err := c.do(http.MethodPost, "/sites/rebuild", SitesRebuildReq{Sites: sites}, &out)

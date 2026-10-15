@@ -34,6 +34,8 @@ type Options struct {
 	// AccessLog and ErrorLog are nil when that log stays on. A false pointer turns that log off.
 	AccessLog *bool `json:"accessLog,omitempty"`
 	ErrorLog  *bool `json:"errorLog,omitempty"`
+	// Cache stores responses nginx fetches from Apache or a reverse proxy.
+	Cache *Cache `json:"cache,omitempty"`
 }
 
 // PHP is a per-site php.ini override applied to this site's FPM pool.
@@ -83,7 +85,7 @@ func Marshal(o Options) (string, error) {
 }
 
 func IsZero(o Options) bool {
-	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && len(o.HotlinkDomains) == 0 && !o.Maintenance && len(o.Redirects) == 0 && o.Proxy == nil && !staticExplicitOff(o) && o.StaticExt == "" && o.ForceHTTPS == nil && o.PHP == nil && o.ComposerRoot == "" && o.AccessLog == nil && o.ErrorLog == nil
+	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && len(o.HotlinkDomains) == 0 && !o.Maintenance && len(o.Redirects) == 0 && o.Proxy == nil && !staticExplicitOff(o) && o.StaticExt == "" && o.ForceHTTPS == nil && o.PHP == nil && o.ComposerRoot == "" && o.AccessLog == nil && o.ErrorLog == nil && o.Cache == nil
 }
 
 func Normalize(in Options) (Options, error) {
@@ -204,6 +206,11 @@ func Normalize(in Options) (Options, error) {
 	out.ComposerRoot = root
 	out.AccessLog = offOnly(in.AccessLog)
 	out.ErrorLog = offOnly(in.ErrorLog)
+	cache, err := normalizeSiteCache(in.Cache)
+	if err != nil {
+		return Options{}, err
+	}
+	out.Cache = cache
 	return out, nil
 }
 

@@ -168,6 +168,10 @@ type SiteWriteReq struct {
 	SkipReload bool             `json:"skipReload,omitempty"`
 }
 
+type CachePurgeReq struct {
+	Path string `json:"path"`
+}
+
 type SitesRebuildReq struct {
 	Sites []SiteWriteReq `json:"sites"`
 }
