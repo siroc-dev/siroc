@@ -85,4 +85,22 @@ func TestProxyLocation(t *testing.T) {
 	if err != nil || !contains(legacy, "proxy_pass http://127.0.0.1:3000/;") || !contains(legacy, "proxy_read_timeout 300s;") {
 		t.Fatalf("legacy %v\n%s", err, legacy)
 	}
+	host, err := NginxProxyLocation(Options{}, "https://doujinfast.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dialed := DialProxy(host, "https://doujinfast.com", "203.0.113.10")
+	for _, want := range []string{
+		"proxy_pass https://203.0.113.10:443;",
+		"proxy_ssl_server_name on;",
+		"proxy_ssl_name doujinfast.com;",
+		"proxy_set_header Host doujinfast.com;",
+	} {
+		if !contains(dialed, want) {
+			t.Fatalf("missing %s\n%s", want, dialed)
+		}
+	}
+	if contains(dialed, "proxy_pass https://doujinfast.com") {
+		t.Fatalf("hostname was left in proxy_pass\n%s", dialed)
+	}
 }

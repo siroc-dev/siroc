@@ -143,7 +143,8 @@ export function ProxySettings({
               </label>
               <label>
                 <div>Target URL</div>
-                <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com" />
+                <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://doujinfast.com" />
+                <Typography.Text type="secondary">A hostname is enough. Add it in System tools → Hosts before saving. After you change that IP, use Rebuild configs.</Typography.Text>
               </label>
               <label>
                 <div>Send host</div>

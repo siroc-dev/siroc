@@ -754,7 +754,7 @@ func ProxyURL(raw string) (string, error) {
 		return "", fmt.Errorf("proxy URL required")
 	}
 	u, err := url.Parse(s)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return "", fmt.Errorf("proxy URL must be http:// or https://host[:port][/path]")
 	}
 	if strings.ContainsAny(s, " \n\t;{}") {

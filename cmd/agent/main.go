@@ -33,6 +33,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/security"
 	"github.com/siroc-dev/siroc/internal/software"
 	"github.com/siroc-dev/siroc/internal/sqlpack"
+	"github.com/siroc-dev/siroc/internal/supervisor"
 	"github.com/siroc-dev/siroc/internal/sysops"
 	"github.com/siroc-dev/siroc/internal/tty"
 	"github.com/siroc-dev/siroc/internal/update"
@@ -582,6 +583,18 @@ func main() {
 			return
 		}
 		writeJSON(w, http.StatusOK, rpc.SiteConfigResp{OK: true, Log: log, Nginx: req.Nginx, Apache: req.Apache})
+	})
+	r.Post("/sites/rebuild", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.SitesRebuildReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := hostMgr.Rebuild(req.Sites)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
 	})
 	r.Post("/sites/write", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.SiteWriteReq
@@ -1339,6 +1352,92 @@ func main() {
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
+	})
+	r.Get("/supervisor", func(w http.ResponseWriter, _ *http.Request) {
+		out, err := supervisor.List()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/supervisor/install", func(w http.ResponseWriter, _ *http.Request) {
+		out, err := supervisor.Install()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/supervisor/service", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Action string `json:"action"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		out, err := supervisor.Service(body.Action)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/supervisor/reload", func(w http.ResponseWriter, _ *http.Request) {
+		out, err := supervisor.Reload()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/supervisor/programs", func(w http.ResponseWriter, r *http.Request) {
+		var body rpc.SupervisorProgramReq
+		if !decode(w, r, &body) {
+			return
+		}
+		out, err := supervisor.Create(body)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Put("/supervisor/programs/{name}", func(w http.ResponseWriter, r *http.Request) {
+		var body rpc.SupervisorProgramReq
+		if !decode(w, r, &body) {
+			return
+		}
+		out, err := supervisor.Update(chi.URLParam(r, "name"), body)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Delete("/supervisor/programs/{name}", func(w http.ResponseWriter, r *http.Request) {
+		out, err := supervisor.Delete(chi.URLParam(r, "name"))
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/supervisor/programs/{name}/{action}", func(w http.ResponseWriter, r *http.Request) {
+		out, err := supervisor.Ctl(chi.URLParam(r, "name"), chi.URLParam(r, "action"))
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Get("/supervisor/programs/{name}/log", func(w http.ResponseWriter, r *http.Request) {
+		text, err := supervisor.Log(chi.URLParam(r, "name"))
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"text": text})
 	})
 	r.Get("/sysops/disk", func(w http.ResponseWriter, _ *http.Request) {
 		out, err := sysops.Disk()

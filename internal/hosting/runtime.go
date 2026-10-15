@@ -41,6 +41,12 @@ func (m *Manager) writeApp(req rpc.SiteWriteReq) error {
 	if err := validate.AppPort(req.AppPort); err != nil {
 		return err
 	}
+	if req.SkipReload {
+		req.Kind = "proxy"
+		req.ProxyPass = fmt.Sprintf("http://127.0.0.1:%d/", req.AppPort)
+		req.AppCmd = cmd
+		return m.writeProxy(req)
+	}
 	doc := req.DocRoot
 	if strings.TrimSpace(doc) == "" {
 		doc = filepath.Join(m.HomeRoot, req.Username, "domains", req.Domain, "public_html")

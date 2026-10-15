@@ -165,6 +165,17 @@ type SiteWriteReq struct {
 	Options    siteopts.Options `json:"options,omitempty"`
 	NginxConf  string           `json:"nginxConf,omitempty"`
 	ApacheConf string           `json:"apacheConf,omitempty"`
+	SkipReload bool             `json:"skipReload,omitempty"`
+}
+
+type SitesRebuildReq struct {
+	Sites []SiteWriteReq `json:"sites"`
+}
+
+type SitesRebuildResp struct {
+	OK      int      `json:"ok"`
+	Failed  []string `json:"failed,omitempty"`
+	Message string   `json:"message,omitempty"`
 }
 
 type SiteConfigReq struct {
@@ -1646,6 +1657,44 @@ type NFSMountReq struct {
 	WSize      int      `json:"wsize,omitempty"`
 	Persist    bool     `json:"persist"`
 	MountNow   bool     `json:"mountNow"`
+}
+
+type SupervisorProc struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	PID    int    `json:"pid,omitempty"`
+	Uptime string `json:"uptime,omitempty"`
+	Detail string `json:"detail,omitempty"`
+}
+
+type SupervisorProgram struct {
+	Name        string           `json:"name"`
+	Command     string           `json:"command"`
+	Directory   string           `json:"directory,omitempty"`
+	User        string           `json:"user,omitempty"`
+	Autostart   bool             `json:"autostart"`
+	Autorestart bool             `json:"autorestart"`
+	Numprocs    int              `json:"numprocs"`
+	StdoutLog   string           `json:"stdoutLog,omitempty"`
+	File        string           `json:"file,omitempty"`
+	Site        bool             `json:"site,omitempty"`
+	Processes   []SupervisorProc `json:"processes,omitempty"`
+}
+
+type SupervisorStatus struct {
+	Installed bool                `json:"installed"`
+	Active    bool                `json:"active"`
+	Programs  []SupervisorProgram `json:"programs"`
+}
+
+type SupervisorProgramReq struct {
+	Name        string `json:"name"`
+	Command     string `json:"command"`
+	Directory   string `json:"directory,omitempty"`
+	User        string `json:"user,omitempty"`
+	Autostart   bool   `json:"autostart"`
+	Autorestart bool   `json:"autorestart"`
+	Numprocs    int    `json:"numprocs"`
 }
 
 type DiskAnalysis struct {

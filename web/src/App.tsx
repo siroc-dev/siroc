@@ -10,6 +10,7 @@ import { Accounts } from "@/pages/Accounts";
 import { Files } from "@/pages/Files";
 import { TerminalPage } from "@/pages/Terminal";
 import { Software } from "@/pages/Software";
+import { Supervisor } from "@/pages/Supervisor";
 import { Sites } from "@/pages/Sites";
 import { Backup } from "@/pages/Backup";
 import { Tools } from "@/pages/Tools";
@@ -129,6 +130,7 @@ export function App() {
         <Route path="/files" element={<Files />} />
         <Route path="/terminal" element={<TerminalPage />} />
         <Route path="/software" element={<AdminOnly admin={admin}><Software /></AdminOnly>} />
+        <Route path="/supervisor" element={<AdminOnly admin={admin}><Supervisor /></AdminOnly>} />
         <Route path="/security" element={<AdminOnly admin={admin}><Security /></AdminOnly>} />
         <Route path="/logs" element={<Logs />} />
         <Route path="/scan-logs" element={<Navigate to="/logs?tab=scan" replace />} />

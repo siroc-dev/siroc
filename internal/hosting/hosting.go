@@ -5,6 +5,8 @@ package hosting
 import (
 	"bytes"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -428,14 +430,16 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 		_ = exec.Command("a2dissite", req.Domain+".conf").Run()
 	}
 
-	if err := exec.Command("systemctl", "reload", "php"+req.PHPVersion+"-fpm").Run(); err != nil {
-		return fmt.Errorf("reload php%s-fpm: %w", req.PHPVersion, err)
-	}
-	if err := testReload("nginx", "nginx", "-t"); err != nil {
-		return err
-	}
-	if err := testReload("apache2", "apache2ctl", "configtest"); err != nil {
-		return err
+	if !req.SkipReload {
+		if err := exec.Command("systemctl", "reload", "php"+req.PHPVersion+"-fpm").Run(); err != nil {
+			return fmt.Errorf("reload php%s-fpm: %w", req.PHPVersion, err)
+		}
+		if err := testReload("nginx", "nginx", "-t"); err != nil {
+			return err
+		}
+		if err := testReload("apache2", "apache2ctl", "configtest"); err != nil {
+			return err
+		}
 	}
 	security.SyncLocalVhostHosts(req.Domain)
 	return nil
@@ -470,6 +474,10 @@ func applyGuards(data *siteData, opt siteopts.Options, proxy string) error {
 	}
 	if strings.TrimSpace(proxy) != "" {
 		loc, err := siteopts.NginxProxyLocation(opt, proxy)
+		if err != nil {
+			return err
+		}
+		loc, err = dialProxy(loc, opt, proxy)
 		if err != nil {
 			return err
 		}
@@ -625,10 +633,12 @@ func (m *Manager) writeDirect(req rpc.SiteWriteReq) error {
 	} else {
 		_ = os.Remove(filepath.Join("/etc/nginx/sites-enabled", req.Domain+".conf"))
 	}
-	if err := testReload("nginx", "nginx", "-t"); err != nil {
-		return err
+	if !req.SkipReload {
+		if err := testReload("nginx", "nginx", "-t"); err != nil {
+			return err
+		}
+		_ = testReload("apache2", "apache2ctl", "configtest")
 	}
-	_ = testReload("apache2", "apache2ctl", "configtest")
 	security.SyncLocalVhostHosts(req.Domain)
 	return nil
 }
@@ -723,11 +733,62 @@ func (m *Manager) writeProxy(req rpc.SiteWriteReq) error {
 	} else {
 		_ = os.Remove(filepath.Join("/etc/nginx/sites-enabled", req.Domain+".conf"))
 	}
-	if err := testReload("nginx", "nginx", "-t"); err != nil {
-		return err
+	if !req.SkipReload {
+		if err := testReload("nginx", "nginx", "-t"); err != nil {
+			return err
+		}
 	}
 	security.SyncLocalVhostHosts(req.Domain)
 	return nil
+}
+
+func (m *Manager) Rebuild(reqs []rpc.SiteWriteReq) (*rpc.SitesRebuildResp, error) {
+	out := &rpc.SitesRebuildResp{}
+	php := map[string]struct{}{}
+	for _, req := range reqs {
+		req.SkipReload = true
+		if err := m.Write(req); err != nil {
+			out.Failed = append(out.Failed, req.Domain+": "+err.Error())
+			continue
+		}
+		out.OK++
+		kind := strings.ToLower(strings.TrimSpace(req.Kind))
+		if (kind == "" || kind == "php") && req.PHPVersion != "" {
+			php[req.PHPVersion] = struct{}{}
+		}
+	}
+	for ver := range php {
+		_ = exec.Command("systemctl", "reload", "php"+ver+"-fpm").Run()
+	}
+	if err := testReload("nginx", "nginx", "-t"); err != nil {
+		return out, err
+	}
+	if _, err := exec.LookPath("apache2ctl"); err == nil {
+		if err := testReload("apache2", "apache2ctl", "configtest"); err != nil {
+			return out, err
+		}
+	}
+	out.Message = fmt.Sprintf("Rebuilt %d websites and reloaded nginx and Apache.", out.OK)
+	if len(out.Failed) > 0 {
+		out.Message = fmt.Sprintf("Rebuilt %d websites. %d failed.", out.OK, len(out.Failed))
+	}
+	return out, nil
+}
+
+func dialProxy(loc string, opt siteopts.Options, fallback string) (string, error) {
+	target := strings.TrimSpace(fallback)
+	if opt.Proxy != nil && strings.TrimSpace(opt.Proxy.Target) != "" {
+		target = strings.TrimSpace(opt.Proxy.Target)
+	}
+	u, err := url.Parse(target)
+	if err != nil || u.Hostname() == "" || net.ParseIP(u.Hostname()) != nil {
+		return loc, nil
+	}
+	ips, err := net.LookupHost(u.Hostname())
+	if err != nil || len(ips) == 0 {
+		return "", fmt.Errorf("%s does not resolve. Add its IP in System tools → Hosts, then save again", u.Hostname())
+	}
+	return siteopts.DialProxy(loc, target, ips[0]), nil
 }
 
 func (m *Manager) Delete(username, domain string) error {

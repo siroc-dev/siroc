@@ -340,6 +340,12 @@ func (c *Client) SiteWrite(in SiteWriteReq) error {
 	return c.do(http.MethodPost, "/sites/write", in, nil)
 }
 
+func (c *Client) SitesRebuild(sites []SiteWriteReq) (*SitesRebuildResp, error) {
+	var out SitesRebuildResp
+	err := c.do(http.MethodPost, "/sites/rebuild", SitesRebuildReq{Sites: sites}, &out)
+	return &out, err
+}
+
 func (c *Client) SiteConfigRead(domain string) (*SiteConfigResp, error) {
 	var out SiteConfigResp
 	err := c.do(http.MethodPost, "/sites/config/read", SiteConfigReq{Domain: domain}, &out)
@@ -880,6 +886,62 @@ func (c *Client) NFSMountAct(id int, action string) (*NFSStatus, error) {
 	var out NFSStatus
 	err := c.do(http.MethodPost, fmt.Sprintf("/sysops/nfs/mounts/%d/%s", id, action), map[string]bool{"ok": true}, &out)
 	return &out, err
+}
+
+func (c *Client) Supervisor() (*SupervisorStatus, error) {
+	var out SupervisorStatus
+	err := c.do(http.MethodGet, "/supervisor", nil, &out)
+	return &out, err
+}
+
+func (c *Client) SupervisorInstall() (*SupervisorStatus, error) {
+	var out SupervisorStatus
+	err := c.do(http.MethodPost, "/supervisor/install", map[string]bool{"ok": true}, &out)
+	return &out, err
+}
+
+func (c *Client) SupervisorService(action string) (*SupervisorStatus, error) {
+	var out SupervisorStatus
+	err := c.do(http.MethodPost, "/supervisor/service", map[string]string{"action": action}, &out)
+	return &out, err
+}
+
+func (c *Client) SupervisorReload() (*SupervisorStatus, error) {
+	var out SupervisorStatus
+	err := c.do(http.MethodPost, "/supervisor/reload", map[string]bool{"ok": true}, &out)
+	return &out, err
+}
+
+func (c *Client) SupervisorCreate(req SupervisorProgramReq) (*SupervisorStatus, error) {
+	var out SupervisorStatus
+	err := c.do(http.MethodPost, "/supervisor/programs", req, &out)
+	return &out, err
+}
+
+func (c *Client) SupervisorUpdate(name string, req SupervisorProgramReq) (*SupervisorStatus, error) {
+	var out SupervisorStatus
+	err := c.do(http.MethodPut, "/supervisor/programs/"+url.PathEscape(name), req, &out)
+	return &out, err
+}
+
+func (c *Client) SupervisorDelete(name string) (*SupervisorStatus, error) {
+	var out SupervisorStatus
+	err := c.do(http.MethodDelete, "/supervisor/programs/"+url.PathEscape(name), nil, &out)
+	return &out, err
+}
+
+func (c *Client) SupervisorCtl(name, action string) (*SupervisorStatus, error) {
+	var out SupervisorStatus
+	err := c.do(http.MethodPost, "/supervisor/programs/"+url.PathEscape(name)+"/"+action, map[string]bool{"ok": true}, &out)
+	return &out, err
+}
+
+func (c *Client) SupervisorLog(name string) (string, error) {
+	var out struct {
+		Text string `json:"text"`
+	}
+	err := c.do(http.MethodGet, "/supervisor/programs/"+url.PathEscape(name)+"/log", nil, &out)
+	return out.Text, err
 }
 
 func (c *Client) Disk() (*DiskAnalysis, error) {

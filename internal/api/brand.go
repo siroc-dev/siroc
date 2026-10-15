@@ -57,7 +57,7 @@ var (
 		"redis":      "/redis",
 		"docker":     "/software",
 		"memcached":  "/tools",
-		"supervisor": "/software",
+		"supervisor": "/supervisor",
 		"clamav":     "/security",
 		"openvas":    "/security",
 	}

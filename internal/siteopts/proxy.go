@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/url"
 	"path"
 	"strings"
@@ -384,6 +385,50 @@ func NginxProxyLocation(o Options, fallback string) (string, error) {
 	}
 	b.WriteString("    }\n")
 	return b.String(), nil
+}
+
+// DialProxy points proxy_pass at an IP from DNS or /etc/hosts and keeps the
+// original hostname for SNI and the Host header.
+func DialProxy(location, target, ip string) string {
+	target = strings.TrimSpace(target)
+	ip = strings.TrimSpace(ip)
+	if location == "" || target == "" || net.ParseIP(ip) == nil {
+		return location
+	}
+	u, err := url.Parse(target)
+	if err != nil || u.Hostname() == "" || net.ParseIP(u.Hostname()) != nil {
+		return location
+	}
+	port := u.Port()
+	if port == "" {
+		if u.Scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+	dialHost := ip
+	if strings.Contains(ip, ":") {
+		dialHost = "[" + ip + "]"
+	}
+	uri := u.EscapedPath()
+	if uri == "" && strings.HasSuffix(target, "/") {
+		uri = "/"
+	}
+	dial := u.Scheme + "://" + dialHost + ":" + port + uri
+	oldPass := "proxy_pass " + target + ";"
+	newPass := "proxy_pass " + dial + ";"
+	if !strings.Contains(location, oldPass) {
+		return location
+	}
+	location = strings.Replace(location, oldPass, newPass, 1)
+	host := u.Hostname()
+	if u.Scheme == "https" && !strings.Contains(location, "proxy_ssl_name ") {
+		location = strings.Replace(location, newPass+"\n", newPass+"\n        proxy_ssl_server_name on;\n        proxy_ssl_name "+host+";\n", 1)
+	}
+	location = strings.Replace(location, "proxy_set_header Host $http_host;", "proxy_set_header Host "+host+";", 1)
+	location = strings.Replace(location, "proxy_set_header Host $host;", "proxy_set_header Host "+host+";", 1)
+	return location
 }
 
 func legacyProxy(target string) string {

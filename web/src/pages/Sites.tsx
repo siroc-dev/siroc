@@ -320,6 +320,7 @@ export function Sites() {
   const [infoSite, setInfoSite] = useState<Site | null>(null);
   const [phps, setPhps] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [rebuildBusy, setRebuildBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [logSite, setLogSite] = useState<Site | null>(null);
   const [gitSite, setGitSite] = useState<Site | null>(null);
@@ -370,6 +371,19 @@ export function Sites() {
     setPhps(phps);
     if (accounts[0] && !form.getFieldValue("username")) {
       form.setFieldsValue({ username: accounts[0].username, phpVersion: phps.length ? phps[phps.length - 1] : "8.3" });
+    }
+  }
+
+  async function rebuildConfigs() {
+    setRebuildBusy(true);
+    try {
+      const out = await api.post<{ ok: number; failed?: string[]; message?: string }>("/api/sites/rebuild", {});
+      if (out.failed?.length) message.warning(out.message || `Rebuilt ${out.ok}. ${out.failed.length} failed.`);
+      else message.success(out.message || `Rebuilt ${out.ok} websites`);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Rebuild failed");
+    } finally {
+      setRebuildBusy(false);
     }
   }
 
@@ -839,6 +853,19 @@ export function Sites() {
           >
             {picked.length ? `Delete ${picked.length} selected` : "Delete selected"}
           </Button>
+          {admin ? (
+            <Button
+              loading={rebuildBusy}
+              onClick={() => modal.confirm({
+                title: "Rebuild nginx and Apache configs?",
+                content: "Rewrites every website from its saved settings and reloads nginx and Apache. A proxy hostname is connected to the IP in Hosts.",
+                okText: "Rebuild",
+                onOk: () => rebuildConfigs(),
+              })}
+            >
+              Rebuild configs
+            </Button>
+          ) : null}
         </Space>
         <Input.Search
           allowClear
@@ -1268,8 +1295,8 @@ export function Sites() {
                   }
                   if (kind === "proxy") {
                     return (
-                      <Form.Item name="proxyPass" label="Proxy URL" rules={[{ required: true }]} extra="Example: http://127.0.0.1:3000/">
-                        <Input placeholder="http://127.0.0.1:3000/" />
+                      <Form.Item name="proxyPass" label="Proxy URL" rules={[{ required: true }]} extra="Hostname or IP, such as https://doujinfast.com or http://127.0.0.1:3000/. Add the hostname in System tools → Hosts before saving. After you change that IP, use Rebuild configs.">
+                        <Input placeholder="https://doujinfast.com" />
                       </Form.Item>
                     );
                   }

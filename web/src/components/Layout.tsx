@@ -17,6 +17,7 @@ const items = [
   { key: "/files", label: "Files", blurb: "Fifty files a page, path jump, preview, rename." },
   { key: "/terminal", label: "Terminal", blurb: "Shell as the selected account." },
   { key: "/software", label: "Software", blurb: "Install and the live job log." },
+  { key: "/supervisor", label: "Supervisor", blurb: "Programs, start and stop, and logs." },
   { key: "/security", label: "Security", blurb: "Firewall, WAF, and Fail2ban whitelist." },
   { key: "/logs", label: "Logs", blurb: "Clear one file or every log for a site." },
   { key: "/databases", label: "Databases", blurb: "MySQL users, import, and Redis." },
