@@ -43,11 +43,12 @@ async function parse<T>(res: Response, url: string): Promise<T> {
 }
 
 export const api = {
-  get: <T>(url: string) => fetch(url, { credentials: "include" }).then((res) => parse<T>(res, url)),
+  get: <T>(url: string) => fetch(url, { credentials: "include", cache: "no-store" }).then((res) => parse<T>(res, url)),
   send: <T>(url: string, method: string, body?: unknown) =>
     fetch(url, {
       method,
       credentials: "include",
+      cache: "no-store",
       headers: { "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
     }).then((res) => parse<T>(res, url)),

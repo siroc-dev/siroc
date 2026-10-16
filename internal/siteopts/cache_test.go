@@ -3,15 +3,26 @@ package siteopts
 import "testing"
 
 func TestSiteCache(t *testing.T) {
-	raw, err := Marshal(Options{Cache: &Cache{On: true, Valid: "1h"}})
+	raw, err := Marshal(Options{Cache: &Cache{On: true, Valid: "1h", Path: "/var/cache/nginx/siroc/abraventure.com"}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !contains(raw, `"enabled":true`) || contains(raw, `"on":true`) {
+		t.Fatalf("stored %s", raw)
+	}
 	got := Parse(raw)
-	if got.Cache == nil || !got.Cache.On || got.Cache.Valid != "" {
+	if got.Cache == nil || !got.Cache.On || got.Cache.Valid != "" || got.Cache.Path != "/var/cache/nginx/siroc/abraventure.com" {
 		t.Fatalf("default hour stored empty: %#v", got.Cache)
 	}
-	dir, zone, valid, err := SiteCache(got, "Example.COM")
+	legacy := Parse(`{"cache":{"on":true}}`)
+	if legacy.Cache == nil || !legacy.Cache.On {
+		t.Fatalf("legacy on flag: %#v", legacy.Cache)
+	}
+	fromPath := Parse(`{"cache":{"path":"/mnt/data/nginx-cache"}}`)
+	if fromPath.Cache == nil || !fromPath.Cache.On || fromPath.Cache.Path != "/mnt/data/nginx-cache" {
+		t.Fatalf("path implies on: %#v", fromPath.Cache)
+	}
+	dir, zone, valid, err := SiteCache(Parse(`{"cache":{"enabled":true}}`), "Example.COM")
 	if err != nil {
 		t.Fatal(err)
 	}

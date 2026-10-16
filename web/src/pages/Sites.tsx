@@ -521,6 +521,7 @@ export function Sites() {
     try {
       const st = await api.patch<Site>(`/api/sites/${current.id}`, body);
       message.success(ok);
+      if (st?.id) setSites((cur) => cur.map((s) => (s.id === st.id ? { ...s, ...st } : s)));
       await load();
       return st;
     } catch (err) {

@@ -1,6 +1,7 @@
 package siteopts
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -9,10 +10,35 @@ import (
 
 // Cache is nginx proxy_cache for pages this site fetches from Apache or a proxy.
 // An empty path uses a private directory under /var/cache/nginx/siroc/<domain>.
+// Enabled is the stored flag. A path without a flag still means on, so a client
+// that drops the boolean still keeps the cache.
 type Cache struct {
-	On    bool   `json:"on,omitempty"`
+	On    bool   `json:"enabled,omitempty"`
 	Valid string `json:"valid,omitempty"`
 	Path  string `json:"path,omitempty"`
+}
+
+func (c *Cache) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		On      *bool  `json:"on"`
+		Enabled *bool  `json:"enabled"`
+		Valid   string `json:"valid"`
+		Path    string `json:"path"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	c.Valid = raw.Valid
+	c.Path = raw.Path
+	switch {
+	case raw.Enabled != nil:
+		c.On = *raw.Enabled
+	case raw.On != nil:
+		c.On = *raw.On
+	case strings.TrimSpace(raw.Path) != "":
+		c.On = true
+	}
+	return nil
 }
 
 var cacheValids = map[string]string{

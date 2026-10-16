@@ -21,7 +21,7 @@ export type SiteOptions = {
   errorLog?: boolean;
   php?: SitePHP;
   composerRoot?: string;
-  cache?: { on?: boolean; valid?: string; path?: string };
+  cache?: { on?: boolean; enabled?: boolean; valid?: string; path?: string };
 };
 
 export type SitePHP = {
@@ -207,6 +207,10 @@ function baseOpts(site: SiteSettingsSite): SiteOptions {
     composerRoot: o.composerRoot,
     cache: o.cache,
   };
+}
+
+function cacheEnabled(cache?: { on?: boolean; enabled?: boolean }) {
+  return cache?.enabled === true || cache?.on === true;
 }
 
 function cacheDir(domain: string) {
@@ -425,7 +429,7 @@ export function SiteSettings({
     setProxyPass(site.proxyPass || "");
     setAppCmd(site.appCmd || "");
     setAppPort(site.appPort ? String(site.appPort) : "");
-    setCacheOn(!!o.cache?.on);
+    setCacheOn(cacheEnabled(o.cache));
     setCacheValid(o.cache?.valid || "1h");
     setCachePath(o.cache?.path || cacheDir(site.domain));
     setAccess(o.access || "");
@@ -1084,7 +1088,7 @@ export function SiteSettings({
                 Nginx cache
               </Typography.Title>
               <Space>
-                <Switch checked={cacheOn} onChange={setCacheOn} />
+                <Switch checked={cacheOn} onChange={(checked) => setCacheOn(checked)} />
                 <span>Cache</span>
               </Space>
               <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
@@ -1113,11 +1117,9 @@ export function SiteSettings({
                   const options = {
                     ...baseOpts(site),
                     ...(phpSite ? { static: staticOn, staticExt: ext === DEFAULT_STATIC_EXT ? "" : ext } : {}),
-                    cache: {
-                      on: cacheOn,
-                      valid: cacheValid === "1h" ? "" : cacheValid,
-                      path: cachePath.trim() === cacheDir(site.domain) ? "" : cachePath.trim(),
-                    },
+                    cache: cacheOn
+                      ? { enabled: true, on: true, valid: cacheValid === "1h" ? "" : cacheValid, path: cachePath.trim() || cacheDir(site.domain) }
+                      : { enabled: false, on: false },
                   };
                   if (kind === "proxy") {
                     return onPatch({ kind: "proxy", proxyPass: proxyPass.trim(), appCmd: "", appPort: 0, options }, "Web server saved");
