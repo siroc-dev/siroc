@@ -209,6 +209,11 @@ function baseOpts(site: SiteSettingsSite): SiteOptions {
   };
 }
 
+function cacheDir(domain: string) {
+  const host = domain.trim().toLowerCase().replace(/\.$/, "");
+  return host ? `/var/cache/nginx/siroc/${host}` : "/var/cache/nginx/siroc";
+}
+
 function defaultCmd(kind: string) {
   switch (kind) {
     case "nodejs":
@@ -422,7 +427,7 @@ export function SiteSettings({
     setAppPort(site.appPort ? String(site.appPort) : "");
     setCacheOn(!!o.cache?.on);
     setCacheValid(o.cache?.valid || "1h");
-    setCachePath(o.cache?.path || "");
+    setCachePath(o.cache?.path || cacheDir(site.domain));
     setAccess(o.access || "");
     setIps((o.ips || []).join("\n"));
     setIndex((o.index || []).join(" "));
@@ -1083,16 +1088,17 @@ export function SiteSettings({
                 <span>Cache</span>
               </Space>
               <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-                Nginx stores successful responses and serves them again for the chosen time. A request with Authorization is not cached. A cookie from the backend is ignored, so a public page can be stored. Files served directly from disk are not stored. A reverse proxy that already has its own cache keeps that cache. A custom nginx file is left as written.
+                Nginx stores successful responses and serves them again for the chosen time. The cache directory is filled in for this site. A request with Authorization is not cached. A cookie from the backend is ignored, so a public page can be stored. Files served directly from disk are not stored. A reverse proxy that already has its own cache keeps that cache. A custom nginx file is left as written.
               </Typography.Paragraph>
               <Space wrap>
                 <Select style={{ width: 160 }} value={cacheValid} options={CACHE_TIMES} disabled={!cacheOn} onChange={setCacheValid} />
                 <Input
-                  style={{ width: 320 }}
-                  value={cachePath}
-                  disabled={!cacheOn}
-                  placeholder="/var/cache/nginx/siroc/this-site"
+                  style={{ width: 360 }}
+                  value={cachePath || cacheDir(site.domain)}
                   onChange={(e) => setCachePath(e.target.value)}
+                  onBlur={() => {
+                    if (!cachePath.trim()) setCachePath(cacheDir(site.domain));
+                  }}
                 />
                 <Popconfirm title="Clear the saved cache for this site?" onConfirm={() => void purgeCache()}>
                   <Button loading={cacheBusy}>Clear cache</Button>
@@ -1107,7 +1113,11 @@ export function SiteSettings({
                   const options = {
                     ...baseOpts(site),
                     ...(phpSite ? { static: staticOn, staticExt: ext === DEFAULT_STATIC_EXT ? "" : ext } : {}),
-                    cache: { on: cacheOn, valid: cacheValid === "1h" ? "" : cacheValid, path: cachePath.trim() },
+                    cache: {
+                      on: cacheOn,
+                      valid: cacheValid === "1h" ? "" : cacheValid,
+                      path: cachePath.trim() === cacheDir(site.domain) ? "" : cachePath.trim(),
+                    },
                   };
                   if (kind === "proxy") {
                     return onPatch({ kind: "proxy", proxyPass: proxyPass.trim(), appCmd: "", appPort: 0, options }, "Web server saved");
