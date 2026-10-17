@@ -22,7 +22,7 @@ type Config struct {
 }
 
 func Load() Config {
-	dataDir := env("SIROC_DATA_DIR", "/var/lib/siroc")
+		dataDir := env("SIROC_DATA_DIR", "/siroc/data")
 	c := Config{
 		ListenAddr:  env("SIROC_LISTEN", ":8443"),
 		TLSCert:     env("SIROC_TLS_CERT", filepath.Join(dataDir, "tls.crt")),
@@ -31,7 +31,7 @@ func Load() Config {
 		DataDir:     dataDir,
 		DBPath:      env("SIROC_DB", filepath.Join(dataDir, "panel.db")),
 		SocketPath:  env("SIROC_SOCKET", "/var/run/siroc/agent.sock"),
-		InstallRoot: env("SIROC_ROOT", "/opt/siroc"),
+		InstallRoot: env("SIROC_ROOT", "/siroc"),
 		HomeRoot:    env("SIROC_HOME_ROOT", "/home"),
 		NginxSites:  env("SIROC_NGINX_SITES", "/etc/nginx/sites-enabled"),
 		ApacheSites: env("SIROC_APACHE_SITES", "/etc/apache2/sites-enabled"),

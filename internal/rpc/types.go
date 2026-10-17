@@ -1390,6 +1390,19 @@ type RcloneRemoteReq struct {
 	ClearKey bool              `json:"clearKey,omitempty"`
 }
 
+type BandwidthSite struct {
+	Domain string `json:"domain"`
+	Bytes  int64  `json:"bytes"`
+}
+
+type BandwidthReq struct {
+	Domains []string `json:"domains"`
+}
+
+type BandwidthResp struct {
+	Sites []BandwidthSite `json:"sites"`
+}
+
 type RcloneRunReq struct {
 	Action string `json:"action"`
 	Source string `json:"source"`

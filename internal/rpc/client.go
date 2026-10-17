@@ -988,6 +988,12 @@ func (c *Client) RcloneDelete(name string) error {
 	return c.do(http.MethodPost, "/rclone/remotes/delete", RcloneRemoteReq{Name: name}, nil)
 }
 
+func (c *Client) SiteBandwidth(domains []string) (*BandwidthResp, error) {
+	var out BandwidthResp
+	err := c.do(http.MethodPost, "/sites/bandwidth", BandwidthReq{Domains: domains}, &out)
+	return &out, err
+}
+
 func (c *Client) RcloneList(in RcloneListReq) (*RcloneListResp, error) {
 	var out RcloneListResp
 	err := c.do(http.MethodPost, "/rclone/list", in, &out)

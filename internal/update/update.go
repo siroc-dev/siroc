@@ -20,11 +20,11 @@ import (
 )
 
 const (
-	workDir     = "/var/lib/siroc/updates"
-	cacheFile   = "/var/lib/siroc/updates/latest.json"
-	versionOut  = "/opt/siroc/VERSION"
-	versionAlt  = "/var/lib/siroc/version"
-	installRoot = "/opt/siroc"
+	workDir     = "/siroc/data/updates"
+	cacheFile   = "/siroc/data/updates/latest.json"
+	versionOut  = "/siroc/VERSION"
+	versionAlt  = "/siroc/data/version"
+	installRoot = "/siroc"
 )
 
 type latestMeta struct {
@@ -276,7 +276,7 @@ func safePath(p string) (string, error) {
 		return "", fmt.Errorf("path must be absolute")
 	}
 	clean := filepath.Clean(p)
-	allow := []string{"/var/lib/siroc", "/opt/siroc", "/root", "/tmp", "/var/tmp"}
+	allow := []string{"/siroc", "/var/lib/siroc", "/opt/siroc", "/root", "/tmp", "/var/tmp"}
 	ok := false
 	for _, a := range allow {
 		if clean == a || strings.HasPrefix(clean, a+string(os.PathSeparator)) {
@@ -285,7 +285,7 @@ func safePath(p string) (string, error) {
 		}
 	}
 	if !ok {
-		return "", fmt.Errorf("package path must be under /var/lib/siroc, /opt/siroc, /root, or /tmp")
+		return "", fmt.Errorf("package path must be under /siroc, /var/lib/siroc, /opt/siroc, /root, or /tmp")
 	}
 	return clean, nil
 }

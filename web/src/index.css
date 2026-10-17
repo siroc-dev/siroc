@@ -144,6 +144,11 @@ html[data-theme="dark"] .boot-skel {
   text-align: right;
 }
 
+.site-dash-metrics {
+  display: flex;
+  gap: 24px;
+}
+
 .site-dash-metric {
   font-size: 20px;
   font-weight: 650;

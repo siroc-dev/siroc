@@ -16,8 +16,8 @@ else
   exit 1
 fi
 
-ROOT="${1:-/opt/siroc}"
-DATA_DIR="${SIROC_DATA_DIR:-/var/lib/siroc}"
+ROOT="${1:-/siroc}"
+DATA_DIR="${SIROC_DATA_DIR:-/siroc/data}"
 LISTEN="${SIROC_LISTEN:-:8443}"
 TLS="${SIROC_TLS:-1}"
 
@@ -43,20 +43,24 @@ if ! id siroc >/dev/null 2>&1; then
   useradd --system -g siroc -d "$DATA_DIR" -s /usr/sbin/nologin siroc
 fi
 
-mkdir -p "$ROOT/bin" "$ROOT/web" "$DATA_DIR" /var/run/siroc /usr/local/bin
+mkdir -p "$ROOT/bin" "$ROOT/web" "$DATA_DIR" /siroc/log /siroc/cache /siroc/db /siroc/etc /var/run/siroc /usr/local/bin
 chown siroc:siroc "$DATA_DIR"
 chmod 750 "$DATA_DIR"
 
-install -m 755 "$SRC/bin/siroc-agent" /usr/local/bin/siroc-agent
-install -m 755 "$SRC/bin/siroc-panel" /usr/local/bin/siroc-panel
+install -m 755 "$SRC/bin/siroc-agent" "$ROOT/bin/siroc-agent"
+install -m 755 "$SRC/bin/siroc-panel" "$ROOT/bin/siroc-panel"
+ln -sfn "$ROOT/bin/siroc-agent" /usr/local/bin/siroc-agent
+ln -sfn "$ROOT/bin/siroc-panel" /usr/local/bin/siroc-panel
 if [ -f "$SRC/bin/siroc" ]; then
-  install -m 755 "$SRC/bin/siroc" /usr/local/bin/siroc
+  install -m 755 "$SRC/bin/siroc" "$ROOT/bin/siroc"
 elif [ -f "$SCRIPT_DIR/siroc" ]; then
-  install -m 755 "$SCRIPT_DIR/siroc" /usr/local/bin/siroc
+  install -m 755 "$SCRIPT_DIR/siroc" "$ROOT/bin/siroc"
 elif [ -f "$SRC/scripts/siroc" ]; then
-  install -m 755 "$SRC/scripts/siroc" /usr/local/bin/siroc
+  install -m 755 "$SRC/scripts/siroc" "$ROOT/bin/siroc"
 fi
-cp -a "$SRC/bin/." "$ROOT/bin/"
+if [ -f "$ROOT/bin/siroc" ]; then
+  ln -sfn "$ROOT/bin/siroc" /usr/local/bin/siroc
+fi
 rm -rf "$ROOT/web/dist"
 cp -a "$SRC/web/dist" "$ROOT/web/dist"
 chmod -R a+rX "$ROOT/web/dist"
@@ -82,7 +86,7 @@ Environment=HOME=/root
 Environment=SIROC_UPDATE_URL=https://get.siroc.dev
 RuntimeDirectory=siroc
 RuntimeDirectoryMode=0750
-ExecStart=/usr/local/bin/siroc-agent
+ExecStart=/siroc/bin/siroc-agent
 Restart=on-failure
 RestartSec=2
 
@@ -106,7 +110,7 @@ Environment=SIROC_DATA_DIR=$DATA_DIR
 Environment=SIROC_LISTEN=$LISTEN
 Environment=SIROC_TLS=$TLS
 Environment=SIROC_UPDATE_URL=https://get.siroc.dev
-ExecStart=/usr/local/bin/siroc-panel
+ExecStart=/siroc/bin/siroc-panel
 Restart=on-failure
 RestartSec=2
 

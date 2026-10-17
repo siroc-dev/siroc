@@ -925,6 +925,9 @@ func writeNginxConf(domain, custom string, data any) error {
 	if err := ensureAssetLogMap(); err != nil {
 		return err
 	}
+	if err := ensureBandwidthFormat(); err != nil {
+		return err
+	}
 	path := filepath.Join("/etc/nginx/sites-available", domain+".conf")
 	if strings.TrimSpace(custom) != "" {
 		body := custom
@@ -936,7 +939,7 @@ func writeNginxConf(domain, custom string, data any) error {
 		if access, errLog, ok := nginxLogLines(data); ok {
 			body = applyNginxLogLines(body, access, errLog)
 		}
-		return writeConfFile(path, withDefaultSite(domain, body))
+		return writeConfFile(path, AddBandwidthLog(withDefaultSite(domain, body), domain))
 	}
 	switch row := data.(type) {
 	case siteData:
@@ -949,7 +952,7 @@ func writeNginxConf(domain, custom string, data any) error {
 	if err != nil {
 		return err
 	}
-	return writeConfFile(path, withDefaultSite(domain, body))
+	return writeConfFile(path, AddBandwidthLog(withDefaultSite(domain, body), domain))
 }
 
 func nginxLogLines(data any) (access, errLog string, ok bool) {

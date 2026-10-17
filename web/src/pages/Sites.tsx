@@ -303,6 +303,14 @@ function RewriteBlock({ form }: { form: FormInstance }) {
   );
 }
 
+function bandwidthMap(raw: { sites?: { domain: string; bytes: number }[] } | null) {
+  const out: Record<string, number> = {};
+  for (const row of raw?.sites || []) {
+    if (row?.domain) out[row.domain] = row.bytes || 0;
+  }
+  return out;
+}
+
 export function Sites() {
   const { message, modal } = App.useApp();
   const nav = useNavigate();
@@ -315,6 +323,7 @@ export function Sites() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
   const [usage, setUsage] = useState<UserUsage[]>([]);
+  const [bandwidth, setBandwidth] = useState<Record<string, number>>({});
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<number[]>([]);
   const [infoSite, setInfoSite] = useState<Site | null>(null);
@@ -358,11 +367,12 @@ export function Sites() {
   const [ready, setReady] = useState(false);
 
   async function load() {
-    const [a, s, p, u] = await Promise.all([
+    const [a, s, p, u, bw] = await Promise.all([
       api.get<Account[]>("/api/accounts"),
       api.get<Site[]>("/api/sites"),
       api.get<string[]>("/api/software/php-versions").catch(() => [] as string[]),
       api.get<UserUsage[]>("/api/usage").catch(() => [] as UserUsage[]),
+      api.get<{ sites?: { domain: string; bytes: number }[] }>("/api/sites/bandwidth").catch(() => ({ sites: [] })),
     ]);
     const accounts = asList(a);
     const sites = asList(s);
@@ -370,6 +380,7 @@ export function Sites() {
     setAccounts(accounts);
     setSites(sites);
     setUsage(asList(u));
+    setBandwidth(bandwidthMap(bw));
     setPhps(phps);
     if (admin) {
       const d = await api.get<{ domain?: string }>("/api/sites/default").catch(() => ({ domain: "" }));
@@ -939,6 +950,11 @@ export function Sites() {
             render: (_, s) => <Tag color={s.enabled ? "success" : "default"}>{s.enabled ? "Active" : "Disabled"}</Tag>,
           },
           {
+            title: "Bandwidth",
+            width: 120,
+            render: (_, s) => formatBytes(bandwidth[s.domain] || 0),
+          },
+          {
             title: "Type",
             width: 130,
             render: (_, s) =>
@@ -1186,6 +1202,7 @@ export function Sites() {
             accountWaf={accountWAFOn(openSite.username)}
             siteWafBusy={wafBusy === `site:${openSite.id}`}
             diskLabel={formatBytes(usage.find((u) => u.user === openSite.username)?.diskUsed || 0)}
+            bandwidthLabel={formatBytes(bandwidth[openSite.domain] || 0)}
             onBack={() => nav("/sites")}
             onOpen={(key) => runDash(openSite, key)}
             onWaf={(v) => void setSiteWAF(openSite, v)}

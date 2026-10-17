@@ -25,6 +25,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/dbmgmt"
 	"github.com/siroc-dev/siroc/internal/files"
 	"github.com/siroc-dev/siroc/internal/hosting"
+	"github.com/siroc-dev/siroc/internal/layout"
 	"github.com/siroc-dev/siroc/internal/monitoring"
 	"github.com/siroc-dev/siroc/internal/osupdate"
 	"github.com/siroc-dev/siroc/internal/pma"
@@ -55,6 +56,7 @@ func main() {
 			if os.Geteuid() != 0 {
 				log.Fatal("siroc-agent must run as root")
 			}
+			ensureLayout()
 			if err := runUpdateCheck(os.Args[2:]); err != nil {
 				log.Fatal(err)
 			}
@@ -63,6 +65,7 @@ func main() {
 			if os.Geteuid() != 0 {
 				log.Fatal("siroc-agent must run as root")
 			}
+			ensureLayout()
 			if err := runUpdateApply(os.Args[2:]); err != nil {
 				log.Fatal(err)
 			}
@@ -99,6 +102,7 @@ func main() {
 		log.Fatal("siroc-agent must run as root")
 	}
 	log.Printf("siroc-agent %s", version.Current())
+	ensureLayout()
 	repairAgentUnit()
 	hosting.RepairNginxHTTP2()
 	hosting.RepairAssetLogs()
@@ -596,6 +600,18 @@ func main() {
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/sites/bandwidth", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.BandwidthReq
+		if !decode(w, r, &req) {
+			return
+		}
+		sites, err := hosting.SiteBandwidth(req.Domains)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.BandwidthResp{Sites: sites})
 	})
 	r.Post("/sites/default", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.DefaultSiteReq
@@ -1726,6 +1742,12 @@ func goAccessInfo(domain string, refresh bool) rpc.GoAccessInfo {
 	out.Bytes = size
 	out.GeneratedAt = gen.Format("2006-01-02 15:04:05")
 	return out
+}
+
+func ensureLayout() {
+	if err := layout.Migrate(); err != nil {
+		log.Printf("siroc layout: %v", err)
+	}
 }
 
 func repairAgentUnit() {

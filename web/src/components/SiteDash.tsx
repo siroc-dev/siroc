@@ -96,6 +96,7 @@ export function SiteDash({
   accountWaf,
   siteWafBusy,
   diskLabel,
+  bandwidthLabel,
   onBack,
   onOpen,
   onWaf,
@@ -109,6 +110,7 @@ export function SiteDash({
   accountWaf: boolean;
   siteWafBusy?: boolean;
   diskLabel?: string;
+  bandwidthLabel?: string;
   onBack: () => void;
   onOpen: (key: SiteDashAction) => void;
   onWaf: (enabled: boolean) => void;
@@ -184,12 +186,18 @@ export function SiteDash({
           ) : null}
         </div>
         <div className="site-dash-side">
-          {diskLabel ? (
+          <div className="site-dash-metrics">
+            {diskLabel ? (
+              <div>
+                <Typography.Text type="secondary">Account disk</Typography.Text>
+                <div className="site-dash-metric">{diskLabel}</div>
+              </div>
+            ) : null}
             <div>
-              <Typography.Text type="secondary">Account disk</Typography.Text>
-              <div className="site-dash-metric">{diskLabel}</div>
+              <Typography.Text type="secondary">Bandwidth</Typography.Text>
+              <div className="site-dash-metric">{bandwidthLabel || "0 B"}</div>
             </div>
-          ) : null}
+          </div>
           <Space wrap>
             <Button onClick={() => onOpen("rename")}>Rename</Button>
             <Button onClick={() => onOpen("toggle")}>{site.enabled ? "Disable" : "Enable"}</Button>

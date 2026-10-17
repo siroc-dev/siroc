@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 func ensureAssetLogMap() error {
@@ -21,6 +22,10 @@ func ensureAssetLogMap() error {
 func RepairAssetLogs() {
 	if err := ensureAssetLogMap(); err != nil {
 		log.Printf("asset log map: %v", err)
+		return
+	}
+	if err := ensureBandwidthFormat(); err != nil {
+		log.Printf("bandwidth log: %v", err)
 		return
 	}
 	var edits []nginxEdit
@@ -43,6 +48,7 @@ func RepairAssetLogs() {
 			continue
 		}
 		next := quietAssetAccessLogs(string(b))
+		next = AddBandwidthLog(next, strings.TrimSuffix(entry.Name(), ".conf"))
 		if next == string(b) {
 			continue
 		}

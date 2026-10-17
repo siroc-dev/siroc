@@ -174,6 +174,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/sites/delete", s.deleteSites)
 		r.Post("/api/sites/rebuild", s.rebuildSites)
 		r.Get("/api/sites/default", s.getDefaultSite)
+		r.Get("/api/sites/bandwidth", s.siteBandwidth)
 		r.Put("/api/sites/default", s.setDefaultSite)
 		r.Patch("/api/sites/{id}", s.updateSite)
 		r.Post("/api/sites/{id}/rename", s.renameSite)

@@ -17,6 +17,8 @@ func Current() string {
 	}
 	for _, p := range []string{
 		os.Getenv("SIROC_VERSION_FILE"),
+		"/siroc/VERSION",
+		"/siroc/data/version",
 		"/opt/siroc/VERSION",
 		"/var/lib/siroc/version",
 	} {
