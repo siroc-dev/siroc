@@ -365,6 +365,36 @@ func renameLaravel(user, oldDomain, newDomain string) {
 	_ = supervisorReload()
 }
 
+func moveLaravelUser(oldUser, newUser, domain, oldHome, newHome string) {
+	if oldUser == newUser || oldUser == "" || newUser == "" {
+		return
+	}
+	rewrite := func(s string) string {
+		if oldHome != "" && newHome != "" {
+			s = strings.ReplaceAll(s, oldHome, newHome)
+		}
+		s = strings.ReplaceAll(s, "siroc-"+oldUser+"-", "siroc-"+newUser+"-")
+		s = strings.ReplaceAll(s, "user="+oldUser, "user="+newUser)
+		return s
+	}
+	for _, p := range laravelQueueConfPaths(oldUser, domain) {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		name := strings.ReplaceAll(filepath.Base(p), "siroc-"+oldUser+"-", "siroc-"+newUser+"-")
+		_ = os.WriteFile(filepath.Join("/etc/supervisor/conf.d", name), []byte(rewrite(string(b))), 0644)
+		if filepath.Base(p) != name {
+			_ = os.Remove(p)
+		}
+	}
+	if b, err := os.ReadFile(laravelCronPath(oldUser, domain)); err == nil {
+		_ = os.WriteFile(laravelCronPath(newUser, domain), []byte(rewrite(string(b))), 0644)
+		_ = os.Remove(laravelCronPath(oldUser, domain))
+	}
+	_ = supervisorReload()
+}
+
 func laravelQueueConfPaths(user, domain string) []string {
 	var out []string
 	if p := laravelSupPath(user, domain); fileOK(p) {

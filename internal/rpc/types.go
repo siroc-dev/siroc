@@ -531,6 +531,12 @@ type SiteRenameReq struct {
 	OldDomain string `json:"oldDomain"`
 }
 
+type SiteMoveReq struct {
+	SiteWriteReq
+	OldUsername string `json:"oldUsername"`
+	OldDocRoot  string `json:"oldDocRoot"`
+}
+
 type DBCreateReq struct {
 	DBName   string `json:"dbName"`
 	DBUser   string `json:"dbUser"`

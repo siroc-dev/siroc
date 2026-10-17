@@ -49,6 +49,7 @@ export type SiteDashAction =
   | "ssl"
   | "edit"
   | "rename"
+  | "move"
   | "toggle";
 
 type Tile = {
@@ -200,6 +201,7 @@ export function SiteDash({
           </div>
           <Space wrap>
             <Button onClick={() => onOpen("rename")}>Rename</Button>
+            {admin ? <Button onClick={() => onOpen("move")}>Move</Button> : null}
             <Button onClick={() => onOpen("toggle")}>{site.enabled ? "Disable" : "Enable"}</Button>
           </Space>
         </div>

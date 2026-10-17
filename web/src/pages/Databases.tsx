@@ -76,8 +76,9 @@ export function Databases() {
     setAccounts(a);
     setList(d);
     setEngine(e.engine);
-    const pick = wantUser && a.some((x) => x.username === wantUser) ? wantUser : a[0]?.username;
-    if (pick && !form.getFieldValue("username")) form.setFieldValue("username", pick);
+    const siteUser = wantUser && a.some((x) => x.username === wantUser) ? wantUser : "";
+    const pick = siteUser || form.getFieldValue("username") || a[0]?.username;
+    if (pick) form.setFieldValue("username", pick);
   }
 
   async function loadConfig(gb?: number) {
@@ -111,7 +112,17 @@ export function Databases() {
     load()
       .catch((err) => message.error(err.message))
       .finally(() => setReady(true));
-  }, []);
+  }, [wantUser]);
+
+  useEffect(() => {
+    if (!open) return;
+    const siteUser = wantUser && accounts.some((a) => a.username === wantUser) ? wantUser : "";
+    const user = siteUser || form.getFieldValue("username") || accounts[0]?.username || "";
+    if (!user) return;
+    const current = form.getFieldValue("username");
+    form.setFieldValue("username", user);
+    if (current !== user || !form.getFieldValue("dbName")) void fillRandom(user);
+  }, [open, wantUser, accounts]);
 
   async function loadRedis() {
     if (!admin) return;
@@ -152,8 +163,10 @@ export function Databases() {
   }
 
   function openCreate() {
+    const siteUser = wantUser && accounts.some((a) => a.username === wantUser) ? wantUser : "";
+    const user = siteUser || form.getFieldValue("username") || accounts[0]?.username || "";
+    if (user) form.setFieldValue("username", user);
     setOpen(true);
-    setTimeout(() => void fillRandom(), 0);
   }
 
   async function setCanCreate(d: DB, enabled: boolean) {

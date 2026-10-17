@@ -897,6 +897,101 @@ func (m *Manager) Rename(req rpc.SiteRenameReq) error {
 	return nil
 }
 
+func (m *Manager) MoveUser(req rpc.SiteMoveReq) error {
+	if err := validate.LinuxUser(req.OldUsername); err != nil {
+		return err
+	}
+	if err := validate.LinuxUser(req.Username); err != nil {
+		return err
+	}
+	if req.OldUsername == req.Username {
+		return m.Write(req.SiteWriteReq)
+	}
+	oldAbs, err := validate.DocRoot(m.HomeRoot, req.OldUsername, req.OldDocRoot, req.Domain)
+	if err != nil {
+		return err
+	}
+	newAbs, err := validate.DocRoot(m.HomeRoot, req.Username, req.DocRoot, req.Domain)
+	if err != nil {
+		return err
+	}
+	req.DocRoot = newAbs
+	oldHome, _, err := validate.HomeJail(m.HomeRoot, req.OldUsername)
+	if err != nil {
+		return err
+	}
+	newHome, _, err := validate.HomeJail(m.HomeRoot, req.Username)
+	if err != nil {
+		return err
+	}
+	src, dst := oldAbs, newAbs
+	oldDomainDir := filepath.Join(oldHome, "domains", req.Domain)
+	newDomainDir := filepath.Join(newHome, "domains", req.Domain)
+	if pathInside(oldDomainDir, oldAbs) {
+		src, dst = oldDomainDir, newDomainDir
+	}
+	moved := false
+	if src != dst {
+		if err := moveSiteTree(src, dst); err != nil {
+			return err
+		}
+		moved = true
+	}
+	if err := m.Write(req.SiteWriteReq); err != nil {
+		if moved {
+			_ = moveSiteTree(dst, src)
+		}
+		return err
+	}
+	dropSitePools(req.OldUsername, req.Domain, "")
+	dropApp(req.OldUsername, req.Domain)
+	moveLaravelUser(req.OldUsername, req.Username, req.Domain, oldHome, newHome)
+	return nil
+}
+
+func pathInside(parent, child string) bool {
+	parent = filepath.Clean(parent)
+	child = filepath.Clean(child)
+	return child == parent || strings.HasPrefix(child, parent+string(filepath.Separator))
+}
+
+func moveSiteTree(src, dst string) error {
+	if src == dst {
+		return nil
+	}
+	st, err := os.Stat(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return os.MkdirAll(dst, 0755)
+		}
+		return err
+	}
+	if !st.IsDir() {
+		return fmt.Errorf("site path is not a directory")
+	}
+	if _, err := os.Stat(dst); err == nil {
+		return fmt.Errorf("the destination already has this website's files")
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	if out, err := exec.Command("cp", "-a", src, dst).CombinedOutput(); err != nil {
+		_ = os.RemoveAll(dst)
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("move site files: %s", msg)
+	}
+	if err := os.RemoveAll(src); err != nil {
+		return fmt.Errorf("site files copied, but the old directory is still there: %w", err)
+	}
+	return nil
+}
+
 func dropOldVhosts(username, domain string) {
 	_ = os.Remove(filepath.Join("/etc/nginx/sites-enabled", domain+".conf"))
 	_ = os.Remove(filepath.Join("/etc/nginx/sites-available", domain+".conf"))

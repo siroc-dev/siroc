@@ -34,3 +34,16 @@ func TestDocRootMountedDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRehome(t *testing.T) {
+	got := Rehome("/home", "alice", "bob", "/home/alice/domains/shop.test/public")
+	if got != "/home/bob/domains/shop.test/public" {
+		t.Fatalf("%s", got)
+	}
+	if Rehome("/home", "alice", "bob", "domains/shop.test") != "domains/shop.test" {
+		t.Fatal("relative path")
+	}
+	if Rehome("/home", "alice", "bob", "/mnt/web/shop") != "/mnt/web/shop" {
+		t.Fatal("other disk")
+	}
+}

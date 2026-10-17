@@ -739,6 +739,26 @@ func HomeJail(homeRoot, username string) (home, tmp string, err error) {
 	return home, filepath.Join(home, "tmp"), nil
 }
 
+// Rehome maps a path inside oldUser's home onto newUser's home.
+// A relative path is unchanged. A path outside that home is unchanged.
+func Rehome(homeRoot, oldUser, newUser, raw string) string {
+	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if raw == "" || oldUser == "" || newUser == "" || oldUser == newUser || !strings.HasPrefix(raw, "/") {
+		return raw
+	}
+	root := path.Clean(strings.ReplaceAll(homeRoot, "\\", "/"))
+	if root == "." || root == "/" || !strings.HasPrefix(root, "/") {
+		root = "/home"
+	}
+	oldHome := path.Clean(root + "/" + oldUser)
+	newHome := path.Clean(root + "/" + newUser)
+	clean := path.Clean(raw)
+	if clean == oldHome || strings.HasPrefix(clean, oldHome+"/") {
+		return newHome + strings.TrimPrefix(clean, oldHome)
+	}
+	return clean
+}
+
 func Printable(s string) bool {
 	for _, r := range s {
 		if r == 0 || (!unicode.IsPrint(r) && r != '\n' && r != '\r' && r != '\t') {

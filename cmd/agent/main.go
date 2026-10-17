@@ -829,6 +829,17 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
 	})
+	r.Post("/sites/move", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.SiteMoveReq
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := hostMgr.MoveUser(req); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
 
 	r.Get("/db/engine", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true, Message: dbMgr.Engine()})

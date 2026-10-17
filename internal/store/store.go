@@ -801,6 +801,11 @@ func (s *Store) RenameSite(id int64, domain, php, docroot string, enabled bool, 
 	return err
 }
 
+func (s *Store) MoveSiteAccount(id, accountID int64, docroot string) error {
+	_, err := s.DB.Exec(`UPDATE sites SET account_id = ?, docroot = ? WHERE id = ?`, accountID, docroot, id)
+	return err
+}
+
 func (s *Store) UpdateSiteProxy(id int64, kind, proxyPass string) error {
 	return s.UpdateSiteApp(id, kind, proxyPass, 0, "")
 }

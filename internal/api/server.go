@@ -178,6 +178,7 @@ func (s *Server) Router() http.Handler {
 		r.Put("/api/sites/default", s.setDefaultSite)
 		r.Patch("/api/sites/{id}", s.updateSite)
 		r.Post("/api/sites/{id}/rename", s.renameSite)
+		r.Post("/api/sites/{id}/move", s.moveSite)
 		r.Post("/api/sites/{id}/ssl", s.issueSiteSSL)
 		r.Get("/api/sites/{id}/config", s.siteConfig)
 		r.Post("/api/sites/{id}/config/test", s.testSiteConfig)
@@ -2367,6 +2368,103 @@ func (s *Server) renameSite(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	st, _ = s.Store.GetSite(id)
+	writeJSON(w, http.StatusOK, st)
+}
+
+func swapAccountPath(s, oldHome, newHome, oldUser, newUser, domain string) string {
+	if s == "" || oldUser == "" || oldUser == newUser {
+		return s
+	}
+	if oldHome != "" && newHome != "" {
+		s = strings.ReplaceAll(s, filepath.ToSlash(oldHome), filepath.ToSlash(newHome))
+		s = strings.ReplaceAll(s, oldHome, newHome)
+	}
+	slug := strings.ReplaceAll(domain, ".", "_")
+	return strings.ReplaceAll(s, oldUser+"-"+slug, newUser+"-"+slug)
+}
+
+func (s *Server) moveSite(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(currentUser(r)) {
+		writeErr(w, http.StatusForbidden, fmt.Errorf("only an administrator can move a website"))
+		return
+	}
+	st, ok := s.siteFromID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Username string `json:"username"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	username := strings.TrimSpace(body.Username)
+	if err := validate.LinuxUser(username); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if username == st.Username {
+		writeJSON(w, http.StatusOK, st)
+		return
+	}
+	acc, err := s.Store.GetAccountByName(username)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("account not found"))
+		return
+	}
+	if acc.Suspended {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("that account is suspended"))
+		return
+	}
+	oldAbs, err := validate.DocRoot(s.Cfg.HomeRoot, st.Username, st.DocRoot, st.Domain)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	newAbs, err := validate.DocRoot(s.Cfg.HomeRoot, username, validate.Rehome(s.Cfg.HomeRoot, st.Username, username, oldAbs), st.Domain)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	oldHome, _, err := validate.HomeJail(s.Cfg.HomeRoot, st.Username)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	newHome, _, err := validate.HomeJail(s.Cfg.HomeRoot, username)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	next := *st
+	next.Username = username
+	next.AccountID = acc.ID
+	next.DocRoot = newAbs
+	next.NginxConf = swapAccountPath(st.NginxConf, oldHome, newHome, st.Username, username, st.Domain)
+	next.ApacheConf = swapAccountPath(st.ApacheConf, oldHome, newHome, st.Username, username, st.Domain)
+	if strings.HasPrefix(next.Options.ComposerRoot, "/") {
+		next.Options.ComposerRoot = validate.Rehome(s.Cfg.HomeRoot, st.Username, username, next.Options.ComposerRoot)
+	}
+	req := s.siteWriteReq(next, st.PHPVersion, st.Enabled, st.Aliases, st.SSL, st.SSLKind, st.Rewrite)
+	if err := s.Agent.SiteMove(rpc.SiteMoveReq{SiteWriteReq: req, OldUsername: st.Username, OldDocRoot: oldAbs}); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.Store.MoveSiteAccount(st.ID, acc.ID, newAbs); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if next.NginxConf != st.NginxConf || next.ApacheConf != st.ApacheConf {
+		_ = s.Store.UpdateSiteConfig(st.ID, next.NginxConf, next.ApacheConf)
+	}
+	if next.Options.ComposerRoot != st.Options.ComposerRoot {
+		_ = s.restoreSiteOptions(st.ID, &next.Options)
+	}
+	if g, err := s.Store.GetSiteGit(st.ID); err == nil && g != nil && strings.HasPrefix(strings.ReplaceAll(g.Path, "\\", "/"), "/") {
+		g.Path = validate.Rehome(s.Cfg.HomeRoot, st.Username, username, g.Path)
+		_ = s.Store.UpsertSiteGit(g)
+	}
+	st, _ = s.Store.GetSite(st.ID)
 	writeJSON(w, http.StatusOK, st)
 }
 

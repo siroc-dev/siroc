@@ -342,6 +342,8 @@ export function Sites() {
   const [form] = Form.useForm();
   const [renameForm] = Form.useForm();
   const [renameSite, setRenameSite] = useState<Site | null>(null);
+  const [moveForm] = Form.useForm();
+  const [moveSite, setMoveSite] = useState<Site | null>(null);
   const [appSite, setAppSite] = useState<Site | null>(null);
   const [appKind, setAppKind] = useState<"laravel" | "wordpress" | null>(null);
   const [app, setApp] = useState<SiteApp | null>(null);
@@ -573,6 +575,26 @@ export function Sites() {
       await api.post(`/api/sites/${renameSite.id}/rename`, { domain: values.domain });
       message.success(`${siteLabel(renameSite)} renamed to ${values.domain}`);
       setRenameSite(null);
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openMove(s: Site) {
+    setMoveSite(s);
+    moveForm.resetFields();
+  }
+
+  async function saveMove(values: { username: string }) {
+    if (!moveSite) return;
+    setBusy(true);
+    try {
+      await api.post(`/api/sites/${moveSite.id}/move`, { username: values.username });
+      message.success(`${siteLabel(moveSite)} moved to ${values.username}`);
+      setMoveSite(null);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -859,6 +881,7 @@ export function Sites() {
     if (key === "wordpress") void openApp(s, "wordpress");
     if (key === "app") void openRuntime(s);
     if (key === "rename") openRename(s);
+    if (key === "move") openMove(s);
     if (key === "toggle") void toggle(s);
   }
 
@@ -1005,6 +1028,7 @@ export function Sites() {
                     { key: "stats", label: "Stats" },
                     { key: "edit", label: "Settings" },
                     { key: "rename", label: "Rename" },
+                    ...(admin ? [{ key: "move", label: "Move to account" }] : []),
                     ...(APP_KINDS.has(s.kind || "") ? [{ key: "app", label: "App" }] : []),
                     ...(!APP_KINDS.has(s.kind || "") && s.kind !== "proxy" && s.kind !== "nginx"
                       ? [
@@ -1023,6 +1047,7 @@ export function Sites() {
                     if (key === "stats") openStats(s);
                     if (key === "edit") openEdit(s);
                     if (key === "rename") openRename(s);
+                    if (key === "move") openMove(s);
                     if (key === "app") void openRuntime(s);
                     if (key === "laravel") void openApp(s, "laravel");
                     if (key === "wordpress") void openApp(s, "wordpress");
@@ -1425,6 +1450,32 @@ export function Sites() {
             rules={[{ required: true, message: "Domain required" }]}
           >
             <Input placeholder="site.test" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={moveSite ? `Move ${moveSite.domain}` : "Move website"}
+        open={!!moveSite}
+        onCancel={() => setMoveSite(null)}
+        onOk={() => moveForm.submit()}
+        confirmLoading={busy}
+        destroyOnHidden
+        okText="Move"
+      >
+        <Form form={moveForm} layout="vertical" onFinish={saveMove} requiredMark={false} style={{ marginTop: 8 }}>
+          <Form.Item
+            name="username"
+            label="Account"
+            extra={moveSite ? `Moves ${moveSite.domain} and its files from ${moveSite.username} to this account. Databases stay with ${moveSite.username}.` : undefined}
+            rules={[{ required: true, message: "Account required" }]}
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              options={accounts.filter((a) => a.username !== moveSite?.username).map((a) => ({ value: a.username, label: a.username }))}
+              placeholder="Select an account"
+            />
           </Form.Item>
         </Form>
       </Modal>
