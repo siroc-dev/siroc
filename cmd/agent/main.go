@@ -119,6 +119,9 @@ func main() {
 	_ = os.Remove(cfg.SocketPath)
 
 	software.PrepareRuntime()
+	if err := software.EnsurePHPCLILimits(); err != nil {
+		log.Printf("php cli limits: %v", err)
+	}
 	go func() {
 		if err := software.EnsureNginxModules(); err != nil {
 			log.Printf("nginx modules: %v", err)

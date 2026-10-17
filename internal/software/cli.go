@@ -134,7 +134,7 @@ func setPHPCLI(version string) error {
 	if _, err := os.Stat(phar); err == nil {
 		_ = alternativesSet("phar", phar, nil)
 	}
-	return nil
+	return EnsurePHPCLILimits()
 }
 
 func setPythonCLI(version string) error {

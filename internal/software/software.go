@@ -85,6 +85,7 @@ func catalog() []spec {
 				}
 				_ = exec.Command("systemctl", "enable", "--now", "php"+version+"-fpm").Run()
 				_ = setPHPCLI(version)
+				_ = EnsurePHPCLILimits()
 				return enableApachePHP()
 			},
 		},
