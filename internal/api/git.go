@@ -59,7 +59,7 @@ func (s *Server) putSiteGit(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	repo, err := validate.GitRepo(body.Repo)
+	repo, urlBranch, err := validate.ParseGitRemote(body.Repo)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -68,6 +68,9 @@ func (s *Server) putSiteGit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
+	}
+	if urlBranch != "" {
+		branch = urlBranch
 	}
 	command, err := validate.GitCommand(body.Command)
 	if err != nil {
@@ -94,6 +97,16 @@ func (s *Server) putSiteGit(w http.ResponseWriter, r *http.Request) {
 	if err := s.Store.UpsertSiteGit(g); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
+	}
+	useHead := urlBranch == "" && (strings.HasPrefix(repo, "git@") || strings.HasPrefix(repo, "ssh://")) && (strings.TrimSpace(body.Branch) == "" || branch == "main")
+	if !s.beginGitDeploy(st.ID) {
+		writeErr(w, http.StatusConflict, fmt.Errorf("deploy already running"))
+		return
+	}
+	defer s.endGitDeploy(st.ID)
+	s.execGitDeploy(st, g, useHead)
+	if fresh, err := s.Store.GetSiteGit(st.ID); err == nil {
+		g = fresh
 	}
 	writeJSON(w, http.StatusOK, s.gitView(r, st, g))
 }
@@ -163,7 +176,7 @@ func (s *Server) gitWebhook(w http.ResponseWriter, r *http.Request) {
 	gCopy := *g
 	go func() {
 		defer s.endGitDeploy(stCopy.ID)
-		_, _, _, _ = s.execGitDeploy(&stCopy, &gCopy)
+		_, _, _, _ = s.execGitDeploy(&stCopy, &gCopy, false)
 	}()
 	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "message": "Deploy started"})
 }
@@ -178,7 +191,7 @@ func (s *Server) endGitDeploy(siteID int64) {
 }
 
 func (s *Server) runGitDeploy(w http.ResponseWriter, st *store.Site, g *store.SiteGit) {
-	log, commit, ok, msg := s.execGitDeploy(st, g)
+	log, commit, ok, msg := s.execGitDeploy(st, g, false)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("%s", msg))
 		return
@@ -188,23 +201,28 @@ func (s *Server) runGitDeploy(w http.ResponseWriter, st *store.Site, g *store.Si
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": msg, "log": log, "commit": commit})
 }
 
-func (s *Server) execGitDeploy(st *store.Site, g *store.SiteGit) (log string, commit *rpc.GitCommit, ok bool, msg string) {
+func (s *Server) execGitDeploy(st *store.Site, g *store.SiteGit, useHead bool) (log string, commit *rpc.GitCommit, ok bool, msg string) {
 	path := strings.TrimSpace(g.Path)
 	if path == "" {
 		path = validate.RelHome(s.Cfg.HomeRoot, st.Username, st.DocRoot)
 	}
 	out, err := s.Agent.GitDeploy(rpc.GitDeployReq{
-		Username: st.Username,
-		Path:     path,
-		Repo:     g.Repo,
-		Branch:   g.Branch,
-		Command:  g.Command,
+		Username:      st.Username,
+		Path:          path,
+		Repo:          g.Repo,
+		Branch:        g.Branch,
+		Command:       g.Command,
+		UseRemoteHead: useHead,
 	})
 	ok = err == nil
 	msg = "Deployed"
 	if out != nil {
 		log = out.Log
 		commit = out.Commit
+		if out.Branch != "" {
+			g.Branch = out.Branch
+			_ = s.Store.UpdateSiteGitBranch(st.ID, out.Branch)
+		}
 		if out.Message != "" {
 			msg = out.Message
 		}
@@ -279,6 +297,7 @@ func (s *Server) gitView(r *http.Request, st *store.Site, g *store.SiteGit) map[
 		"keyPath":     keyPath,
 		"fingerprint": fp,
 		"lastOk":      g.LastOK,
+		"needsKey":    !g.LastOK && validate.GitNeedsDeployKey(g.LastLog),
 		"lastLog":     g.LastLog,
 		"lastAt":      g.LastAt,
 		"commit":      commit,

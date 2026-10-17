@@ -7,15 +7,15 @@ import (
 )
 
 type SiteGit struct {
-	SiteID   int64  `json:"siteId"`
-	Repo     string `json:"repo"`
-	Branch   string `json:"branch"`
-	Path     string `json:"path"`
-	Command  string `json:"command"`
-	Token    string `json:"token"`
-	LastOK   bool   `json:"lastOk"`
-	LastLog  string `json:"lastLog"`
-	LastAt   string `json:"lastAt,omitempty"`
+	SiteID  int64  `json:"siteId"`
+	Repo    string `json:"repo"`
+	Branch  string `json:"branch"`
+	Path    string `json:"path"`
+	Command string `json:"command"`
+	Token   string `json:"token"`
+	LastOK  bool   `json:"lastOk"`
+	LastLog string `json:"lastLog"`
+	LastAt  string `json:"lastAt,omitempty"`
 }
 
 func (s *Store) ensureSiteGitTable() {
@@ -76,6 +76,16 @@ ON CONFLICT(site_id) DO UPDATE SET
   command = excluded.command,
   token = excluded.token`,
 		g.SiteID, g.Repo, g.Branch, g.Path, g.Command, g.Token, boolInt(g.LastOK), g.LastLog, g.LastAt)
+	return err
+}
+
+func (s *Store) UpdateSiteGitBranch(siteID int64, branch string) error {
+	s.ensureSiteGitTable()
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return nil
+	}
+	_, err := s.DB.Exec(`UPDATE site_git SET branch = ? WHERE site_id = ?`, branch, siteID)
 	return err
 }
 

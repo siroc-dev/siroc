@@ -37,6 +37,26 @@ func ParseGitLog(out string) (rpc.GitCommit, bool) {
 	return rpc.GitCommit{}, false
 }
 
+// ParseSymrefHead reads the branch from `git ls-remote --symref origin HEAD`.
+func ParseSymrefHead(out string) (string, bool) {
+	for _, line := range strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "ref:") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 || !strings.HasPrefix(fields[1], "refs/heads/") {
+			continue
+		}
+		name := strings.TrimPrefix(fields[1], "refs/heads/")
+		if name == "" || strings.Contains(name, "..") {
+			continue
+		}
+		return name, true
+	}
+	return "", false
+}
+
 func gitHash(s string) bool {
 	if len(s) < 7 || len(s) > 40 {
 		return false

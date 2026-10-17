@@ -12,6 +12,7 @@ export type SiteGitInfo = {
   keyPath?: string;
   fingerprint?: string;
   lastOk?: boolean;
+  needsKey?: boolean;
   lastLog?: string;
   lastAt?: string;
   commit?: { hash?: string; subject?: string; author?: string; at?: string };
@@ -51,6 +52,13 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
     try {
       const out = await api.put<SiteGitInfo>(`/api/sites/${siteId}/git`, values);
       setInfo(out);
+      form.setFieldsValue({
+        repo: out.repo || values.repo,
+        branch: out.branch || values.branch,
+        path: out.path || values.path,
+        command: out.command || values.command,
+      });
+      if (out.lastOk === false && !out.needsKey) setErr("Could not pull the branch");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -59,23 +67,11 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
   }
 
   async function deploy() {
-    setBusy(true);
-    setErr("");
     try {
-      await form.validateFields();
-      await save(form.getFieldsValue());
-      const out = await api.post<{ log?: string; message?: string; commit?: SiteGitInfo["commit"] }>(`/api/sites/${siteId}/git/deploy`, {});
-      setInfo((cur) => ({
-        ...(cur || {}),
-        lastOk: true,
-        lastLog: out.log || out.message || "Deployed",
-        commit: out.commit || cur?.commit,
-      }));
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Deploy failed");
-      await load();
-    } finally {
-      setBusy(false);
+      const values = await form.validateFields();
+      await save(values);
+    } catch {
+      // The form shows its own validation message.
     }
   }
 
@@ -103,9 +99,17 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
         <code>{domain}</code> as <code>{username}</code>, then runs your command.
       </Typography.Paragraph>
       {err ? <Alert type="error" showIcon message={err} /> : null}
+      {info?.needsKey ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="Private repository"
+          description="The server could not read this repository. Add the SSH public key below as a deploy key, then pull again."
+        />
+      ) : null}
       {info?.publicKey ? (
         <Alert
-          type="info"
+          type={info.needsKey ? "warning" : "info"}
           showIcon
           message="SSH public key"
           description={
@@ -122,8 +126,15 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
         <Alert type="warning" showIcon message="Could not read the Linux user SSH key yet. Save the repo after the agent is online." />
       )}
       <Form form={form} layout="vertical" onFinish={save} requiredMark={false}>
-        <Form.Item name="repo" label="SSH repo" rules={[{ required: true, message: "Repo required" }]}>
-          <Input placeholder="git@github.com:org/repo.git" />
+        <Form.Item label="Repository" extra="HTTPS, or git@github.com:org/repo.git. Pull fetches the branch. A private repository needs the SSH key below.">
+          <Space.Compact style={{ width: "100%" }}>
+            <Form.Item name="repo" noStyle rules={[{ required: true, message: "Repo required" }]}>
+              <Input placeholder="git@github.com:org/repo.git" />
+            </Form.Item>
+            <Button type="primary" loading={busy} onClick={() => void deploy()}>
+              Pull
+            </Button>
+          </Space.Compact>
         </Form.Item>
         <Form.Item name="branch" label="Branch" extra="Webhook and Deploy now always fetch and reset --hard to this branch.">
           <Input placeholder="main" />

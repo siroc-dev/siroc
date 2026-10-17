@@ -81,6 +81,11 @@ func (m *Manager) GitDeploy(req rpc.GitDeployReq) (*rpc.GitDeployResp, error) {
 			return gitFail(&log, err)
 		}
 	}
+	if req.UseRemoteHead {
+		if head, err := remoteHeadBranch(req.Username, abs, sshCmd, &log); err == nil && head != "" {
+			branch = head
+		}
+	}
 	if err := runUser(req.Username, abs, sshCmd, 10*time.Minute, &log, "git", "fetch", "--force", "origin", branch); err != nil {
 		return gitFail(&log, err)
 	}
@@ -101,7 +106,7 @@ func (m *Manager) GitDeploy(req rpc.GitDeployReq) (*rpc.GitDeployResp, error) {
 			return resp, fail
 		}
 	}
-	return &rpc.GitDeployResp{OK: true, Log: trimLog(log.String()), Message: "Deployed " + branch, Commit: head}, nil
+	return &rpc.GitDeployResp{OK: true, Log: trimLog(log.String()), Message: "Deployed " + branch, Branch: branch, Commit: head}, nil
 }
 
 func (m *Manager) GitHead(username, rel string) (*rpc.GitCommit, error) {
@@ -131,6 +136,27 @@ func readGitCommit(username, dir, sshCmd string) *rpc.GitCommit {
 		return nil
 	}
 	return &c
+}
+
+func remoteHeadBranch(username, dir, sshCmd string, log *bytes.Buffer) (string, error) {
+	var buf bytes.Buffer
+	if err := runUser(username, dir, sshCmd, 2*time.Minute, &buf, "git", "ls-remote", "--symref", "origin", "HEAD"); err != nil {
+		if log != nil {
+			log.WriteString(buf.String())
+		}
+		return "", err
+	}
+	if log != nil && buf.Len() > 0 {
+		log.WriteString(buf.String())
+	}
+	name, ok := ParseSymrefHead(buf.String())
+	if !ok {
+		return "", fmt.Errorf("remote has no default branch")
+	}
+	if _, err := validate.GitBranch(name); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func gitFail(log *bytes.Buffer, err error) (*rpc.GitDeployResp, error) {

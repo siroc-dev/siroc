@@ -1805,11 +1805,12 @@ type GitKeyResp struct {
 }
 
 type GitDeployReq struct {
-	Username string `json:"username"`
-	Path     string `json:"path"`
-	Repo     string `json:"repo"`
-	Branch   string `json:"branch"`
-	Command  string `json:"command,omitempty"`
+	Username      string `json:"username"`
+	Path          string `json:"path"`
+	Repo          string `json:"repo"`
+	Branch        string `json:"branch"`
+	Command       string `json:"command,omitempty"`
+	UseRemoteHead bool   `json:"useRemoteHead,omitempty"`
 }
 
 type GitCommit struct {
@@ -1828,6 +1829,7 @@ type GitDeployResp struct {
 	OK      bool       `json:"ok"`
 	Log     string     `json:"log,omitempty"`
 	Message string     `json:"message,omitempty"`
+	Branch  string     `json:"branch,omitempty"`
 	Commit  *GitCommit `json:"commit,omitempty"`
 }
 

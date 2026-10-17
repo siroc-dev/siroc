@@ -1565,8 +1565,8 @@ func (s *Server) createSite(w http.ResponseWriter, r *http.Request) {
 		PHPVersion: body.PHPVersion,
 		Enabled:    true,
 		Aliases:    aliases,
-		SSL:        false,
-		SSLKind:    "",
+		SSL:        true,
+		SSLKind:    "local",
 		Rewrite:    rewrite,
 		FPM:        s.accountFPMPtr(acc),
 		Kind:       kind,
@@ -1582,6 +1582,15 @@ func (s *Server) createSite(w http.ResponseWriter, r *http.Request) {
 	st, err := s.Store.CreateSite(acc.ID, body.Domain, doc, body.PHPVersion, aliases, kind, body.ProxyPass, rewrite, appPort, appCmd)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.Store.UpdateSite(st.ID, st.PHPVersion, st.DocRoot, st.Enabled, st.Aliases, true, "", "local", st.Rewrite); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	st, err = s.Store.GetSite(st.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	st.Skipped = skipped

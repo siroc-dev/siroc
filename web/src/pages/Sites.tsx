@@ -1374,6 +1374,9 @@ export function Sites() {
               <RewriteBlock form={form} />
             </Col>
           </Row>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            HTTPS is turned on with a local certificate. You can switch to Let's Encrypt later.
+          </Typography.Paragraph>
         </Form>
       </Modal>
 

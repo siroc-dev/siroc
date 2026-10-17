@@ -19,3 +19,13 @@ func TestParseGitLog(t *testing.T) {
 		t.Fatal("accepted a short hash")
 	}
 }
+
+func TestParseSymrefHead(t *testing.T) {
+	got, ok := ParseSymrefHead("ref: refs/heads/develop\tHEAD\nabc\tHEAD\n")
+	if !ok || got != "develop" {
+		t.Fatalf("%q %v", got, ok)
+	}
+	if _, ok := ParseSymrefHead("abc\tHEAD\n"); ok {
+		t.Fatal("missing symref")
+	}
+}
