@@ -13,6 +13,7 @@ type parsedProgress struct {
 	Speed          float64
 	Transfers      int64
 	TotalTransfers int64
+	Listed         int64
 	Percent        int
 	Files          []rpc.RcloneFileProgress
 }
@@ -23,6 +24,7 @@ type statsJSON struct {
 	Speed          float64        `json:"speed"`
 	Transfers      int64          `json:"transfers"`
 	TotalTransfers int64          `json:"totalTransfers"`
+	Listed         int64          `json:"listed"`
 	Transferring   []transferJSON `json:"transferring"`
 }
 
@@ -30,7 +32,7 @@ type transferJSON struct {
 	Name       string  `json:"name"`
 	Size       int64   `json:"size"`
 	Bytes      int64   `json:"bytes"`
-	Percentage int     `json:"percentage"`
+	Percentage float64 `json:"percentage"`
 	Speed      float64 `json:"speed"`
 }
 
@@ -64,6 +66,7 @@ func progressFrom(s *statsJSON) *parsedProgress {
 		Speed:          s.Speed,
 		Transfers:      s.Transfers,
 		TotalTransfers: s.TotalTransfers,
+		Listed:         s.Listed,
 		Percent:        percentOf(s.Bytes, s.TotalBytes),
 	}
 	if p.Percent == 0 {
@@ -74,7 +77,7 @@ func progressFrom(s *statsJSON) *parsedProgress {
 		if name == "" {
 			continue
 		}
-		pct := tr.Percentage
+		pct := int(tr.Percentage)
 		if tr.Size > 0 {
 			pct = percentOf(tr.Bytes, tr.Size)
 		}

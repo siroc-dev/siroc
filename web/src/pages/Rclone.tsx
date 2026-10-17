@@ -22,6 +22,7 @@ type Job = {
   speed?: number;
   transfers?: number;
   totalTransfers?: number;
+  listed?: number;
   files?: FileProgress[];
 };
 
@@ -573,7 +574,8 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
                     <Progress percent={job.percent || 0} status={running ? "active" : job.ok ? "success" : "exception"} />
                     <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
                       {[
-                        job.totalTransfers ? `${job.transfers || 0} / ${job.totalTransfers} files` : "",
+                        (job.totalTransfers || 0) > 0 ? `${job.transfers || 0} / ${job.totalTransfers} files` : `${job.transfers || 0} files`,
+                        job.listed ? `${job.listed} listed` : "",
                         job.totalBytes ? `${formatBytes(job.bytes)} / ${formatBytes(job.totalBytes)}` : job.bytes ? formatBytes(job.bytes) : "",
                         job.speed ? `${formatBytes(job.speed)}/s` : "",
                       ]

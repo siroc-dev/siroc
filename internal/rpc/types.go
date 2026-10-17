@@ -1428,6 +1428,7 @@ type RcloneRunResp struct {
 	Speed          float64              `json:"speed,omitempty"`
 	Transfers      int64                `json:"transfers,omitempty"`
 	TotalTransfers int64                `json:"totalTransfers,omitempty"`
+	Listed         int64                `json:"listed,omitempty"`
 	Files          []RcloneFileProgress `json:"files,omitempty"`
 }
 

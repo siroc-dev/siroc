@@ -424,6 +424,7 @@ func (st *runState) note(line string) {
 		st.snap.Speed = prog.Speed
 		st.snap.Transfers = prog.Transfers
 		st.snap.TotalTransfers = prog.TotalTransfers
+		st.snap.Listed = prog.Listed
 		st.snap.Percent = prog.Percent
 		st.snap.Files = prog.Files
 		return

@@ -16,6 +16,17 @@ func TestInterpretStats(t *testing.T) {
 	}
 }
 
+func TestInterpretPartialTotals(t *testing.T) {
+	line := `{"level":"info","msg":"stats","stats":{"bytes":0,"totalBytes":0,"transfers":2,"totalTransfers":10,"listed":40,"transferring":[{"name":"a.bin","size":0,"bytes":0,"percentage":12.5}]}}`
+	_, prog := Interpret(line)
+	if prog == nil || prog.Percent != 20 || prog.Listed != 40 || prog.Transfers != 2 || prog.TotalTransfers != 10 {
+		t.Fatalf("%#v", prog)
+	}
+	if len(prog.Files) != 1 || prog.Files[0].Percent != 12 {
+		t.Fatalf("file %#v", prog.Files)
+	}
+}
+
 func TestInterpretLogLine(t *testing.T) {
 	log, prog := Interpret(`{"level":"error","msg":"failed to copy file.bin"}`)
 	if prog != nil || log != "failed to copy file.bin" {

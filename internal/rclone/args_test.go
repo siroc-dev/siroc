@@ -88,7 +88,7 @@ func TestRunArgs(t *testing.T) {
 	if _, _, err := RunArgs("mount", "/tmp", "b2remote:"); err == nil {
 		t.Fatal("mount is not a panel action")
 	}
-	if stringsJoin(ProgressFlags("copy")) != "--stats=1s --use-json-log" {
+	if stringsJoin(ProgressFlags("copy")) != "--stats=1s --stats-log-level NOTICE --use-json-log" {
 		t.Fatal("copy should report per-file stats")
 	}
 	if ProgressFlags("ls") != nil {
