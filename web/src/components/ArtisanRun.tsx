@@ -20,7 +20,7 @@ const ARTISAN_COMMON: ArtisanCmd[] = [
   { name: "queue:restart", description: "Restart queue workers" },
 ];
 
-const ARTISAN_QUICK = ["migrate --force", "migrate:status", "cache:clear", "optimize:clear", "route:list", "storage:link"];
+const ARTISAN_QUICK = ["migrate --force", "migrate:status", "cache:clear", "optimize:clear", "queue:restart", "route:list", "storage:link"];
 
 export const WPCLI_COMMON: ArtisanCmd[] = [
   { name: "cache flush", description: "Flush object cache" },

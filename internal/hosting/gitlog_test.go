@@ -29,3 +29,19 @@ func TestParseSymrefHead(t *testing.T) {
 		t.Fatal("missing symref")
 	}
 }
+
+func TestParseRemoteBranches(t *testing.T) {
+	in := "$ git ls-remote --symref git@github.com:org/repo.git\n" +
+		"ref: refs/heads/main\tHEAD\n" +
+		"aaa\tHEAD\n" +
+		"ccc\trefs/heads/main\n" +
+		"bbb\trefs/heads/develop\n" +
+		"ddd\trefs/tags/v1.0\n"
+	got, head := ParseRemoteBranches(in)
+	if head != "main" || len(got) != 2 || got[0] != "main" || got[1] != "develop" {
+		t.Fatalf("head %q branches %v", head, got)
+	}
+	if branches, head := ParseRemoteBranches("no refs\n"); head != "" || len(branches) != 0 {
+		t.Fatalf("empty: %q %v", head, branches)
+	}
+}

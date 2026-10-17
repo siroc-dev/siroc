@@ -1825,6 +1825,18 @@ type GitHeadReq struct {
 	Path     string `json:"path"`
 }
 
+type GitBranchesReq struct {
+	Username string `json:"username"`
+	Repo     string `json:"repo"`
+}
+
+type GitBranchesResp struct {
+	OK       bool     `json:"ok"`
+	Branches []string `json:"branches,omitempty"`
+	Head     string   `json:"head,omitempty"`
+	Message  string   `json:"message,omitempty"`
+}
+
 type GitDeployResp struct {
 	OK      bool       `json:"ok"`
 	Log     string     `json:"log,omitempty"`

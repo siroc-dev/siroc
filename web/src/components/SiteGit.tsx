@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Alert, Button, Form, Input, Space, Typography } from "antd";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Button, Form, Input, Select, Space, Typography } from "antd";
 import { api } from "@/lib/api";
 
 export type SiteGitInfo = {
@@ -20,16 +20,36 @@ export type SiteGitInfo = {
   npmHint?: string;
 };
 
+type GitBranchList = {
+  ok?: boolean;
+  branches?: string[];
+  head?: string;
+  branch?: string;
+  repo?: string;
+  message?: string;
+  needsKey?: boolean;
+};
+
 export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number; domain: string; username: string; docRoot: string }) {
   const [form] = Form.useForm();
   const [info, setInfo] = useState<SiteGitInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [branches, setBranches] = useState<string[]>([]);
+  const [head, setHead] = useState("");
+  const [branchBusy, setBranchBusy] = useState(false);
+  const [branchErr, setBranchErr] = useState("");
+  const [branchNeedsKey, setBranchNeedsKey] = useState(false);
+  const loadedRepo = useRef("");
+  const branchSeq = useRef(0);
+  const siteGen = useRef(0);
+  const branchValue = Form.useWatch("branch", form);
 
-  async function load() {
+  async function load(gen: number) {
     setErr("");
     try {
       const out = await api.get<SiteGitInfo>(`/api/sites/${siteId}/git`);
+      if (gen !== siteGen.current) return;
       setInfo(out);
       form.setFieldsValue({
         repo: out.repo || "",
@@ -37,13 +57,22 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
         path: out.path || "",
         command: out.command || "",
       });
+      if (out.repo) void loadBranches(out.repo);
     } catch (e) {
+      if (gen !== siteGen.current) return;
       setErr(e instanceof Error ? e.message : "Failed to load git deploy");
     }
   }
 
   useEffect(() => {
-    void load();
+    const gen = ++siteGen.current;
+    loadedRepo.current = "";
+    branchSeq.current += 1;
+    setBranches([]);
+    setHead("");
+    setBranchErr("");
+    setBranchNeedsKey(false);
+    void load(gen);
   }, [siteId]);
 
   async function save(values: { repo: string; branch: string; path: string; command: string }) {
@@ -59,10 +88,47 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
         command: out.command || values.command,
       });
       if (out.lastOk === false && !out.needsKey) setErr("Could not pull the branch");
+      if (!out.needsKey) setBranchNeedsKey(false);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function loadBranches(repoRaw?: string) {
+    const gen = siteGen.current;
+    const repo = (repoRaw ?? String(form.getFieldValue("repo") || "")).trim();
+    if (!repo || repo === loadedRepo.current) return;
+    const seq = ++branchSeq.current;
+    setBranchBusy(true);
+    setBranchErr("");
+    try {
+      const out = await api.post<GitBranchList>(`/api/sites/${siteId}/git/branches`, { repo });
+      if (gen !== siteGen.current || seq !== branchSeq.current) return;
+      if (out.branch) {
+        form.setFieldValue("branch", out.branch);
+        if (out.repo) form.setFieldValue("repo", out.repo);
+      }
+      if (!out.ok) {
+        setBranchNeedsKey(!!out.needsKey);
+        setBranchErr(out.needsKey ? "Add the SSH public key as a deploy key, then open the list again." : out.message || "Could not list branches");
+        return;
+      }
+      const names = out.branches || [];
+      setBranches(names);
+      setHead(out.head || "");
+      setBranchNeedsKey(false);
+      loadedRepo.current = out.branch && out.repo ? out.repo : repo;
+      if (!out.branch && out.head) {
+        const cur = String(form.getFieldValue("branch") || "");
+        if (!cur || (cur === "main" && !names.includes("main"))) form.setFieldValue("branch", out.head);
+      }
+    } catch (e) {
+      if (gen !== siteGen.current || seq !== branchSeq.current) return;
+      setBranchErr(e instanceof Error ? e.message : "Could not list branches");
+    } finally {
+      if (gen === siteGen.current && seq === branchSeq.current) setBranchBusy(false);
     }
   }
 
@@ -92,6 +158,17 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
     await navigator.clipboard.writeText(text);
   }
 
+  const showKey = Boolean(info?.needsKey || branchNeedsKey);
+  const branchOptions = useMemo(() => {
+    const names = [...branches];
+    const current = typeof branchValue === "string" ? branchValue : "";
+    if (current && !names.includes(current)) names.unshift(current);
+    return names.map((name) => ({
+      value: name,
+      label: head && name === head ? `${name} (default)` : name,
+    }));
+  }, [branches, branchValue, head]);
+
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
@@ -99,7 +176,7 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
         <code>{domain}</code> as <code>{username}</code>, then runs your command.
       </Typography.Paragraph>
       {err ? <Alert type="error" showIcon message={err} /> : null}
-      {info?.needsKey ? (
+      {showKey ? (
         <Alert
           type="warning"
           showIcon
@@ -109,7 +186,7 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
       ) : null}
       {info?.publicKey ? (
         <Alert
-          type={info.needsKey ? "warning" : "info"}
+          type={showKey ? "warning" : "info"}
           showIcon
           message="SSH public key"
           description={
@@ -129,15 +206,25 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
         <Form.Item label="Repository" extra="HTTPS, or git@github.com:org/repo.git. Pull fetches the branch. A private repository needs the SSH key below.">
           <Space.Compact style={{ width: "100%" }}>
             <Form.Item name="repo" noStyle rules={[{ required: true, message: "Repo required" }]}>
-              <Input placeholder="git@github.com:org/repo.git" />
+              <Input placeholder="git@github.com:org/repo.git" onBlur={() => void loadBranches()} />
             </Form.Item>
             <Button type="primary" loading={busy} onClick={() => void deploy()}>
               Pull
             </Button>
           </Space.Compact>
         </Form.Item>
-        <Form.Item name="branch" label="Branch" extra="Webhook and Deploy now always fetch and reset --hard to this branch.">
-          <Input placeholder="main" />
+        <Form.Item name="branch" label="Branch" extra={branchErr || "Webhook and Deploy now fetch this branch."}>
+          <Select
+            showSearch
+            loading={branchBusy}
+            options={branchOptions}
+            placeholder="main"
+            optionFilterProp="label"
+            onOpenChange={(open) => {
+              if (open) void loadBranches();
+            }}
+            notFoundContent={branchBusy ? "Reading branches…" : branchErr || "No branches yet"}
+          />
         </Form.Item>
         <Form.Item
           name="path"
@@ -147,7 +234,7 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
           <Input placeholder="domains/example.com" />
         </Form.Item>
         <Form.Item name="command" label="After pull" extra="Runs as the site user in the deploy path. Leave empty to only force-pull.">
-          <Input.TextArea rows={6} spellCheck={false} placeholder={info?.laravelHint || "composer install --no-dev"} style={{ fontFamily: "ui-monospace, Menlo, Consolas, monospace" }} />
+          <Input.TextArea rows={8} spellCheck={false} placeholder={info?.laravelHint || "composer install --no-dev"} style={{ fontFamily: "ui-monospace, Menlo, Consolas, monospace" }} />
         </Form.Item>
         <Space wrap>
           <Button type="primary" htmlType="submit" loading={busy}>

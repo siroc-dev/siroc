@@ -434,6 +434,12 @@ func (c *Client) GitHead(username, path string) (*GitCommit, error) {
 	return &out, err
 }
 
+func (c *Client) GitBranches(username, repo string) (*GitBranchesResp, error) {
+	var out GitBranchesResp
+	err := c.do(http.MethodPost, "/git/branches", GitBranchesReq{Username: username, Repo: repo}, &out)
+	return &out, err
+}
+
 func (c *Client) SiteRuntime(in SiteRuntimeReq) (*SiteRuntimeResp, error) {
 	var out SiteRuntimeResp
 	err := c.do(http.MethodPost, "/sites/runtime", in, &out)

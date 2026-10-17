@@ -109,6 +109,38 @@ func (m *Manager) GitDeploy(req rpc.GitDeployReq) (*rpc.GitDeployResp, error) {
 	return &rpc.GitDeployResp{OK: true, Log: trimLog(log.String()), Message: "Deployed " + branch, Branch: branch, Commit: head}, nil
 }
 
+func (m *Manager) GitBranches(username, repo string) (*rpc.GitBranchesResp, error) {
+	if err := validate.LinuxUser(username); err != nil {
+		return nil, err
+	}
+	repo, err := validate.GitRepo(repo)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		return nil, fmt.Errorf("git is not installed on the server")
+	}
+	_, key, err := ensureUserSSHKey(username)
+	if err != nil {
+		return nil, err
+	}
+	u, err := user.Lookup(username)
+	if err != nil {
+		return nil, fmt.Errorf("unknown linux user %s", username)
+	}
+	sshCmd := fmt.Sprintf("ssh -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=%s",
+		key, filepath.Join(filepath.Dir(key), "known_hosts"))
+	var log bytes.Buffer
+	if err := runUser(username, u.HomeDir, sshCmd, 2*time.Minute, &log, "git", "ls-remote", "--symref", repo); err != nil {
+		return nil, err
+	}
+	branches, head := ParseRemoteBranches(log.String())
+	if len(branches) == 0 {
+		return nil, fmt.Errorf("no branches found")
+	}
+	return &rpc.GitBranchesResp{OK: true, Branches: branches, Head: head}, nil
+}
+
 func (m *Manager) GitHead(username, rel string) (*rpc.GitCommit, error) {
 	if err := validate.LinuxUser(username); err != nil {
 		return nil, err

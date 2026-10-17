@@ -10,8 +10,11 @@ import (
 var gitBranchRe = regexp.MustCompile(`^[A-Za-z0-9._/-]{1,128}$`)
 
 const LaravelDeployCommand = `composer install --no-dev --no-interaction --optimize-autoloader
+npm install
+npm run build
 php artisan migrate --force
-php artisan optimize`
+php artisan optimize
+php artisan queue:restart`
 
 const NPMDeployCommand = `npm install
 npm run build`

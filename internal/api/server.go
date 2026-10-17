@@ -200,6 +200,7 @@ func (s *Server) Router() http.Handler {
 		r.Put("/api/sites/{id}/waf/rules", s.siteWAFRules)
 		r.Get("/api/sites/{id}/git", s.getSiteGit)
 		r.Put("/api/sites/{id}/git", s.putSiteGit)
+		r.Post("/api/sites/{id}/git/branches", s.gitBranches)
 		r.Post("/api/sites/{id}/git/token", s.rotateSiteGitToken)
 		r.Post("/api/sites/{id}/git/deploy", s.deploySiteGit)
 		r.Delete("/api/sites/{id}", s.deleteSite)

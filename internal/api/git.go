@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -43,6 +44,63 @@ func (s *Server) getSiteGit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.gitView(r, st, g))
+}
+
+var gitUserInfoRe = regexp.MustCompile(`(?i)(https?://)[^/\s:@]+:[^/\s@]+@`)
+
+func (s *Server) gitBranches(w http.ResponseWriter, r *http.Request) {
+	st, ok := s.siteFromID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Repo string `json:"repo"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	raw := strings.TrimSpace(body.Repo)
+	if raw == "" {
+		if g, err := s.Store.GetSiteGit(st.ID); err == nil {
+			raw = g.Repo
+		}
+	}
+	repo, urlBranch, err := validate.ParseGitRemote(raw)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	out, err := s.Agent.GitBranches(st.Username, repo)
+	view := map[string]any{"ok": false, "repo": repo}
+	if urlBranch != "" {
+		view["branch"] = urlBranch
+	}
+	if err != nil || out == nil || !out.OK {
+		msg := "could not list branches"
+		if err != nil {
+			msg = err.Error()
+		} else if out != nil && out.Message != "" {
+			msg = out.Message
+		}
+		msg = redactGitURL(msg)
+		view["message"] = msg
+		view["needsKey"] = validate.GitNeedsDeployKey(msg)
+		writeJSON(w, http.StatusOK, view)
+		return
+	}
+	view["ok"] = true
+	view["branches"] = out.Branches
+	view["head"] = out.Head
+	writeJSON(w, http.StatusOK, view)
+}
+
+func redactGitURL(s string) string {
+	s = gitUserInfoRe.ReplaceAllString(s, "${1}")
+	s = strings.TrimSpace(s)
+	if len(s) > 500 {
+		s = s[len(s)-500:]
+	}
+	return s
 }
 
 func (s *Server) putSiteGit(w http.ResponseWriter, r *http.Request) {

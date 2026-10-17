@@ -1,12 +1,14 @@
 package hosting
 
 import (
+	"sort"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
+	"github.com/siroc-dev/siroc/internal/validate"
 )
 
 // ParseGitLog reads `git log -1 --format=%H%n%s%n%an%n%aI`, including the command echo in front.
@@ -55,6 +57,54 @@ func ParseSymrefHead(out string) (string, bool) {
 		return name, true
 	}
 	return "", false
+}
+
+// ParseRemoteBranches reads branch names from `git ls-remote --symref`.
+// The default branch, when the output names one, is first.
+func ParseRemoteBranches(out string) (branches []string, head string) {
+	head, _ = ParseSymrefHead(out)
+	if _, err := validate.GitBranch(head); head != "" && err != nil {
+		head = ""
+	}
+	seen := map[string]struct{}{}
+	var list []string
+	for _, line := range strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "$") || strings.HasPrefix(line, "ref:") {
+			continue
+		}
+		fields := strings.Fields(line)
+		ref := fields[len(fields)-1]
+		if !strings.HasPrefix(ref, "refs/heads/") {
+			continue
+		}
+		name := strings.TrimPrefix(ref, "refs/heads/")
+		if name == "" {
+			continue
+		}
+		if _, err := validate.GitBranch(name); err != nil {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		list = append(list, name)
+	}
+	sort.Strings(list)
+	if head != "" {
+		ordered := []string{head}
+		for _, name := range list {
+			if name != head {
+				ordered = append(ordered, name)
+			}
+		}
+		list = ordered
+	}
+	if len(list) > 500 {
+		list = list[:500]
+	}
+	return list, head
 }
 
 func gitHash(s string) bool {

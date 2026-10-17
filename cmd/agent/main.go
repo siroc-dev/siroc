@@ -778,6 +778,18 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Post("/git/branches", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.GitBranchesReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := hostMgr.GitBranches(req.Username, req.Repo)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Post("/git/head", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.GitHeadReq
 		if !decode(w, r, &req) {
