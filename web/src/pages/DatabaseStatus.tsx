@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Col, Progress, Row, Table, Tag, Typography } from "antd";
 import { DatabaseOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
+import { formatPanelTime } from "@/lib/panelTime";
 import { formatBytes } from "@/lib/usage";
 import { StatusHero, StatusNav, fmtNum, fmtUptime } from "@/components/StatusNav";
 import { PageSkeleton } from "@/components/PageSkeleton";
@@ -174,7 +175,7 @@ export function DatabaseEngine({ engine }: { engine: "mysql" | "mariadb" }) {
           <Typography.Text type="secondary">
             {data.dataDir ? `datadir ${data.dataDir} · ` : ""}
             {data.openTables} open tables
-            {data.fetchedAt ? ` · ${data.fetchedAt}` : ""}
+            {data.fetchedAt ? ` · ${formatPanelTime(data.fetchedAt) || data.fetchedAt}` : ""}
           </Typography.Text>
         </>
       ) : null}

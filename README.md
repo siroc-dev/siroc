@@ -65,8 +65,8 @@ Example `latest.json` (published to Cloudflare R2 by CI):
 
 ```json
 {
-  "version": "0.2.77",
-  "url": "https://get.siroc.dev/0.2.77/siroc-linux-amd64.tar.gz",
+  "version": "0.2.78",
+  "url": "https://get.siroc.dev/0.2.78/siroc-linux-amd64.tar.gz",
   "sha256": "optional"
 }
 ```

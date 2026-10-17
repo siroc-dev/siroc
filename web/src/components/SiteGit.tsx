@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Form, Input, Select, Space, Typography } from "antd";
 import { api } from "@/lib/api";
+import { formatPanelTime } from "@/lib/panelTime";
 
 export type SiteGitInfo = {
   repo?: string;
@@ -284,7 +285,7 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
               </Typography.Text>
               {info.commit.author || info.commit.at ? (
                 <Typography.Text type="secondary">
-                  {[info.commit.author, info.commit.at].filter(Boolean).join(" · ")}
+                  {[info.commit.author, formatPanelTime(info.commit.at) || info.commit.at].filter(Boolean).join(" · ")}
                 </Typography.Text>
               ) : null}
             </Space>
@@ -294,7 +295,7 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
       {info?.lastLog || info?.lastAt ? (
         <div>
           <Typography.Text type="secondary">
-            Last deploy{info.lastAt ? ` · ${info.lastAt}` : ""} {info.lastOk ? "ok" : "failed"}
+            Last deploy{info.lastAt ? ` · ${formatPanelTime(info.lastAt) || info.lastAt}` : ""} {info.lastOk ? "ok" : "failed"}
           </Typography.Text>
           <pre
             style={{

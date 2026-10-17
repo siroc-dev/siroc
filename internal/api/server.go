@@ -426,6 +426,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		"impersonator": u.Impersonator,
 		"admin":        isAdmin(u),
 		"version":      version.Current(),
+		"timezone":     serverTimezone(),
 	})
 }
 

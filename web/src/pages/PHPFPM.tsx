@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Col, Progress, Row, Table, Tag, Typography } from "antd";
 import { CodeOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
+import { formatPanelTime } from "@/lib/panelTime";
 import { StatusHero, StatusNav, fmtNum, fmtUptime } from "@/components/StatusNav";
 import { PageSkeleton } from "@/components/PageSkeleton";
 
@@ -198,7 +199,7 @@ export function PHPFPM() {
           </Card>
           <Typography.Text type="secondary">
             Status is read from each FPM socket. Public /fpm-status is blocked on nginx.
-            {data.fetchedAt ? ` · ${data.fetchedAt}` : ""}
+            {data.fetchedAt ? ` · ${formatPanelTime(data.fetchedAt) || data.fetchedAt}` : ""}
           </Typography.Text>
         </>
       ) : null}

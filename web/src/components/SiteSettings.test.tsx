@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { App as AntdApp } from "antd";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setPanelTimezone } from "@/lib/panelTime";
 import { SiteSettings, type SiteSection, type SiteSettingsSite } from "./SiteSettings";
 
 vi.mock("@/lib/api", () => ({
@@ -73,6 +74,8 @@ function renderSettings(section: SiteSection = "domain", extra?: Partial<SiteSet
 }
 
 describe("SiteSettings", () => {
+  beforeEach(() => setPanelTimezone("UTC"));
+
   it("pages the domain list after twenty names", () => {
     const aliases = Array.from({ length: 25 }, (_, i) => `a${i}.test.com`);
     renderSettings("domain", { aliases });

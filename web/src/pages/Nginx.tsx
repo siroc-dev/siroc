@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Col, Progress, Row, Table, Tag, Typography } from "antd";
 import { GlobalOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
+import { formatPanelTime } from "@/lib/panelTime";
 import { StatusHero, StatusNav, fmtNum, fmtUptime } from "@/components/StatusNav";
 import { PageSkeleton } from "@/components/PageSkeleton";
 
@@ -160,7 +161,7 @@ export function Nginx() {
           </Card>
           <Typography.Text type="secondary">
             stub_status is bound to 127.0.0.1 only. Public /nginx-status is blocked.
-            {data.fetchedAt ? ` · ${data.fetchedAt}` : ""}
+            {data.fetchedAt ? ` · ${formatPanelTime(data.fetchedAt) || data.fetchedAt}` : ""}
           </Typography.Text>
         </>
       ) : null}

@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { BootSkeleton } from "@/components/PageSkeleton";
 import { api } from "@/lib/api";
+import { setPanelTimezone } from "@/lib/panelTime";
 import { Layout } from "@/components/Layout";
 import { AuthForm } from "@/pages/AuthForm";
 import { SetupLocked } from "@/pages/SetupLocked";
@@ -61,10 +62,11 @@ export function App() {
     setSetupStack(s.stack || []);
     if (!s.needed) {
       try {
-        const me = await api.get<{ username: string; admin?: boolean; version?: string }>("/api/me");
+        const me = await api.get<{ username: string; admin?: boolean; version?: string; timezone?: string }>("/api/me");
         setUser(me.username);
         setAdmin(!!me.admin);
         setVersion(me.version || "");
+        setPanelTimezone(me.timezone);
       } catch {
         setUser(null);
         setAdmin(false);
@@ -82,9 +84,10 @@ export function App() {
     let stop = false;
     const timer = window.setInterval(() => {
       api
-        .get<{ version?: string }>("/api/me")
+        .get<{ version?: string; timezone?: string }>("/api/me")
         .then((me) => {
           if (stop) return;
+          if (me.timezone) setPanelTimezone(me.timezone);
           if (me.version && me.version !== version) window.location.reload();
         })
         .catch(() => undefined);

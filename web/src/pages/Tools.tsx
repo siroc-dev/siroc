@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, App, Button, Card, Form, Input, InputNumber, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
+import { setPanelTimezone } from "@/lib/panelTime";
 import { formatBytes } from "@/lib/usage";
 import { PanelUpdate } from "@/components/PanelUpdate";
 import { PageSkeleton } from "@/components/PageSkeleton";
@@ -131,6 +132,7 @@ export function Tools() {
                         const data = await api.post<Status>("/api/sysops", { action: "timezone", timezone: v.timezone, ntp: !!v.ntp });
                         setSt(data);
                         tzForm.setFieldsValue({ timezone: data.timezone, ntp: data.ntp });
+                        setPanelTimezone(data.timezone);
                         message.success(`Timezone is ${data.timezone} · ${data.time}`);
                       } catch (err) {
                         message.error(err instanceof Error ? err.message : "Failed");

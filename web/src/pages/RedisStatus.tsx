@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Col, Progress, Row, Table, Tag, Typography } from "antd";
 import { ThunderboltOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
+import { formatPanelTime } from "@/lib/panelTime";
 import { formatBytes } from "@/lib/usage";
 import { StatusHero, StatusNav, fmtNum, fmtUptime, fmtUs } from "@/components/StatusNav";
 import { PageSkeleton } from "@/components/PageSkeleton";
@@ -111,7 +112,7 @@ export function RedisStatusPanel({ data, hist }: { data: RedisStatusData; hist?:
       </Card>
       <Typography.Text type="secondary">
         {data.evictedKeys} evicted · {data.expiredKeys} expired
-        {data.fetchedAt ? ` · ${data.fetchedAt}` : ""}
+        {data.fetchedAt ? ` · ${formatPanelTime(data.fetchedAt) || data.fetchedAt}` : ""}
       </Typography.Text>
     </div>
   );

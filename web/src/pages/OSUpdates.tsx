@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Alert, App, Button, Card, Popconfirm, Space, Table, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { formatPanelTime } from "@/lib/panelTime";
 
 type OSPackage = {
   name: string;
@@ -64,7 +65,7 @@ export function OSUpdates() {
           <Space wrap>
             {st?.os ? <Tag>{st.os}</Tag> : null}
             <Tag color={st?.count ? "gold" : "success"}>{st?.count || 0} waiting</Tag>
-            {st?.checkedAt ? <Typography.Text type="secondary">Checked {st.checkedAt}</Typography.Text> : null}
+            {st?.checkedAt ? <Typography.Text type="secondary">Checked {formatPanelTime(st.checkedAt) || st.checkedAt}</Typography.Text> : null}
           </Space>
           {st?.message ? <Alert type={st.count ? "info" : st.ok === false ? "warning" : "success"} showIcon message={st.message} /> : null}
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>

@@ -1,14 +1,12 @@
 import { useEffect, useState } from "react";
 import { App, Button, Card, Form, Input, Modal, Space, Table, Typography } from "antd";
 import { api } from "@/lib/api";
+import { formatPanelTime } from "@/lib/panelTime";
 
 type HostRow = { id: number; ip: string; names: string[]; created?: string };
 
 function hostWhen(raw?: string) {
-  if (!raw) return "—";
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return raw;
-  return d.toLocaleString();
+  return formatPanelTime(raw) || "—";
 }
 
 function splitNames(raw: string) {

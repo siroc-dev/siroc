@@ -4,6 +4,7 @@ import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, 
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { formatBytes } from "@/lib/usage";
+import { formatPanelTime } from "@/lib/panelTime";
 import { Rclone } from "@/pages/Rclone";
 
 type Account = { username: string };
@@ -47,8 +48,7 @@ type Cron = {
 const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function jobWhen(raw?: string) {
-  if (!raw || raw.startsWith("0001")) return "—";
-  return raw.replace("T", " ").replace(/\.\d+/, "").replace(/Z$/, "");
+  return formatPanelTime(raw) || "—";
 }
 
 function cronWhen(c: Cron) {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, Input, InputNumber, List, Space, Switch, Table, Tag, Typography } from "antd";
+import { formatPanelTime } from "@/lib/panelTime";
 
 export type LaravelQueueProc = {
   name: string;
@@ -44,7 +45,7 @@ export function fmtWhen(v?: string) {
   if (v === "listening") return "Listening";
   if (v === "waiting") return "Waiting";
   const t = Date.parse(v);
-  if (!Number.isNaN(t)) return new Date(t).toLocaleString();
+  if (!Number.isNaN(t)) return formatPanelTime(v) || v;
   return v;
 }
 

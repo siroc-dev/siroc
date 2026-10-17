@@ -51,6 +51,7 @@ import { filesFromDrop } from "@/lib/dropFiles";
 import { uploadGroups, uploadPercent } from "@/lib/uploadGroups";
 import { accountAbs, fileCrumbs, isSystemPath, joinPath, moveDestinations, normalizeFileJump, parentFilePath } from "@/lib/filePaths";
 import { editorWorkspace, formatBytes } from "@/lib/usage";
+import { formatPanelTime } from "@/lib/panelTime";
 import { SSHTerminal } from "@/components/SSHTerminal";
 
 const MonacoFileEditor = lazy(() => import("@/components/MonacoFileEditor").then((m) => ({ default: m.MonacoFileEditor })));
@@ -100,10 +101,7 @@ function bits(v: number, flag: number) {
 }
 
 function fmtTime(s: string) {
-  if (!s) return "—";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return s;
-  return d.toLocaleString();
+  return formatPanelTime(s) || "—";
 }
 
 function isSafeName(name: string) {

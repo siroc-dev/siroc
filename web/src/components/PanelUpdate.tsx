@@ -3,6 +3,7 @@ import { Alert, App, Button, Card, Space, Switch, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { shouldReloadForVersion } from "@/lib/panelRefresh";
+import { formatPanelTime } from "@/lib/panelTime";
 
 type UpdateStatus = {
   ok: boolean;
@@ -104,7 +105,7 @@ export function PanelUpdate() {
           <Tag color="blue">Installed {st?.version || "…"}</Tag>
           {st?.latest ? <Tag color={st.available ? "gold" : "success"}>Latest {st.latest}</Tag> : null}
           {st?.available ? <Tag color="warning">Update available</Tag> : null}
-          {st?.checkedAt ? <Typography.Text type="secondary">Checked {st.checkedAt}</Typography.Text> : null}
+          {st?.checkedAt ? <Typography.Text type="secondary">Checked {formatPanelTime(st.checkedAt) || st.checkedAt}</Typography.Text> : null}
         </Space>
         {st?.message ? <Alert type={st.available ? "info" : "success"} showIcon message={st.message} /> : null}
         <Space>

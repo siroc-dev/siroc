@@ -5,6 +5,7 @@ import { ScanSummary, toolLabel, type ScanResult } from "@/components/ScanSummar
 import { api } from "@/lib/api";
 import { spaClick } from "@/lib/nav";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { formatPanelTime } from "@/lib/panelTime";
 
 export function ScanLogs({ embedded }: { embedded?: boolean }) {
   const { message } = App.useApp();
@@ -89,7 +90,7 @@ export function ScanLogs({ embedded }: { embedded?: boolean }) {
               title: "When",
               dataIndex: "createdAt",
               width: 190,
-              render: (v: string, r) => (v ? new Date(v).toLocaleString() : r.id),
+              render: (v: string, r) => formatPanelTime(v) || r.id,
             },
             { title: "Tool", dataIndex: "tool", width: 170, render: (v: string) => toolLabel(v) },
             { title: "Target", dataIndex: "target", ellipsis: true },

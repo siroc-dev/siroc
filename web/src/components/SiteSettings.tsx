@@ -4,6 +4,7 @@ import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/li
 import { ProxySettings, type ProxySettingsValue } from "@/components/ProxySettings";
 import { AppPackages, type PkgHit, type PkgRow } from "@/components/AppPackages";
 import { api, RequestError } from "@/lib/api";
+import { formatPanelTime } from "@/lib/panelTime";
 
 export type SiteOptions = {
   index?: string[];
@@ -84,12 +85,8 @@ function httpsForced(site: SiteSettingsSite) {
 }
 
 function expDay(v?: string) {
-  if (!v) return "—";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return "—";
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${d.getUTCFullYear()}-${m}-${day}`;
+  const when = formatPanelTime(v);
+  return when ? when.slice(0, 10) : "—";
 }
 
 function expPhrase(v?: string) {
@@ -183,8 +180,7 @@ function toRel(user: string, abs: string) {
 }
 
 function addedAt(raw?: string) {
-  if (!raw || raw.startsWith("0001")) return "";
-  return raw.replace("T", " ").replace(/\.\d+Z?$/, "").replace(/Z$/, "");
+  return formatPanelTime(raw);
 }
 
 function baseOpts(site: SiteSettingsSite): SiteOptions {

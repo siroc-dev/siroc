@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Col, Progress, Row, Space, Switch, Table, Tag, Tooltip, Typography } from "antd";
 import { CloudServerOutlined } from "@ant-design/icons";
 import { api } from "@/lib/api";
+import { formatPanelTime } from "@/lib/panelTime";
 import { formatBytes } from "@/lib/usage";
 import { StatusNav } from "@/components/StatusNav";
 import { PageSkeleton } from "@/components/PageSkeleton";
@@ -344,7 +345,7 @@ export function Apache() {
           </Card>
           <Typography.Text type="secondary">
             Status is read from 127.0.0.1 only. Public /server-status is blocked on nginx.
-            {data.fetchedAt ? ` · ${data.fetchedAt}` : ""}
+            {data.fetchedAt ? ` · ${formatPanelTime(data.fetchedAt) || data.fetchedAt}` : ""}
           </Typography.Text>
         </>
       ) : null}

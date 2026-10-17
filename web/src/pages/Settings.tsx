@@ -9,6 +9,7 @@ import {
 } from "@ant-design/icons";
 import { App, Button, Card, ColorPicker, Form, Input, Select, Space, Switch, Table, Typography } from "antd";
 import { api } from "@/lib/api";
+import { setPanelTimezone } from "@/lib/panelTime";
 import { useBrand } from "@/components/ThemeProvider";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { THEME_COLORS, type Brand, type ThemeColor, type ThemeStyle } from "@/lib/theme";
@@ -106,6 +107,7 @@ export function Settings() {
       const data = await api.post<Sys>("/api/sysops", { action: "timezone", timezone: values.timezone, ntp: !!values.ntp });
       setSys(data);
       tzForm.setFieldsValue({ timezone: data.timezone, ntp: data.ntp });
+      setPanelTimezone(data.timezone);
       message.success(`Timezone is ${data.timezone} · ${data.time}`);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -179,7 +181,7 @@ export function Settings() {
 
       <Card title="Server Timezone">
         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-          Current time {sys?.time || "—"}. Changing timezone updates the server clock used by logs and cron.
+          Current time {sys?.time || "—"}. Times in this panel, logs, and cron use this timezone.
         </Typography.Paragraph>
         <Form form={tzForm} layout="inline" onFinish={saveTimezone}>
           <Form.Item name="timezone" label="Timezone">
