@@ -85,7 +85,7 @@ func (m *Manager) Drop(req rpc.DBDropReq) error {
 	return mysqlExec(strings.Join(parts, "\n"))
 }
 
-func (m *Manager) SetPassword(user, password, dbName string) error {
+func (m *Manager) SetPassword(user, password, dbName, account string) error {
 	if err := validate.DBIdent(user); err != nil {
 		return err
 	}
@@ -291,6 +291,133 @@ func (m *Manager) Sizes() (map[string]int64, error) {
 		}
 		n, _ := strconv.ParseInt(fields[1], 10, 64)
 		out[fields[0]] = n
+	}
+	return out, nil
+}
+
+// SetCreate lets one database user create databases with any name, or removes that right.
+func (m *Manager) SetCreate(user, account string, on bool) error {
+	if err := validate.DBIdent(user); err != nil {
+		return err
+	}
+	if m.Engine() == "" {
+		return fmt.Errorf("MySQL/MariaDB is not installed")
+	}
+	for _, host := range clientHosts {
+		if account != "" && validate.LinuxUser(account) == nil {
+			_ = mysqlExec(PrefixRevokeSQL(user, account, host))
+		}
+		stmt := CreatePrivSQL(user, host, on) + "\nFLUSH PRIVILEGES;"
+		if err := mysqlExec(stmt); err != nil && on {
+			return err
+		}
+	}
+	if on {
+		m.watchCreate()
+	}
+	return nil
+}
+
+func (m *Manager) grantDatabase(user, db string) error {
+	if err := validate.DBIdent(user); err != nil {
+		return err
+	}
+	if err := validate.DBIdent(db); err != nil {
+		return err
+	}
+	var parts []string
+	for _, host := range clientHosts {
+		parts = append(parts, GrantDatabaseSQL(user, host, db))
+	}
+	parts = append(parts, "FLUSH PRIVILEGES;")
+	return mysqlExec(strings.Join(parts, "\n"))
+}
+
+// SyncPrivileged returns databases a permitted user can use or just created.
+func (m *Manager) SyncPrivileged(accounts []SyncAccount) ([]SyncDB, error) {
+	if m.Engine() == "" {
+		return nil, fmt.Errorf("MySQL/MariaDB is not installed")
+	}
+	m.watchCreate()
+	schemas, err := m.Schemas()
+	if err != nil {
+		return nil, err
+	}
+	raw, err := mysqlQuery("SELECT Db, User FROM mysql.db")
+	if err != nil {
+		return nil, err
+	}
+	creators := CreatorsFromAudit(m.auditTail())
+	if creators == nil {
+		creators = map[string]string{}
+	}
+	if text, err := mysqlQuery("SELECT user, sql_text FROM performance_schema.events_statements_history_long WHERE LOWER(sql_text) LIKE 'create database%' OR LOWER(sql_text) LIKE 'create schema%' ORDER BY event_id"); err == nil {
+		for name, user := range ParseCreatorRows(text) {
+			creators[name] = user
+		}
+	}
+	have, extra := SyncCreated(schemas, ParseGrantRows(raw), creators, accounts)
+	for _, row := range extra {
+		if err := m.grantDatabase(row.DBUser, row.DBName); err != nil {
+			continue
+		}
+		have = append(have, row)
+	}
+	return have, nil
+}
+
+func (m *Manager) watchCreate() {
+	_ = mysqlExec("UPDATE performance_schema.setup_consumers SET ENABLED='YES' WHERE NAME IN ('events_statements_current','events_statements_history','events_statements_history_long')")
+	_ = mysqlExec("INSTALL SONAME 'server_audit'")
+	_ = mysqlExec("SET GLOBAL server_audit_file_path='/var/log/mysql/siroc-ddl.log'")
+	_ = mysqlExec("SET GLOBAL server_audit_events='QUERY_DDL'")
+	_ = mysqlExec("SET GLOBAL server_audit_logging=ON")
+}
+
+func (m *Manager) auditTail() string {
+	f, err := os.Open("/var/log/mysql/siroc-ddl.log")
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+	const max = 2 << 20
+	start := int64(0)
+	if info.Size() > max {
+		start = info.Size() - max
+	}
+	if _, err := f.Seek(start, io.SeekStart); err != nil {
+		return ""
+	}
+	buf, err := io.ReadAll(io.LimitReader(f, max))
+	if err != nil {
+		return ""
+	}
+	text := string(buf)
+	if i := strings.Index(text, "\n"); i >= 0 && start > 0 {
+		text = text[i+1:]
+	}
+	return text
+}
+
+func (m *Manager) Schemas() ([]string, error) {
+	if m.Engine() == "" {
+		return nil, fmt.Errorf("MySQL/MariaDB is not installed")
+	}
+	raw, err := mysqlQuery("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA")
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, line := range strings.Split(strings.TrimSpace(raw), "\n") {
+		name := strings.TrimSpace(line)
+		if name == "" || systemSchema(name) {
+			continue
+		}
+		out = append(out, name)
 	}
 	return out, nil
 }

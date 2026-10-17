@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router-dom";
-import { Alert, App, AutoComplete, Button, Card, Dropdown, Form, Input, Modal, Popconfirm, Progress, Select, Space, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, App, AutoComplete, Button, Card, Dropdown, Form, Input, Modal, Popconfirm, Progress, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { api, redirectIfSessionExpired } from "@/lib/api";
 import { formatBytes } from "@/lib/usage";
@@ -11,7 +11,7 @@ import { RedisStatusPanel, type RedisStatusData } from "@/pages/RedisStatus";
 import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Account = { username: string };
-type DB = { id: number; username: string; dbName: string; dbUser: string; engine: string; hasPassword?: boolean; size?: number };
+type DB = { id: number; username: string; dbName: string; dbUser: string; engine: string; hasPassword?: boolean; canCreate?: boolean; size?: number };
 type CfgItem = { name: string; label: string; value: string; live?: string; recommend?: string };
 type DBConfig = {
   engine: string;
@@ -40,6 +40,7 @@ export function Databases() {
   const [engine, setEngine] = useState("");
   const [created, setCreated] = useState("");
   const [busy, setBusy] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
   const [passForm] = Form.useForm();
@@ -153,6 +154,30 @@ export function Databases() {
   function openCreate() {
     setOpen(true);
     setTimeout(() => void fillRandom(), 0);
+  }
+
+  async function setCanCreate(d: DB, enabled: boolean) {
+    setList((cur) => cur.map((row) => (row.dbUser === d.dbUser ? { ...row, canCreate: enabled } : row)));
+    try {
+      await api.put(`/api/databases/${d.id}/create`, { enabled });
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Could not change create permission");
+      await load();
+    }
+  }
+
+  async function syncDatabases() {
+    setSyncBusy(true);
+    try {
+      const res = await api.post<{ added: number }>("/api/databases/sync", {});
+      if (res.added > 0) message.success(res.added === 1 ? "Added 1 database" : `Added ${res.added} databases`);
+      else message.info("No new databases");
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Sync failed");
+    } finally {
+      setSyncBusy(false);
+    }
   }
 
   async function create(v: { username: string; dbName: string; dbUser: string; password: string }) {
@@ -333,6 +358,13 @@ export function Databases() {
             { title: "Database", dataIndex: "dbName" },
             { title: "Size", dataIndex: "size", width: 110, render: (n: number) => formatBytes(n || 0) },
             { title: "User", dataIndex: "dbUser" },
+            {
+              title: "Can create",
+              width: 120,
+              render: (_: unknown, d: DB) => (
+                <Switch checked={!!d.canCreate} onChange={(on) => void setCanCreate(d, on)} />
+              ),
+            },
             { title: "Account", dataIndex: "username" },
             {
               title: "Password",
@@ -561,6 +593,7 @@ export function Databases() {
           </Typography.Title>
           <Typography.Text type="secondary">
             {engine ? `Engine: ${engine}` : "Install MySQL or MariaDB first"}
+            {engine ? ". Only a database user with Can create turned on can create a database, with any name. Sync adds databases that user created." : ""}
             {admin && redis ? (
               <>
                 {" · "}
@@ -572,9 +605,14 @@ export function Databases() {
             ) : null}
           </Typography.Text>
         </div>
-        <Button type="primary" disabled={!engine} onClick={openCreate}>
-          Create database
-        </Button>
+        <Space>
+          <Button icon={<ReloadOutlined />} disabled={!engine} loading={syncBusy} onClick={() => void syncDatabases()}>
+            Sync
+          </Button>
+          <Button type="primary" disabled={!engine} onClick={openCreate}>
+            Create database
+          </Button>
+        </Space>
       </div>
       {admin ? (
         <Tabs

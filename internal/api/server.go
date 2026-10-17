@@ -207,6 +207,8 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/databases", s.listDatabases)
 		r.Get("/api/databases/suggest", s.suggestDatabase)
 		r.Post("/api/databases", s.createDatabase)
+		r.Post("/api/databases/sync", s.syncDatabases)
+		r.Put("/api/databases/{id}/create", s.setDatabaseCreate)
 		r.Delete("/api/databases/{id}", s.deleteDatabase)
 		r.Get("/api/databases/{id}/password", s.showDatabasePassword)
 		r.Put("/api/databases/{id}/password", s.setDatabasePassword)
@@ -2459,7 +2461,7 @@ func (s *Server) createDatabase(w http.ResponseWriter, r *http.Request) {
 	}
 	name := acc.Username + "_" + nameSuf
 	user := acc.Username + "_" + userSuf
-	if err := s.Agent.DBCreate(rpc.DBCreateReq{DBName: name, DBUser: user, Password: body.Password, Engine: engine}); err != nil {
+	if err := s.Agent.DBCreate(rpc.DBCreateReq{DBName: name, DBUser: user, Password: body.Password, Engine: engine, Account: acc.Username}); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -2539,7 +2541,7 @@ func (s *Server) setDatabasePassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("password must be at least 8 characters"))
 		return
 	}
-	if err := s.Agent.DBPasswordDB(db.DBUser, pass, db.DBName); err != nil {
+	if err := s.Agent.DBPasswordDB(db.DBUser, pass, db.DBName, db.Username); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}

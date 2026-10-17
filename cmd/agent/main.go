@@ -844,6 +844,37 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
 	})
+	r.Post("/db/create-priv", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.DBCreatePrivReq
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := dbMgr.SetCreate(req.DBUser, req.Account, req.Enabled); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
+	r.Post("/db/sync", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.DBSyncReq
+		if !decode(w, r, &req) {
+			return
+		}
+		accounts := make([]dbmgmt.SyncAccount, 0, len(req.Accounts))
+		for _, acc := range req.Accounts {
+			accounts = append(accounts, dbmgmt.SyncAccount{Username: acc.Username, Users: acc.Users})
+		}
+		found, err := dbMgr.SyncPrivileged(accounts)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		out := rpc.DBSyncResp{Found: make([]rpc.DBSyncDB, 0, len(found))}
+		for _, row := range found {
+			out.Found = append(out.Found, rpc.DBSyncDB{Username: row.Username, DBUser: row.DBUser, DBName: row.DBName})
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Get("/security/firewall", func(w http.ResponseWriter, _ *http.Request) {
 		st, err := secMgr.FirewallStatus()
 		if err != nil {
@@ -1143,7 +1174,7 @@ func main() {
 		if !decode(w, r, &req) {
 			return
 		}
-		if err := dbMgr.SetPassword(req.DBUser, req.Password, req.DBName); err != nil {
+		if err := dbMgr.SetPassword(req.DBUser, req.Password, req.DBName, req.Account); err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}

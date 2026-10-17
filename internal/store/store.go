@@ -101,6 +101,7 @@ type Database struct {
 	DBName      string    `json:"dbName"`
 	DBUser      string    `json:"dbUser"`
 	Engine      string    `json:"engine"`
+	CanCreate   bool      `json:"canCreate"`
 	HasPassword bool      `json:"hasPassword"`
 	Size        int64     `json:"size"`
 	PasswordEnc string    `json:"-"`
@@ -244,6 +245,7 @@ CREATE TABLE IF NOT EXISTS settings (
 		`ALTER TABLE sites ADD COLUMN app_cmd TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE accounts ADD COLUMN disk_quota_mb INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE databases ADD COLUMN password_enc TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE databases ADD COLUMN can_create INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE accounts ADD COLUMN waf_enabled INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE sites ADD COLUMN waf_enabled INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE sites ADD COLUMN waf_disabled_json TEXT NOT NULL DEFAULT '[]'`,
@@ -1087,16 +1089,27 @@ func (s *Store) GetDatabaseByName(name string) (*Database, error) {
 func (s *Store) GetDatabase(id int64) (*Database, error) {
 	d := &Database{}
 	var created string
+	var canCreate int
 	err := s.DB.QueryRow(`
-SELECT d.id, d.account_id, a.username, d.db_name, d.db_user, d.engine, d.password_enc, d.created_at
+SELECT d.id, d.account_id, a.username, d.db_name, d.db_user, d.engine, d.password_enc, d.can_create, d.created_at
 FROM databases d JOIN accounts a ON a.id = d.account_id WHERE d.id = ?`, id).
-		Scan(&d.ID, &d.AccountID, &d.Username, &d.DBName, &d.DBUser, &d.Engine, &d.PasswordEnc, &created)
+		Scan(&d.ID, &d.AccountID, &d.Username, &d.DBName, &d.DBUser, &d.Engine, &d.PasswordEnc, &canCreate, &created)
 	if err != nil {
 		return nil, err
 	}
+	d.CanCreate = canCreate == 1
 	d.HasPassword = d.PasswordEnc != ""
 	d.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
 	return d, nil
+}
+
+func (s *Store) SetDatabaseCreate(accountID int64, dbUser string, on bool) error {
+	v := 0
+	if on {
+		v = 1
+	}
+	_, err := s.DB.Exec(`UPDATE databases SET can_create = ? WHERE account_id = ? AND db_user = ?`, v, accountID, dbUser)
+	return err
 }
 
 func (s *Store) UpdateDatabasePassword(id int64, passwordEnc string) error {
@@ -1106,7 +1119,7 @@ func (s *Store) UpdateDatabasePassword(id int64, passwordEnc string) error {
 
 func (s *Store) ListDatabases() ([]Database, error) {
 	rows, err := s.DB.Query(`
-SELECT d.id, d.account_id, a.username, d.db_name, d.db_user, d.engine, d.password_enc, d.created_at
+SELECT d.id, d.account_id, a.username, d.db_name, d.db_user, d.engine, d.password_enc, d.can_create, d.created_at
 FROM databases d JOIN accounts a ON a.id = d.account_id ORDER BY d.db_name`)
 	if err != nil {
 		return nil, err
@@ -1116,9 +1129,11 @@ FROM databases d JOIN accounts a ON a.id = d.account_id ORDER BY d.db_name`)
 	for rows.Next() {
 		var d Database
 		var created string
-		if err := rows.Scan(&d.ID, &d.AccountID, &d.Username, &d.DBName, &d.DBUser, &d.Engine, &d.PasswordEnc, &created); err != nil {
+		var canCreate int
+		if err := rows.Scan(&d.ID, &d.AccountID, &d.Username, &d.DBName, &d.DBUser, &d.Engine, &d.PasswordEnc, &canCreate, &created); err != nil {
 			return nil, err
 		}
+		d.CanCreate = canCreate == 1
 		d.HasPassword = d.PasswordEnc != ""
 		d.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
 		out = append(out, d)

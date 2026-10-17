@@ -346,7 +346,7 @@ func (s *Server) pmaAutologin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := s.Agent.DBPasswordDB(db.DBUser, pass, db.DBName); err != nil {
+	if err := s.Agent.DBPasswordDB(db.DBUser, pass, db.DBName, db.Username); err != nil {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("prepare phpMyAdmin login: %w", err))
 		return
 	}
@@ -1010,7 +1010,7 @@ func (s *Server) installWordPress(w http.ResponseWriter, r *http.Request) {
 	}
 	dbName := acc.Username + "_" + suf
 	dbUser := acc.Username + "_" + suf
-	if err := s.Agent.DBCreate(rpc.DBCreateReq{DBName: dbName, DBUser: dbUser, Password: dbPass, Engine: engine}); err != nil {
+	if err := s.Agent.DBCreate(rpc.DBCreateReq{DBName: dbName, DBUser: dbUser, Password: dbPass, Engine: engine, Account: acc.Username}); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}

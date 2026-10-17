@@ -536,6 +536,7 @@ type DBCreateReq struct {
 	DBUser   string `json:"dbUser"`
 	Password string `json:"password"`
 	Engine   string `json:"engine"`
+	Account  string `json:"account,omitempty"`
 }
 
 type DBDropReq struct {
@@ -1846,4 +1847,30 @@ type DBPasswordReq struct {
 	DBUser   string `json:"dbUser"`
 	Password string `json:"password"`
 	DBName   string `json:"dbName,omitempty"`
+	Account  string `json:"account,omitempty"`
+}
+
+type DBCreatePrivReq struct {
+	DBUser  string `json:"dbUser"`
+	Account string `json:"account,omitempty"`
+	Enabled bool   `json:"enabled"`
+}
+
+type DBSyncAccount struct {
+	Username string   `json:"username"`
+	Users    []string `json:"users"`
+}
+
+type DBSyncReq struct {
+	Accounts []DBSyncAccount `json:"accounts"`
+}
+
+type DBSyncDB struct {
+	Username string `json:"username"`
+	DBUser   string `json:"dbUser"`
+	DBName   string `json:"dbName"`
+}
+
+type DBSyncResp struct {
+	Found []DBSyncDB `json:"found"`
 }

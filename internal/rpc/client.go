@@ -1126,11 +1126,21 @@ func (c *Client) DBImport(name, user, password, filename string, r io.Reader) er
 }
 
 func (c *Client) DBPassword(user, password string) error {
-	return c.DBPasswordDB(user, password, "")
+	return c.DBPasswordDB(user, password, "", "")
 }
 
-func (c *Client) DBPasswordDB(user, password, dbName string) error {
-	return c.do(http.MethodPost, "/db/password", DBPasswordReq{DBUser: user, Password: password, DBName: dbName}, nil)
+func (c *Client) DBPasswordDB(user, password, dbName, account string) error {
+	return c.do(http.MethodPost, "/db/password", DBPasswordReq{DBUser: user, Password: password, DBName: dbName, Account: account}, nil)
+}
+
+func (c *Client) DBCreatePriv(user, account string, enabled bool) error {
+	return c.do(http.MethodPost, "/db/create-priv", DBCreatePrivReq{DBUser: user, Account: account, Enabled: enabled}, nil)
+}
+
+func (c *Client) DBSync(accounts []DBSyncAccount) (*DBSyncResp, error) {
+	var out DBSyncResp
+	err := c.do(http.MethodPost, "/db/sync", DBSyncReq{Accounts: accounts}, &out)
+	return &out, err
 }
 
 func (c *Client) doBytes(method, path string) ([]byte, error) {
