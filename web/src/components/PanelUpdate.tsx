@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Alert, App, Button, Card, Space, Switch, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { shouldReloadForVersion } from "@/lib/panelRefresh";
 
 type UpdateStatus = {
   ok: boolean;
@@ -17,6 +18,26 @@ type UpdateStatus = {
 };
 
 const DEFAULT_CHANNEL = "https://get.siroc.dev";
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function refreshAfterUpdate(previous: string) {
+  let sawDown = false;
+  for (let i = 0; i < 30; i++) {
+    await sleep(2000);
+    try {
+      const me = await api.get<{ version?: string }>("/api/me");
+      if (shouldReloadForVersion(previous, me.version || "", sawDown)) {
+        window.location.reload();
+        return;
+      }
+    } catch {
+      sawDown = true;
+    }
+  }
+}
 
 export function PanelUpdate() {
   const { message } = App.useApp();
@@ -54,10 +75,8 @@ export function PanelUpdate() {
       const data = await api.post<UpdateStatus>("/api/panel/update", { action });
       setSt(data);
       if (data.restarting) {
-        message.success("Update applied. The panel will reconnect in a few seconds.");
-        setTimeout(() => {
-          load().catch(() => undefined);
-        }, 4000);
+        message.success("Update applied. This page will refresh when the panel is back.");
+        await refreshAfterUpdate(st?.version || data.version || "");
       } else {
         message.success(data.message || "Done");
       }

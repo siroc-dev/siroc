@@ -77,6 +77,24 @@ export function App() {
     boot().catch(() => setReady(true));
   }, []);
 
+  useEffect(() => {
+    if (!user || !version) return;
+    let stop = false;
+    const timer = window.setInterval(() => {
+      api
+        .get<{ version?: string }>("/api/me")
+        .then((me) => {
+          if (stop) return;
+          if (me.version && me.version !== version) window.location.reload();
+        })
+        .catch(() => undefined);
+    }, 10000);
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+    };
+  }, [user, version]);
+
   if (!ready) return <BootSkeleton />;
   if (needed) {
     if (!setupOK) {

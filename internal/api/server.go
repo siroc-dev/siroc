@@ -2676,10 +2676,14 @@ func fileServer(r chi.Router, _ string, root fs.FS) {
 		if err == nil {
 			defer f.Close()
 			if stat, err := f.Stat(); err == nil && !stat.IsDir() {
+				if p == "index.html" {
+					w.Header().Set("Cache-Control", "no-store")
+				}
 				http.ServeFileFS(w, req, root, p)
 				return
 			}
 		}
+		w.Header().Set("Cache-Control", "no-store")
 		http.ServeFileFS(w, req, root, "index.html")
 	})
 }
