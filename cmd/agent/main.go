@@ -597,6 +597,17 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Post("/sites/default", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.DefaultSiteReq
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := hosting.ApplyDefaultWebsite(req.Domain); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
 	r.Post("/sites/cache/purge", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.CachePurgeReq
 		if !decode(w, r, &req) {

@@ -172,6 +172,10 @@ type CachePurgeReq struct {
 	Path string `json:"path"`
 }
 
+type DefaultSiteReq struct {
+	Domain string `json:"domain"`
+}
+
 type SitesRebuildReq struct {
 	Sites []SiteWriteReq `json:"sites"`
 }

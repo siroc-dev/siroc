@@ -867,6 +867,9 @@ func configureNginxFrontend(string) error {
     }
 }
 `
+	if b, err := os.ReadFile("/var/lib/siroc/default-site"); err == nil && strings.TrimSpace(string(b)) != "" {
+		stub = strings.ReplaceAll(stub, " default_server", "")
+	}
 	if err := os.WriteFile("/etc/nginx/sites-available/siroc-default.conf", []byte(stub), 0644); err != nil {
 		return err
 	}

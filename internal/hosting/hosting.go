@@ -936,7 +936,7 @@ func writeNginxConf(domain, custom string, data any) error {
 		if access, errLog, ok := nginxLogLines(data); ok {
 			body = applyNginxLogLines(body, access, errLog)
 		}
-		return writeConfFile(path, body)
+		return writeConfFile(path, withDefaultSite(domain, body))
 	}
 	switch row := data.(type) {
 	case siteData:
@@ -945,7 +945,11 @@ func writeNginxConf(domain, custom string, data any) error {
 	case *siteData:
 		row.HTTP2On = nginxSeparateHTTP2()
 	}
-	return writeTemplate(path, nginxTmpl, data, 0644)
+	body, err := renderConf(nginxTmpl, data)
+	if err != nil {
+		return err
+	}
+	return writeConfFile(path, withDefaultSite(domain, body))
 }
 
 func nginxLogLines(data any) (access, errLog string, ok bool) {
@@ -995,19 +999,31 @@ func writeConfFile(path, body string) error {
 	return os.WriteFile(path, []byte(body), 0644)
 }
 
-func writeTemplate(path, tmpl string, data any, mode os.FileMode) error {
+func withDefaultSite(domain, body string) string {
+	return SetListenDefault(body, domain != "" && domain == currentDefaultSite())
+}
+
+func renderConf(tmpl string, data any) (string, error) {
 	t, err := template.New("cfg").Parse(tmpl)
 	if err != nil {
-		return err
+		return "", err
 	}
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func writeTemplate(path, tmpl string, data any, mode os.FileMode) error {
+	body, err := renderConf(tmpl, data)
+	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, buf.Bytes(), mode)
+	return os.WriteFile(path, []byte(body), mode)
 }
 
 func testReload(service, bin string, args ...string) error {

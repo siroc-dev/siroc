@@ -321,6 +321,8 @@ export function Sites() {
   const [phps, setPhps] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [rebuildBusy, setRebuildBusy] = useState(false);
+  const [defaultDomain, setDefaultDomain] = useState("");
+  const [defaultBusy, setDefaultBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [logSite, setLogSite] = useState<Site | null>(null);
   const [gitSite, setGitSite] = useState<Site | null>(null);
@@ -369,8 +371,25 @@ export function Sites() {
     setSites(sites);
     setUsage(asList(u));
     setPhps(phps);
+    if (admin) {
+      const d = await api.get<{ domain?: string }>("/api/sites/default").catch(() => ({ domain: "" }));
+      setDefaultDomain(d?.domain || "");
+    }
     if (accounts[0] && !form.getFieldValue("username")) {
       form.setFieldsValue({ username: accounts[0].username, phpVersion: phps.length ? phps[phps.length - 1] : "8.3" });
+    }
+  }
+
+  async function saveDefault(domain: string) {
+    setDefaultBusy(true);
+    try {
+      const out = await api.put<{ domain?: string }>("/api/sites/default", { domain });
+      setDefaultDomain(out?.domain || "");
+      message.success(domain ? "Default website saved" : "Default website cleared");
+    } catch (err) {
+      message.error(err instanceof RequestError ? err.message : "Could not save the default website");
+    } finally {
+      setDefaultBusy(false);
     }
   }
 
@@ -855,17 +874,32 @@ export function Sites() {
             {picked.length ? `Delete ${picked.length} selected` : "Delete selected"}
           </Button>
           {admin ? (
-            <Button
-              loading={rebuildBusy}
-              onClick={() => modal.confirm({
-                title: "Rebuild nginx and Apache configs?",
-                content: "Rewrites every website from its saved settings and reloads nginx and Apache. A proxy hostname is connected to the IP in Hosts.",
-                okText: "Rebuild",
-                onOk: () => rebuildConfigs(),
-              })}
-            >
-              Rebuild configs
-            </Button>
+            <>
+              <Typography.Text type="secondary">Default website</Typography.Text>
+              <Select
+                style={{ minWidth: 220 }}
+                loading={defaultBusy}
+                disabled={defaultBusy}
+                title="Requests to the server IP or an unknown name open this website. HTTPS uses it when the site has a certificate."
+                value={sites.some((s) => s.domain === defaultDomain) ? defaultDomain : "none"}
+                onChange={(domain) => void saveDefault(domain === "none" ? "" : domain)}
+                options={[
+                  { value: "none", label: "None" },
+                  ...sites.map((s) => ({ value: s.domain, label: siteLabel(s) })),
+                ]}
+              />
+              <Button
+                loading={rebuildBusy}
+                onClick={() => modal.confirm({
+                  title: "Rebuild nginx and Apache configs?",
+                  content: "Rewrites every website from its saved settings and reloads nginx and Apache. A proxy hostname is connected to the IP in Hosts.",
+                  okText: "Rebuild",
+                  onOk: () => rebuildConfigs(),
+                })}
+              >
+                Rebuild configs
+              </Button>
+            </>
           ) : null}
         </Space>
         <Input.Search

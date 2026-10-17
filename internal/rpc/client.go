@@ -344,6 +344,10 @@ func (c *Client) PurgeSiteCache(in CachePurgeReq) error {
 	return c.do(http.MethodPost, "/sites/cache/purge", in, nil)
 }
 
+func (c *Client) SetDefaultSite(domain string) error {
+	return c.do(http.MethodPost, "/sites/default", DefaultSiteReq{Domain: domain}, nil)
+}
+
 func (c *Client) SitesRebuild(sites []SiteWriteReq) (*SitesRebuildResp, error) {
 	var out SitesRebuildResp
 	err := c.do(http.MethodPost, "/sites/rebuild", SitesRebuildReq{Sites: sites}, &out)

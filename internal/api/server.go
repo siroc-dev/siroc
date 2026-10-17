@@ -173,6 +173,8 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/sites", s.createSite)
 		r.Post("/api/sites/delete", s.deleteSites)
 		r.Post("/api/sites/rebuild", s.rebuildSites)
+		r.Get("/api/sites/default", s.getDefaultSite)
+		r.Put("/api/sites/default", s.setDefaultSite)
 		r.Patch("/api/sites/{id}", s.updateSite)
 		r.Post("/api/sites/{id}/rename", s.renameSite)
 		r.Post("/api/sites/{id}/ssl", s.issueSiteSSL)
@@ -2182,6 +2184,10 @@ func (s *Server) deleteSite(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if err := s.clearDefaultSite(st.Domain); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
 	if err := s.Agent.SiteDelete(st.Username, st.Domain); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -2228,6 +2234,10 @@ func (s *Server) deleteSites(w http.ResponseWriter, r *http.Request) {
 	var failed []string
 	deleted := 0
 	for _, st := range todo {
+		if err := s.clearDefaultSite(st.Domain); err != nil {
+			failed = append(failed, st.Domain+": "+err.Error())
+			continue
+		}
 		if err := s.Agent.SiteDelete(st.Username, st.Domain); err != nil {
 			failed = append(failed, st.Domain+": "+err.Error())
 			continue
@@ -2333,6 +2343,16 @@ func (s *Server) renameSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.UpdateSiteApp(st.ID, st.Kind, st.ProxyPass, st.AppPort, st.AppCmd)
+	if current, err := s.Store.Setting("default_site"); err == nil && current == st.Domain {
+		if err := s.Agent.SetDefaultSite(newDomain); err != nil {
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("website renamed, but the default website was not moved: %w", err))
+			return
+		}
+		if err := s.Store.SetSetting("default_site", newDomain); err != nil {
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("website renamed, but the default website was not moved: %w", err))
+			return
+		}
+	}
 	st, _ = s.Store.GetSite(id)
 	writeJSON(w, http.StatusOK, st)
 }
