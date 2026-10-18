@@ -1364,13 +1364,14 @@ type BackupCronFile struct {
 }
 
 type BackupResp struct {
-	OK          bool            `json:"ok"`
-	Path        string          `json:"path,omitempty"`
-	Remote      string          `json:"remote,omitempty"`
-	Size        int64           `json:"size,omitempty"`
-	Message     string          `json:"message,omitempty"`
-	CreatedUser bool            `json:"createdUser,omitempty"`
-	Manifest    *BackupManifest `json:"manifest,omitempty"`
+	OK          bool              `json:"ok"`
+	Path        string            `json:"path,omitempty"`
+	Remote      string            `json:"remote,omitempty"`
+	Size        int64             `json:"size,omitempty"`
+	Message     string            `json:"message,omitempty"`
+	CreatedUser bool              `json:"createdUser,omitempty"`
+	Manifest    *BackupManifest   `json:"manifest,omitempty"`
+	Manifests   []*BackupManifest `json:"manifests,omitempty"`
 }
 
 type RcloneRemote struct {
@@ -1473,6 +1474,10 @@ type BackupAccount struct {
 	DiskQuotaMB int64  `json:"diskQuotaMB,omitempty"`
 	WAFEnabled  bool   `json:"wafEnabled,omitempty"`
 	PHPFpmJSON  string `json:"phpFpmJson,omitempty"`
+	// KeepPassword leaves an existing account password unchanged.
+	KeepPassword bool `json:"keepPassword,omitempty"`
+	// SkipFlags leaves SSH, FTP, and WAF settings unchanged on an existing account.
+	SkipFlags bool `json:"skipFlags,omitempty"`
 }
 
 type BackupSite struct {

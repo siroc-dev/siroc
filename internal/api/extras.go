@@ -942,10 +942,16 @@ func (s *Server) restoreBackup(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	if out != nil && out.Manifest != nil {
-		if err := s.applyBackupManifest(out.Manifest); err != nil {
-			writeErr(w, http.StatusBadRequest, fmt.Errorf("files restored, but panel records failed: %w", err))
-			return
+	if out != nil {
+		mans := out.Manifests
+		if len(mans) == 0 && out.Manifest != nil {
+			mans = []*rpc.BackupManifest{out.Manifest}
+		}
+		for _, man := range mans {
+			if err := s.applyBackupManifest(man); err != nil {
+				writeErr(w, http.StatusBadRequest, fmt.Errorf("files restored, but panel records failed: %w", err))
+				return
+			}
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -1140,7 +1146,10 @@ func (s *Server) applyBackupManifest(man *rpc.BackupManifest) error {
 		return err
 	}
 	pass := strings.TrimSpace(man.Account.Password)
-	if pass == "" {
+	_, accErr := s.Store.GetAccountByName(username)
+	existedAcc := accErr == nil
+	rotatePass := pass != "" || !(man.Account.KeepPassword && existedAcc)
+	if pass == "" && rotatePass {
 		pw, err := secret.RandomPassword(16)
 		if err != nil {
 			return err
@@ -1148,41 +1157,59 @@ func (s *Server) applyBackupManifest(man *rpc.BackupManifest) error {
 		pass = pw
 		man.Account.Password = pass
 	}
-	u, err := s.Agent.UserEnsure(rpc.UserEnsureReq{Username: username, Password: pass})
+	ensurePass := ""
+	if rotatePass {
+		ensurePass = pass
+	}
+	u, err := s.Agent.UserEnsure(rpc.UserEnsureReq{Username: username, Password: ensurePass})
 	if err != nil {
 		return err
 	}
-	_ = s.Agent.UserAccess(username, man.Account.SSH, man.Account.FTP)
-	enc, err := s.encryptPassword(pass)
-	if err != nil {
-		return err
-	}
-	hash, err := auth.Hash(pass)
-	if err != nil {
-		return err
-	}
-	if err := s.Store.UpsertHostPanelUser(username, hash); err != nil {
-		return err
+	if !man.Account.SkipFlags || !existedAcc {
+		_ = s.Agent.UserAccess(username, man.Account.SSH, man.Account.FTP)
 	}
 	acc, err := s.Store.GetAccountByName(username)
 	if err != nil {
+		enc, err := s.encryptPassword(pass)
+		if err != nil {
+			return err
+		}
 		acc, err = s.Store.CreateAccount(username, u.UID, u.GID, enc, man.Account.SSH, man.Account.FTP)
 		if err != nil {
 			return err
 		}
-	} else {
+		rotatePass = true
+	}
+	if rotatePass {
+		enc, err := s.encryptPassword(pass)
+		if err != nil {
+			return err
+		}
+		hash, err := auth.Hash(pass)
+		if err != nil {
+			return err
+		}
+		if err := s.Store.UpsertHostPanelUser(username, hash); err != nil {
+			return err
+		}
 		_ = s.Store.UpdateAccountPassword(username, enc)
-		_ = s.Store.UpdateAccountAccess(username, man.Account.SSH, man.Account.FTP)
 	}
-	if man.Account.PHPCLI != "" || man.Account.PythonCLI != "" || man.Account.NodeCLI != "" {
-		_ = s.Store.UpdateAccountCLI(username, man.Account.PHPCLI, man.Account.PythonCLI, man.Account.NodeCLI)
-	}
-	if man.Account.DiskQuotaMB > 0 {
-		_ = s.Store.UpdateAccountQuota(username, man.Account.DiskQuotaMB)
-	}
-	_ = s.Store.UpdateAccountWAF(username, man.Account.WAFEnabled)
-	if man.Account.PHPFpmJSON != "" {
-		_ = s.Store.UpdateAccountPHP(username, man.Account.PHPFpmJSON)
+	if !man.Account.SkipFlags || !existedAcc {
+		if !existedAcc || !man.Account.SkipFlags {
+			_ = s.Store.UpdateAccountAccess(username, man.Account.SSH, man.Account.FTP)
+		}
+		if man.Account.PHPCLI != "" || man.Account.PythonCLI != "" || man.Account.NodeCLI != "" {
+			_ = s.Store.UpdateAccountCLI(username, man.Account.PHPCLI, man.Account.PythonCLI, man.Account.NodeCLI)
+		}
+		if man.Account.DiskQuotaMB > 0 {
+			_ = s.Store.UpdateAccountQuota(username, man.Account.DiskQuotaMB)
+		}
+		if !man.Account.SkipFlags {
+			_ = s.Store.UpdateAccountWAF(username, man.Account.WAFEnabled)
+		}
+		if man.Account.PHPFpmJSON != "" {
+			_ = s.Store.UpdateAccountPHP(username, man.Account.PHPFpmJSON)
+		}
 	}
 	for _, d := range man.Databases {
 		if _, err := s.Store.GetDatabaseByName(d.DBName); err == nil {

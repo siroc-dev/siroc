@@ -152,11 +152,20 @@ func inspect(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	if !RestorePathOK(src, req.Username) {
 		return nil, fmt.Errorf("restore path is not allowed")
 	}
-	man, err := readManifest(src)
+	if man, err := readManifest(src); err == nil {
+		return &rpc.BackupResp{OK: true, Path: src, Manifest: man, Message: "archive for " + man.Username}, nil
+	}
+	tmp, err := extractToTemp(src)
 	if err != nil {
 		return nil, err
 	}
-	return &rpc.BackupResp{OK: true, Path: src, Manifest: man, Message: "archive for " + man.Username}, nil
+	defer os.RemoveAll(tmp)
+	resp, err := describeExtract(tmp)
+	if err != nil {
+		return nil, err
+	}
+	resp.Path = src
+	return resp, nil
 }
 
 func restore(req rpc.BackupReq) (*rpc.BackupResp, error) {
@@ -164,20 +173,88 @@ func restore(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	if !RestorePathOK(src, req.Username) {
 		return nil, fmt.Errorf("restore path is not allowed")
 	}
-	tmp := filepath.Join("/var/backups/siroc", ".restore", fmt.Sprintf("%d", time.Now().UnixNano()))
-	if err := os.MkdirAll(tmp, 0750); err != nil {
+	tmp, err := extractToTemp(src)
+	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(tmp)
-	if out, err := exec.Command("tar", "-xzf", src, "-C", tmp).CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("restore: %s", strings.TrimSpace(string(out)))
+	if _, err := loadExtractedManifest(tmp); err == nil {
+		return restoreExtracted(tmp, src, req)
 	}
+	if _, err := ParseDirectAdmin(tmp); err == nil {
+		return restoreExtracted(tmp, src, req)
+	}
+	nested := NestedUserArchives(tmp)
+	if len(nested) == 0 {
+		return nil, fmt.Errorf("archive has no user metadata")
+	}
+	if len(nested) > 50 {
+		return nil, fmt.Errorf("this DirectAdmin backup has %d accounts; restore up to 50 at a time", len(nested))
+	}
+	var mans []*rpc.BackupManifest
+	var names []string
+	created := false
+	for i, arc := range nested {
+		sub := filepath.Join(tmp, fmt.Sprintf("user-%d", i))
+		if err := extractArchive(arc, sub); err != nil {
+			return nil, fmt.Errorf("%s: %w", filepath.Base(arc), err)
+		}
+		if _, err := ParseDirectAdmin(sub); err != nil {
+			continue
+		}
+		one, err := restoreExtracted(sub, src, req)
+		if err != nil {
+			if req.Username != "" && strings.Contains(err.Error(), "archive is for ") {
+				continue
+			}
+			return nil, fmt.Errorf("%s: %w", filepath.Base(arc), err)
+		}
+		if one.Manifest != nil {
+			mans = append(mans, one.Manifest)
+			names = append(names, one.Manifest.Username)
+		}
+		created = created || one.CreatedUser
+	}
+	if len(mans) == 0 {
+		if req.Username != "" {
+			return nil, fmt.Errorf("no DirectAdmin account named %s in this backup", req.Username)
+		}
+		return nil, fmt.Errorf("archive has no user metadata")
+	}
+	msg := "restored " + strings.Join(names, ", ") + " from DirectAdmin. Mail, DNS, and certificates were not imported. Set each new account password under Accounts."
+	return &rpc.BackupResp{OK: true, Path: src, CreatedUser: created, Manifest: mans[0], Manifests: mans, Message: msg}, nil
+}
+
+func describeExtract(tmp string) (*rpc.BackupResp, error) {
+	if man, err := loadExtractedManifest(tmp); err == nil && strings.TrimSpace(man.Username) != "" {
+		return &rpc.BackupResp{OK: true, Manifest: man, Message: "archive for " + man.Username}, nil
+	}
+	if plan, err := ParseDirectAdmin(tmp); err == nil {
+		return &rpc.BackupResp{OK: true, Manifest: plan.Manifest, Message: directAdminMessage(plan.Manifest.Username, len(plan.Manifest.Sites), len(plan.Manifest.Databases), plan.ResetDBPasswords, false)}, nil
+	}
+	nested := NestedUserArchives(tmp)
+	if len(nested) == 0 {
+		return nil, fmt.Errorf("archive has no user metadata")
+	}
+	return &rpc.BackupResp{OK: true, Message: fmt.Sprintf("DirectAdmin backup with %d accounts", len(nested))}, nil
+}
+
+func restoreExtracted(tmp, src string, req rpc.BackupReq) (*rpc.BackupResp, error) {
+	var plan *directAdminPlan
 	man, err := loadExtractedManifest(tmp)
-	if err != nil {
-		man = req.Manifest
-	}
-	if man == nil {
-		man = &rpc.BackupManifest{Version: 1, Username: req.Username}
+	if err != nil || man == nil || strings.TrimSpace(man.Username) == "" {
+		plan, err = ParseDirectAdmin(tmp)
+		if err != nil {
+			if req.Manifest != nil && strings.TrimSpace(req.Manifest.Username) != "" {
+				man = req.Manifest
+			} else if req.Username != "" {
+				man = &rpc.BackupManifest{Version: 1, Username: req.Username}
+			} else {
+				return nil, fmt.Errorf("archive has no user metadata")
+			}
+		} else {
+			man = plan.Manifest
+		}
 	}
 	username := strings.TrimSpace(man.Username)
 	if username == "" {
@@ -186,6 +263,9 @@ func restore(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	if err := validate.LinuxUser(username); err != nil {
 		return nil, err
 	}
+	if req.Username != "" && req.Username != username {
+		return nil, fmt.Errorf("archive is for %s", username)
+	}
 	man.Username = username
 	if man.Account.Username == "" {
 		man.Account.Username = username
@@ -193,36 +273,136 @@ func restore(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	pass := strings.TrimSpace(man.Account.Password)
 	_, existed := user.Lookup(username)
 	created := existed != nil
-	homeSrc := filepath.Join(tmp, username)
 	home := filepath.Join("/home", username)
-	if st, err := os.Stat(homeSrc); err == nil && st.IsDir() {
-		if err := os.MkdirAll(filepath.Dir(home), 0755); err != nil {
-			return nil, err
-		}
-		if _, err := os.Stat(home); err != nil {
-			if out, cpErr := exec.Command("cp", "-a", homeSrc, home).CombinedOutput(); cpErr != nil {
+	if plan == nil {
+		homeSrc := filepath.Join(tmp, username)
+		if st, err := os.Stat(homeSrc); err == nil && st.IsDir() {
+			if err := os.MkdirAll(filepath.Dir(home), 0755); err != nil {
+				return nil, err
+			}
+			if _, err := os.Stat(home); err != nil {
+				if out, cpErr := exec.Command("cp", "-a", homeSrc, home).CombinedOutput(); cpErr != nil {
+					return nil, fmt.Errorf("restore home: %s", strings.TrimSpace(string(out)))
+				}
+			} else if out, cpErr := exec.Command("cp", "-a", homeSrc+"/.", home+"/").CombinedOutput(); cpErr != nil {
 				return nil, fmt.Errorf("restore home: %s", strings.TrimSpace(string(out)))
 			}
-		} else if out, cpErr := exec.Command("cp", "-a", homeSrc+"/.", home+"/").CombinedOutput(); cpErr != nil {
-			return nil, fmt.Errorf("restore home: %s", strings.TrimSpace(string(out)))
 		}
 	}
 	um := &users.Manager{HomeRoot: "/home"}
 	if _, err := um.Ensure(username, 0, 0, pass); err != nil {
 		return nil, fmt.Errorf("create user: %w", err)
 	}
+	if plan != nil {
+		if err := applyDirectAdmin(plan, home, tmp); err != nil {
+			return nil, err
+		}
+	}
 	_ = exec.Command("chown", "-R", username+":"+username, home).Run()
 	_ = os.Chmod(home, 0711)
 	if err := importDumps(filepath.Join(tmp, "siroc-meta", "dumps"), man.Databases); err != nil {
 		return nil, err
 	}
-	restoreCrontab(username, filepath.Join(tmp, "siroc-meta", "crontab"))
-	restoreSiteCerts(filepath.Join(tmp, "siroc-meta", "ssl"))
+	if plan == nil {
+		restoreCrontab(username, filepath.Join(tmp, "siroc-meta", "crontab"))
+		restoreSiteCerts(filepath.Join(tmp, "siroc-meta", "ssl"))
+	}
 	msg := "restored " + username + " from " + filepath.Base(src)
 	if created {
 		msg = "created user " + username + " and restored from " + filepath.Base(src)
 	}
-	return &rpc.BackupResp{OK: true, Path: src, CreatedUser: created, Manifest: man, Message: msg}, nil
+	if plan != nil {
+		msg = directAdminMessage(username, len(man.Sites), len(man.Databases), plan.ResetDBPasswords, created)
+	}
+	return &rpc.BackupResp{OK: true, Path: src, CreatedUser: created, Manifest: man, Manifests: []*rpc.BackupManifest{man}, Message: msg}, nil
+}
+
+func applyDirectAdmin(plan *directAdminPlan, home, tmp string) error {
+	for _, copy := range plan.Copies {
+		dest, err := safeHomeDest(home, copy.Rel)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(dest, 0755); err != nil {
+			return err
+		}
+		if out, err := exec.Command("cp", "-a", copy.Src+"/.", dest+"/").CombinedOutput(); err != nil {
+			return fmt.Errorf("restore website files: %s", strings.TrimSpace(string(out)))
+		}
+		for _, skip := range []string{"stats", "logs", "awstats"} {
+			_ = os.RemoveAll(filepath.Join(dest, skip))
+		}
+		_ = filepath.Walk(dest, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info == nil {
+				return nil
+			}
+			if info.IsDir() {
+				_ = os.Chmod(path, 0755)
+			} else if info.Mode().IsRegular() {
+				_ = os.Chmod(path, 0644)
+			}
+			return nil
+		})
+	}
+	if len(plan.Dumps) == 0 {
+		return nil
+	}
+	dir := filepath.Join(tmp, "siroc-meta", "dumps")
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return err
+	}
+	for _, dump := range plan.Dumps {
+		if err := validate.DBIdent(dump.Name); err != nil {
+			continue
+		}
+		if out, err := exec.Command("cp", "-a", dump.Src, filepath.Join(dir, dump.Name+".sql")).CombinedOutput(); err != nil {
+			return fmt.Errorf("stage database dump: %s", strings.TrimSpace(string(out)))
+		}
+	}
+	return nil
+}
+
+func safeHomeDest(home, rel string) (string, error) {
+	rel = filepath.Clean(strings.ReplaceAll(rel, "\\", "/"))
+	if rel == "." || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("invalid restore path")
+	}
+	dest := filepath.Join(home, filepath.FromSlash(rel))
+	home = filepath.Clean(home)
+	if dest != home && !strings.HasPrefix(dest, home+string(os.PathSeparator)) {
+		return "", fmt.Errorf("invalid restore path")
+	}
+	return dest, nil
+}
+
+func extractToTemp(src string) (string, error) {
+	tmp := filepath.Join("/var/backups/siroc", ".restore", fmt.Sprintf("%d", time.Now().UnixNano()))
+	if err := extractArchive(src, tmp); err != nil {
+		os.RemoveAll(tmp)
+		return "", err
+	}
+	return tmp, nil
+}
+
+func extractArchive(src, dest string) error {
+	if err := os.MkdirAll(dest, 0750); err != nil {
+		return err
+	}
+	lower := strings.ToLower(src)
+	args := []string{"-xf", src, "-C", dest}
+	switch {
+	case strings.HasSuffix(lower, ".tar.zst"), strings.HasSuffix(lower, ".tzst"):
+		if _, err := exec.LookPath("zstd"); err != nil {
+			return fmt.Errorf("install zstd to restore a DirectAdmin .tar.zst backup")
+		}
+		args = []string{"-I", "zstd", "-xf", src, "-C", dest}
+	case strings.HasSuffix(lower, ".tar.gz"), strings.HasSuffix(lower, ".tgz"):
+		args = []string{"-xzf", src, "-C", dest}
+	}
+	if out, err := exec.Command("tar", args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("restore: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func dumpDatabases(dir string, names []string) error {
@@ -276,13 +456,25 @@ func importDumps(dir string, dbs []rpc.BackupDatabase) error {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		target := strings.TrimSuffix(e.Name(), ".sql")
+		args := []string{}
+		if err := validate.DBIdent(target); err == nil {
+			create := exec.Command(bin)
+			create.Stdin = strings.NewReader(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`;", target))
+			if out, err := create.CombinedOutput(); err != nil {
+				return fmt.Errorf("create database %s: %s", target, strings.TrimSpace(string(out)))
+			}
+			args = []string{target}
+		}
+		f, err := os.Open(filepath.Join(dir, e.Name()))
 		if err != nil {
 			return err
 		}
-		cmd := exec.Command(bin)
-		cmd.Stdin = bytes.NewReader(b)
-		if out, err := cmd.CombinedOutput(); err != nil {
+		cmd := exec.Command(bin, args...)
+		cmd.Stdin = f
+		out, runErr := cmd.CombinedOutput()
+		f.Close()
+		if runErr != nil {
 			return fmt.Errorf("import %s: %s", e.Name(), strings.TrimSpace(string(out)))
 		}
 	}

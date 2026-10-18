@@ -147,7 +147,7 @@ export function Backup({ admin }: { admin?: boolean }) {
         path,
       });
       const name = out.manifest?.username || username || "account";
-      message.success(out.createdUser ? `Created user ${name} and restored` : out.message || `Restored ${name}`);
+      message.success(out.message || (out.createdUser ? `Created user ${name} and restored` : `Restored ${name}`));
       setRestoreOpen(false);
       setRestorePath("");
       await load();
@@ -176,7 +176,7 @@ export function Backup({ admin }: { admin?: boolean }) {
             children: (
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
-        <Typography.Text type="secondary">One tar.gz per hosting user. Restore recreates a missing Linux user and their sites and databases.</Typography.Text>
+        <Typography.Text type="secondary">Siroc archives and DirectAdmin user backups. Restore creates a missing account, its websites, and its databases.</Typography.Text>
         <Space>
           <Button onClick={() => setOpen(true)}>Add destination</Button>
           <Button onClick={() => setRestoreOpen(true)}>Restore archive</Button>
@@ -466,9 +466,9 @@ export function Backup({ admin }: { admin?: boolean }) {
         destroyOnHidden
       >
         <Typography.Paragraph type="secondary">
-          Path to a per-user archive under /var/backups. If the user is not on this server, Siroc creates it from the backup.
+          Path under /var/backups to a Siroc tar.gz or a DirectAdmin user backup (.tar.gz or .tar.zst). A DirectAdmin admin backup restores each user in it. Websites and databases are imported. Mail, DNS, and certificates are not.
         </Typography.Paragraph>
-        <Input value={restorePath} onChange={(e) => setRestorePath(e.target.value)} placeholder="/var/backups/siroc/alice/alice-20261001-120000.tar.gz" />
+        <Input value={restorePath} onChange={(e) => setRestorePath(e.target.value)} placeholder="/var/backups/siroc/user.alice.tar.zst" />
       </Modal>
     </div>
   );
