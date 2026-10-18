@@ -938,6 +938,61 @@ func (s *Server) restoreBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := s.Agent.BackupRun(rpc.BackupReq{Username: strings.TrimSpace(body.Username), Restore: body.Path})
+	s.finishRestore(w, out, err)
+}
+
+func (s *Server) uploadRestore(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(currentUser(r)) {
+		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, backup.MaxRestoreUpload+8<<20)
+	mr, err := r.MultipartReader()
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("upload a .tar.gz or .tar.zst archive"))
+		return
+	}
+	var (
+		filename string
+		file     io.Reader
+	)
+	for {
+		part, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			if strings.Contains(err.Error(), "request body too large") {
+				writeErr(w, http.StatusBadRequest, fmt.Errorf("upload too large (max 10GB)"))
+				return
+			}
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("upload a .tar.gz or .tar.zst archive"))
+			return
+		}
+		if part.FormName() != "file" {
+			continue
+		}
+		filename = part.FileName()
+		file = part
+		break
+	}
+	if file == nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("file is required"))
+		return
+	}
+	if _, err := backup.RestoreArchiveName(filename); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	out, err := s.Agent.BackupUpload(filename, file)
+	if err != nil && strings.Contains(err.Error(), "request body too large") {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("upload too large (max 10GB)"))
+		return
+	}
+	s.finishRestore(w, out, err)
+}
+
+func (s *Server) finishRestore(w http.ResponseWriter, out *rpc.BackupResp, err error) {
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return

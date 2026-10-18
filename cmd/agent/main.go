@@ -1658,6 +1658,30 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Post("/backup/upload", func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, backup.MaxRestoreUpload+8<<20)
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("upload too large or invalid (max 10GB)"))
+			return
+		}
+		file, hdr, err := r.FormFile("file")
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("file is required"))
+			return
+		}
+		defer file.Close()
+		path, err := backup.SaveUpload(hdr.Filename, file)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		out, err := backup.Run(rpc.BackupReq{Restore: path})
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Post("/pma/ensure", func(w http.ResponseWriter, _ *http.Request) {
 		if err := pma.Ensure(); err != nil {
 			writeErr(w, http.StatusBadRequest, err)

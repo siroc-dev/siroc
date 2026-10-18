@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Progress, Select, Space, Switch, Table, Tabs, Tag, Typography, Upload } from "antd";
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { formatBytes } from "@/lib/usage";
@@ -113,6 +113,8 @@ export function Backup({ admin }: { admin?: boolean }) {
 
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restorePath, setRestorePath] = useState("");
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
 
   async function setCronEnabled(c: Cron, enabled: boolean) {
     try {
@@ -150,11 +152,36 @@ export function Backup({ admin }: { admin?: boolean }) {
       message.success(out.message || (out.createdUser ? `Created user ${name} and restored` : `Restored ${name}`));
       setRestoreOpen(false);
       setRestorePath("");
+      setRestoreFile(null);
+      setUploadPct(null);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function restoreUpload(file: File) {
+    setBusy(true);
+    setUploadPct(0);
+    try {
+      const out = await api.uploadProgress<{ createdUser?: boolean; message?: string; manifest?: { username?: string } }>(
+        "/api/backup/restore/upload",
+        file,
+        setUploadPct,
+      );
+      const name = out.manifest?.username || "account";
+      message.success(out.message || (out.createdUser ? `Created user ${name} and restored` : `Restored ${name}`));
+      setRestoreOpen(false);
+      setRestorePath("");
+      setRestoreFile(null);
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+      setUploadPct(null);
     }
   }
 
@@ -459,16 +486,44 @@ export function Backup({ admin }: { admin?: boolean }) {
       <Modal
         title="Restore archive"
         open={restoreOpen}
-        onCancel={() => setRestoreOpen(false)}
-        onOk={() => void restore(restorePath)}
+        onCancel={() => {
+          if (busy) return;
+          setRestoreOpen(false);
+          setRestoreFile(null);
+          setUploadPct(null);
+        }}
+        onOk={() => {
+          if (restoreFile) void restoreUpload(restoreFile);
+          else void restore(restorePath);
+        }}
         confirmLoading={busy}
         okText="Restore"
+        okButtonProps={{ disabled: !restoreFile && !restorePath.trim() }}
         destroyOnHidden
       >
         <Typography.Paragraph type="secondary">
-          Path under /var/backups to a Siroc tar.gz or a DirectAdmin user backup (.tar.gz or .tar.zst). A DirectAdmin admin backup restores each user in it. Websites and databases are imported. Mail, DNS, and certificates are not.
+          Upload a Siroc or DirectAdmin archive, or give a path already under /var/backups. A DirectAdmin admin backup restores each user in it. Websites and databases are imported. Mail, DNS, and certificates are not. Maximum upload size is 10 GB.
         </Typography.Paragraph>
-        <Input value={restorePath} onChange={(e) => setRestorePath(e.target.value)} placeholder="/var/backups/siroc/user.alice.tar.zst" />
+        <Upload
+          accept=".tar,.gz,.tgz,.zst,.tzst"
+          maxCount={1}
+          beforeUpload={(file) => {
+            setRestoreFile(file);
+            return false;
+          }}
+          onRemove={() => {
+            setRestoreFile(null);
+            return true;
+          }}
+          fileList={restoreFile ? [{ uid: "-1", name: restoreFile.name }] : []}
+        >
+          <Button disabled={busy}>Choose archive</Button>
+        </Upload>
+        {uploadPct != null ? <Progress percent={uploadPct} style={{ marginTop: 12 }} /> : null}
+        <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 8 }}>
+          Or a path on the server
+        </Typography.Paragraph>
+        <Input value={restorePath} onChange={(e) => setRestorePath(e.target.value)} placeholder="/var/backups/siroc/user.alice.tar.zst" disabled={busy} />
       </Modal>
     </div>
   );

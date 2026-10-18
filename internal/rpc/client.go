@@ -1040,6 +1040,60 @@ func (c *Client) BackupRun(in BackupReq) (*BackupResp, error) {
 	return &out, err
 }
 
+func (c *Client) BackupUpload(filename string, r io.Reader) (*BackupResp, error) {
+	pr, pw := io.Pipe()
+	w := multipart.NewWriter(pw)
+	errCh := make(chan error, 1)
+	go func() {
+		var err error
+		defer func() {
+			_ = w.Close()
+			_ = pw.CloseWithError(err)
+			errCh <- err
+		}()
+		part, e := w.CreateFormFile("file", filename)
+		if e != nil {
+			err = e
+			return
+		}
+		_, err = io.Copy(part, r)
+	}()
+	req, err := http.NewRequest(http.MethodPost, c.base+"/backup/upload", pr)
+	if err != nil {
+		_ = pw.Close()
+		return nil, err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	res, err := c.doLong(req)
+	copyErr := <-errCh
+	if copyErr != nil && strings.Contains(copyErr.Error(), "request body too large") {
+		if res != nil {
+			res.Body.Close()
+		}
+		return nil, fmt.Errorf("upload too large (max 10GB)")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("agent unreachable: %w", err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	if copyErr != nil {
+		return nil, copyErr
+	}
+	if res.StatusCode >= 400 {
+		var eb ErrorBody
+		if json.Unmarshal(b, &eb) == nil && eb.Error != "" {
+			return nil, fmt.Errorf("%s", eb.Error)
+		}
+		return nil, fmt.Errorf("agent error (%d): %s", res.StatusCode, string(b))
+	}
+	var out BackupResp
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) BackupCronInstall(body string) error {
 	return c.do(http.MethodPost, "/backup/cron", BackupCronFile{Body: body}, nil)
 }

@@ -225,6 +225,38 @@ func restore(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	return &rpc.BackupResp{OK: true, Path: src, CreatedUser: created, Manifest: mans[0], Manifests: mans, Message: msg}, nil
 }
 
+func SaveUpload(name string, r io.Reader) (string, error) {
+	safe, err := RestoreArchiveName(name)
+	if err != nil {
+		return "", err
+	}
+	dir := "/var/backups/siroc/incoming"
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return "", err
+	}
+	dest := filepath.Join(dir, time.Now().UTC().Format("20060102-150405")+"-"+safe)
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0640)
+	if err != nil {
+		return "", err
+	}
+	n, copyErr := io.Copy(f, io.LimitReader(r, MaxRestoreUpload+1))
+	closeErr := f.Close()
+	if copyErr != nil || closeErr != nil || n > MaxRestoreUpload || n == 0 {
+		_ = os.Remove(dest)
+		if n > MaxRestoreUpload {
+			return "", fmt.Errorf("upload too large (max 10GB)")
+		}
+		if n == 0 && copyErr == nil && closeErr == nil {
+			return "", fmt.Errorf("file is empty")
+		}
+		if copyErr != nil {
+			return "", copyErr
+		}
+		return "", closeErr
+	}
+	return dest, nil
+}
+
 func describeExtract(tmp string) (*rpc.BackupResp, error) {
 	if man, err := loadExtractedManifest(tmp); err == nil && strings.TrimSpace(man.Username) != "" {
 		return &rpc.BackupResp{OK: true, Manifest: man, Message: "archive for " + man.Username}, nil
