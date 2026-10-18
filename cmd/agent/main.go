@@ -969,7 +969,7 @@ func main() {
 		writeJSON(w, http.StatusOK, st)
 	})
 	r.Get("/security/waf/rules", func(w http.ResponseWriter, r *http.Request) {
-		out, err := secMgr.WAFRules(r.URL.Query().Get("q"), r.URL.Query().Get("pack"), 200)
+		out, err := secMgr.WAFRules(r.URL.Query().Get("q"), r.URL.Query().Get("pack"), 200, security.ParseWAFPin(r.URL.Query().Get("pin")))
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return

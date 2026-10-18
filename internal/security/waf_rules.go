@@ -46,10 +46,7 @@ func normalizeRuleIDs(ids []int) ([]int, error) {
 	return out, nil
 }
 
-func (m *Manager) WAFRules(q, pack string, limit int) (*rpc.WAFRulesResp, error) {
-	if limit <= 0 || limit > 500 {
-		limit = 200
-	}
+func (m *Manager) WAFRules(q, pack string, limit int, pin []int) (*rpc.WAFRulesResp, error) {
 	st := loadWAFState()
 	disabled := map[int]bool{}
 	for _, id := range st.DisabledIDs {
@@ -72,13 +69,7 @@ func (m *Manager) WAFRules(q, pack string, limit int) (*rpc.WAFRulesResp, error)
 		matched = append(matched, r)
 	}
 	total := len(matched)
-	if len(matched) > limit {
-		matched = matched[:limit]
-	}
-	if matched == nil {
-		matched = []rpc.WAFRule{}
-	}
-	return &rpc.WAFRulesResp{Rules: matched, Total: total}, nil
+	return &rpc.WAFRulesResp{Rules: orderWAFRules(matched, pin, limit), Total: total}, nil
 }
 
 func catalogCRSRules() []rpc.WAFRule {

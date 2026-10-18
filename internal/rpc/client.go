@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -560,9 +561,20 @@ func (c *Client) WAFApply(in WAFModeReq) error {
 	return c.do(http.MethodPost, "/security/waf", in, nil)
 }
 
-func (c *Client) WAFRules(q, pack string) (*WAFRulesResp, error) {
+func (c *Client) WAFRules(q, pack string, pin []int) (*WAFRulesResp, error) {
 	var out WAFRulesResp
 	path := "/security/waf/rules?q=" + url.QueryEscape(q) + "&pack=" + url.QueryEscape(pack)
+	if len(pin) > 0 {
+		parts := make([]string, 0, len(pin))
+		for _, id := range pin {
+			if id >= 100 {
+				parts = append(parts, fmt.Sprintf("%d", id))
+			}
+		}
+		if len(parts) > 0 {
+			path += "&pin=" + url.QueryEscape(strings.Join(parts, ","))
+		}
+	}
 	err := c.do(http.MethodGet, path, nil, &out)
 	return &out, err
 }

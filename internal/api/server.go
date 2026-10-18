@@ -1267,7 +1267,7 @@ func (s *Server) wafStatus(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) wafRules(w http.ResponseWriter, r *http.Request) {
-	out, err := s.Agent.WAFRules(r.URL.Query().Get("q"), r.URL.Query().Get("pack"))
+	out, err := s.Agent.WAFRules(r.URL.Query().Get("q"), r.URL.Query().Get("pack"), nil)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return

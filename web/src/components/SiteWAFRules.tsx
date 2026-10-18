@@ -5,6 +5,25 @@ import { api } from "@/lib/api";
 type Rule = { id: number; msg: string; file: string; pack: string; disabled: boolean };
 type Resp = { rules?: Rule[]; total?: number; disabledIds?: number[] };
 
+export function ruleExceptionRows(rules: Rule[], off: number[], q = "", pack = ""): Rule[] {
+  const query = q.trim().toLowerCase();
+  const seen = new Set(rules.map((r) => r.id));
+  const extra: Rule[] = [];
+  if (!pack) {
+    for (const id of off) {
+      if (!seen.has(id) && (!query || String(id).includes(query))) {
+        extra.push({ id, msg: "", file: "", pack: "", disabled: true });
+      }
+    }
+  }
+  return [...rules, ...extra].sort((a, b) => {
+    const ad = off.includes(a.id) ? 0 : 1;
+    const bd = off.includes(b.id) ? 0 : 1;
+    if (ad !== bd) return ad - bd;
+    return a.id - b.id;
+  });
+}
+
 export function SiteWAFRules({ siteId, domain }: { siteId: number; domain?: string }) {
   const { message } = App.useApp();
   const [rules, setRules] = useState<Rule[]>([]);
@@ -57,6 +76,8 @@ export function SiteWAFRules({ siteId, domain }: { siteId: number; domain?: stri
     setNewId("");
     return toggle(id, true);
   }
+
+  const rows = ruleExceptionRows(rules, off, q, pack);
 
   return (
     <div>
@@ -119,7 +140,7 @@ export function SiteWAFRules({ siteId, domain }: { siteId: number; domain?: stri
         rowKey="id"
         pagination={false}
         scroll={{ y: 320 }}
-        dataSource={rules}
+        dataSource={rows}
         locale={{ emptyText: "No matching rules. Install OWASP CRS, or disable a rule by ID." }}
         columns={[
           { title: "ID", dataIndex: "id", width: 100, render: (id: number) => <Typography.Text code>{id}</Typography.Text> },
@@ -148,7 +169,7 @@ export function SiteWAFRules({ siteId, domain }: { siteId: number; domain?: stri
         ]}
       />
       <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
-        Showing {rules.length} of {total} rules.
+        Showing {rows.length} of {Math.max(total, rows.length)} rules.
       </Typography.Paragraph>
     </div>
   );

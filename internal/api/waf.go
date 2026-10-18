@@ -108,7 +108,7 @@ func (s *Server) siteWAFRules(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, st)
 		return
 	}
-	out, err := s.Agent.WAFRules(r.URL.Query().Get("q"), r.URL.Query().Get("pack"))
+	out, err := s.Agent.WAFRules(r.URL.Query().Get("q"), r.URL.Query().Get("pack"), st.WAFDisabledIDs)
 	if err != nil || out == nil {
 		out = &rpc.WAFRulesResp{Rules: []rpc.WAFRule{}, Total: 0}
 	}
