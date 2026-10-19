@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Progress, Select, Space, Switch, Table, Tabs, Tag, Typography, Upload } from "antd";
-import { api } from "@/lib/api";
+import { api, uploadWasCancelled } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
-import { formatBytes } from "@/lib/usage";
+import { formatBytes, formatRate } from "@/lib/usage";
 import { formatPanelTime } from "@/lib/panelTime";
 import { Rclone } from "@/pages/Rclone";
 
@@ -13,9 +13,15 @@ type Dest = {
   name: string;
   kind: string;
   host?: string;
+  port?: number;
+  user?: string;
   path?: string;
   bucket?: string;
+  region?: string;
   endpoint?: string;
+  prefix?: string;
+  useSSL?: boolean;
+  hasSecret?: boolean;
 };
 type Job = {
   id: number;
@@ -32,6 +38,7 @@ type Cron = {
   id: number;
   name: string;
   account: string;
+  destId: number;
   destName?: string;
   includeDB: boolean;
   cycle: string;
@@ -46,6 +53,46 @@ type Cron = {
 };
 
 const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function destFormValues(d: Dest | null) {
+  if (!d) {
+    return { name: "", kind: "local", path: "", host: "", port: 21, user: "", password: "", endpoint: "", region: "", bucket: "", prefix: "", accessKey: "", secretKey: "", useSSL: true };
+  }
+  return {
+    name: d.name,
+    kind: d.kind,
+    path: d.path ?? "",
+    host: d.host ?? "",
+    port: d.port || (d.kind === "ftp" ? 21 : undefined),
+    user: d.user ?? "",
+    password: "",
+    endpoint: d.endpoint ?? "",
+    region: d.region ?? "",
+    bucket: d.bucket ?? "",
+    prefix: d.prefix ?? "",
+    accessKey: d.kind === "s3" ? d.user ?? "" : "",
+    secretKey: "",
+    useSSL: !!d.useSSL,
+  };
+}
+
+function cronFormValues(c: Cron | null) {
+  if (!c) {
+    return { name: "", username: "*", cycle: "daily", hour: 1, minute: 30, weekday: 0, monthday: 1, retain: 3, includeDB: true };
+  }
+  return {
+    name: c.name,
+    username: c.account,
+    destId: c.destId,
+    cycle: c.cycle,
+    hour: c.hour,
+    minute: c.minute,
+    weekday: c.weekday,
+    monthday: c.monthday || 1,
+    retain: c.retain,
+    includeDB: c.includeDB,
+  };
+}
 
 function jobWhen(raw?: string) {
   return formatPanelTime(raw) || "—";
@@ -69,8 +116,10 @@ export function Backup({ admin }: { admin?: boolean }) {
   const [crons, setCrons] = useState<Cron[]>([]);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const [editingDest, setEditingDest] = useState<Dest | null>(null);
   const [runOpen, setRunOpen] = useState(false);
   const [cronOpen, setCronOpen] = useState(false);
+  const [editingCron, setEditingCron] = useState<Cron | null>(null);
   const [form] = Form.useForm();
   const [runForm] = Form.useForm();
   const [cronForm] = Form.useForm();
@@ -99,8 +148,10 @@ export function Backup({ admin }: { admin?: boolean }) {
   async function saveDest(values: Record<string, unknown>) {
     setBusy(true);
     try {
-      await api.post("/api/backup/dests", values);
+      if (editingDest) await api.put(`/api/backup/dests/${editingDest.id}`, values);
+      else await api.post("/api/backup/dests", values);
       form.resetFields();
+      setEditingDest(null);
       setOpen(false);
       message.success("Destination saved");
       await load();
@@ -115,6 +166,8 @@ export function Backup({ admin }: { admin?: boolean }) {
   const [restorePath, setRestorePath] = useState("");
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
+  const [uploadSpeedBps, setUploadSpeedBps] = useState(0);
+  const uploadAbort = useRef<AbortController | null>(null);
 
   async function setCronEnabled(c: Cron, enabled: boolean) {
     try {
@@ -154,6 +207,7 @@ export function Backup({ admin }: { admin?: boolean }) {
       setRestorePath("");
       setRestoreFile(null);
       setUploadPct(null);
+      setUploadSpeedBps(0);
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -162,14 +216,26 @@ export function Backup({ admin }: { admin?: boolean }) {
     }
   }
 
+  function cancelRestoreUpload() {
+    uploadAbort.current?.abort();
+  }
+
   async function restoreUpload(file: File) {
+    const ctrl = new AbortController();
+    uploadAbort.current = ctrl;
     setBusy(true);
     setUploadPct(0);
+    setUploadSpeedBps(0);
     try {
       const out = await api.uploadProgress<{ createdUser?: boolean; message?: string; manifest?: { username?: string } }>(
         "/api/backup/restore/upload",
         file,
-        setUploadPct,
+        (pct, speed) => {
+          setUploadPct(pct);
+          setUploadSpeedBps(speed);
+        },
+        "file",
+        ctrl.signal,
       );
       const name = out.manifest?.username || "account";
       message.success(out.message || (out.createdUser ? `Created user ${name} and restored` : `Restored ${name}`));
@@ -178,10 +244,13 @@ export function Backup({ admin }: { admin?: boolean }) {
       setRestoreFile(null);
       await load();
     } catch (err) {
-      message.error(err instanceof Error ? err.message : "Failed");
+      if (uploadWasCancelled(err)) message.info("Upload cancelled");
+      else message.error(err instanceof Error ? err.message : "Failed");
     } finally {
+      uploadAbort.current = null;
       setBusy(false);
       setUploadPct(null);
+      setUploadSpeedBps(0);
     }
   }
 
@@ -205,9 +274,9 @@ export function Backup({ admin }: { admin?: boolean }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
         <Typography.Text type="secondary">Siroc archives and DirectAdmin user backups. Restore creates a missing account, its websites, and its databases.</Typography.Text>
         <Space>
-          <Button onClick={() => setOpen(true)}>Add destination</Button>
+          <Button onClick={() => { setEditingDest(null); setOpen(true); }}>Add destination</Button>
           <Button onClick={() => setRestoreOpen(true)}>Restore archive</Button>
-          <Button onClick={() => setCronOpen(true)} disabled={!dests.length}>
+          <Button onClick={() => { setEditingCron(null); setCronOpen(true); }} disabled={!dests.length}>
             Add schedule
           </Button>
           <Button type="primary" onClick={() => setRunOpen(true)} disabled={!dests.length}>
@@ -227,13 +296,19 @@ export function Backup({ admin }: { admin?: boolean }) {
             { title: "Target", render: (_, d) => d.bucket || d.host || d.path || "—" },
             {
               title: "",
+              width: 150,
               align: "right",
               render: (_, d) => (
-                <Popconfirm title="Delete destination?" onConfirm={() => api.delete(`/api/backup/dests/${d.id}`).then(load)}>
-                  <Button size="small" danger>
-                    Delete
+                <Space>
+                  <Button size="small" onClick={() => { setEditingDest(d); setOpen(true); }}>
+                    Edit
                   </Button>
-                </Popconfirm>
+                  <Popconfirm title="Delete destination?" onConfirm={() => api.delete(`/api/backup/dests/${d.id}`).then(load)}>
+                    <Button size="small" danger>
+                      Delete
+                    </Button>
+                  </Popconfirm>
+                </Space>
               ),
             },
           ]}
@@ -259,14 +334,19 @@ export function Backup({ admin }: { admin?: boolean }) {
             { title: "Last run", dataIndex: "lastStatus", ellipsis: true, render: (v) => v || "—" },
             {
               title: "",
-              width: 90,
+              width: 150,
               align: "right",
               render: (_, c) => (
-                <Popconfirm title="Delete this schedule?" onConfirm={() => api.delete(`/api/backup/crons/${c.id}`).then(load)}>
-                  <Button size="small" danger>
-                    Delete
+                <Space>
+                  <Button size="small" onClick={() => { setEditingCron(c); setCronOpen(true); }}>
+                    Edit
                   </Button>
-                </Popconfirm>
+                  <Popconfirm title="Delete this schedule?" onConfirm={() => api.delete(`/api/backup/crons/${c.id}`).then(load)}>
+                    <Button size="small" danger>
+                      Delete
+                    </Button>
+                  </Popconfirm>
+                </Space>
               ),
             },
           ]}
@@ -325,8 +405,22 @@ export function Backup({ admin }: { admin?: boolean }) {
         ]}
       />
 
-      <Modal title="Backup destination" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={busy} destroyOnHidden>
-        <Form form={form} layout="vertical" onFinish={saveDest} initialValues={{ kind: "local", useSSL: true, port: 21 }}>
+      <Modal
+        title={editingDest ? "Edit destination" : "Backup destination"}
+        open={open}
+        onCancel={() => { setOpen(false); setEditingDest(null); }}
+        onOk={() => form.submit()}
+        confirmLoading={busy}
+        destroyOnHidden
+      >
+        <Form
+          key={editingDest?.id ?? "new"}
+          form={form}
+          layout="vertical"
+          onFinish={saveDest}
+          initialValues={destFormValues(editingDest)}
+          clearOnDestroy
+        >
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
             <Input placeholder="Offsite S3" />
           </Form.Item>
@@ -355,7 +449,7 @@ export function Backup({ admin }: { admin?: boolean }) {
               <Form.Item name="user" label="Username">
                 <Input />
               </Form.Item>
-              <Form.Item name="password" label="Password">
+              <Form.Item name="password" label="Password" extra={editingDest ? "Leave blank to keep the current password." : undefined}>
                 <Input.Password />
               </Form.Item>
               <Form.Item name="path" label="Remote path">
@@ -377,10 +471,10 @@ export function Backup({ admin }: { admin?: boolean }) {
               <Form.Item name="prefix" label="Prefix">
                 <Input placeholder="siroc/" />
               </Form.Item>
-              <Form.Item name="accessKey" label="Access key" rules={[{ required: true }]}>
+              <Form.Item name="accessKey" label="Access key" rules={editingDest ? [] : [{ required: true }]}>
                 <Input />
               </Form.Item>
-              <Form.Item name="secretKey" label="Secret key" rules={[{ required: true }]}>
+              <Form.Item name="secretKey" label="Secret key" rules={editingDest ? [] : [{ required: true }]} extra={editingDest ? "Leave blank to keep the current secret." : undefined}>
                 <Input.Password />
               </Form.Item>
               <Form.Item name="useSSL" label="HTTPS" valuePropName="checked">
@@ -391,18 +485,29 @@ export function Backup({ admin }: { admin?: boolean }) {
         </Form>
       </Modal>
 
-      <Modal title="Backup schedule" open={cronOpen} onCancel={() => setCronOpen(false)} onOk={() => cronForm.submit()} confirmLoading={busy} destroyOnHidden>
+      <Modal
+        title={editingCron ? "Edit schedule" : "Backup schedule"}
+        open={cronOpen}
+        onCancel={() => { setCronOpen(false); setEditingCron(null); }}
+        onOk={() => cronForm.submit()}
+        confirmLoading={busy}
+        destroyOnHidden
+      >
         <Form
+          key={editingCron?.id ?? "new"}
           form={cronForm}
           layout="vertical"
-          initialValues={{ username: "*", cycle: "daily", hour: 1, minute: 30, weekday: 0, monthday: 1, retain: 3, includeDB: true }}
+          initialValues={cronFormValues(editingCron)}
+          clearOnDestroy
           onFinish={async (values) => {
             setBusy(true);
             try {
-              await api.post("/api/backup/crons", values);
+              if (editingCron) await api.put(`/api/backup/crons/${editingCron.id}`, values);
+              else await api.post("/api/backup/crons", values);
               setCronOpen(false);
+              setEditingCron(null);
               cronForm.resetFields();
-              message.success("Cron installed");
+              message.success(editingCron ? "Schedule saved" : "Cron installed");
               await load();
             } catch (err) {
               message.error(err instanceof Error ? err.message : "Failed");
@@ -491,6 +596,7 @@ export function Backup({ admin }: { admin?: boolean }) {
           setRestoreOpen(false);
           setRestoreFile(null);
           setUploadPct(null);
+          setUploadSpeedBps(0);
         }}
         onOk={() => {
           if (restoreFile) void restoreUpload(restoreFile);
@@ -519,7 +625,19 @@ export function Backup({ admin }: { admin?: boolean }) {
         >
           <Button disabled={busy}>Choose archive</Button>
         </Upload>
-        {uploadPct != null ? <Progress percent={uploadPct} style={{ marginTop: 12 }} /> : null}
+        {uploadPct != null ? (
+          <>
+            <Progress percent={uploadPct} style={{ marginTop: 12 }} />
+            {uploadSpeedBps > 0 ? <Typography.Text type="secondary">{formatRate(uploadSpeedBps)}/s</Typography.Text> : null}
+            {uploadPct < 100 ? (
+              <div style={{ marginTop: 8 }}>
+                <Button danger onClick={cancelRestoreUpload}>
+                  Cancel upload
+                </Button>
+              </div>
+            ) : null}
+          </>
+        ) : null}
         <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 8 }}>
           Or a path on the server
         </Typography.Paragraph>

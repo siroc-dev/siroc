@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldGoToLogin } from "./api";
+import { shouldGoToLogin, UploadCancelled, uploadWasCancelled } from "./api";
 
 describe("session expiry", () => {
   it("sends an expired panel session to the login page", () => {
@@ -16,5 +16,10 @@ describe("session expiry", () => {
   it("does not treat other errors as an expired session", () => {
     expect(shouldGoToLogin(403, "/api/software", "/software")).toBe(false);
     expect(shouldGoToLogin(400, "/api/sites", "/sites")).toBe(false);
+  });
+
+  it("recognises a cancelled upload", () => {
+    expect(uploadWasCancelled(new UploadCancelled())).toBe(true);
+    expect(uploadWasCancelled(new Error("Upload failed"))).toBe(false);
   });
 });

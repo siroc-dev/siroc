@@ -22,6 +22,14 @@ export function uploadGroups(files: File[]): UploadGroup[] {
   return groups;
 }
 
+// uploadSpeed is the average bytes per second since the upload started.
+// The first fraction of a second is ignored so a single burst does not show a spike.
+export function uploadSpeed(loaded: number, startedAt: number, now: number): number {
+  const dt = (now - startedAt) / 1000;
+  if (loaded <= 0 || dt < 0.2) return 0;
+  return loaded / dt;
+}
+
 export function uploadPercent(doneBytes: number, totalBytes: number, doneCount: number, totalCount: number, settled: boolean): number {
   if (totalCount <= 0) return 0;
   const raw = totalBytes > 0 ? (doneBytes / totalBytes) * 100 : (doneCount / totalCount) * 100;

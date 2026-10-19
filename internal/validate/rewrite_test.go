@@ -35,3 +35,25 @@ func TestSplitNginxRewrite(t *testing.T) {
 		t.Fatal("dotdot alias should be rejected")
 	}
 }
+
+func TestVodRewriteTemplate(t *testing.T) {
+	raw := `location /vod/ {
+    # nginx-vod-module. Change the alias to the folder that holds the media files.
+    # /home/user/videos/movie.mp4 is played at /vod/movie.mp4/index.m3u8
+    vod hls;
+    vod_mode local;
+    alias /home/user/videos/;
+    add_header Access-Control-Allow-Origin *;
+    add_header Access-Control-Allow-Headers *;
+    add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
+}`
+	server, inner, skip, err := SplitNginxRewrite(raw)
+	if err != nil || skip || inner != "" {
+		t.Fatalf("server=%q inner=%q skip=%v err=%v", server, inner, skip, err)
+	}
+	for _, want := range []string{"location /vod/ {", "vod hls;", "vod_mode local;", "alias /home/user/videos/;"} {
+		if !strings.Contains(server, want) {
+			t.Fatalf("missing %s\n%s", want, server)
+		}
+	}
+}

@@ -1,6 +1,6 @@
 /** @vitest-environment node */
 import { describe, expect, it } from "vitest";
-import { uploadGroups, uploadPercent } from "./uploadGroups";
+import { uploadGroups, uploadPercent, uploadSpeed } from "./uploadGroups";
 
 function file(name: string, rel = "", body = "x") {
   const f = new File([body], name);
@@ -42,5 +42,16 @@ describe("uploadPercent", () => {
 
   it("counts empty files", () => {
     expect(uploadPercent(0, 0, 1, 2, true)).toBe(50);
+  });
+});
+
+describe("uploadSpeed", () => {
+  it("averages bytes sent since the upload started", () => {
+    expect(uploadSpeed(1_000_000, 1_000, 3_000)).toBe(500_000);
+  });
+
+  it("waits until a sample can be measured", () => {
+    expect(uploadSpeed(1_000_000, 1_000, 1_100)).toBe(0);
+    expect(uploadSpeed(0, 1_000, 3_000)).toBe(0);
   });
 });

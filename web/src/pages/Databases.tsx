@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 import { Alert, App, AutoComplete, Button, Card, Dropdown, Form, Input, Modal, Popconfirm, Progress, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
-import { api, redirectIfSessionExpired } from "@/lib/api";
-import { formatBytes } from "@/lib/usage";
+import { api, redirectIfSessionExpired, uploadWasCancelled } from "@/lib/api";
+import { formatBytes, formatRate } from "@/lib/usage";
 import { InstallLog } from "@/components/InstallLog";
 import { DatabaseMonitorPanel } from "@/pages/DatabaseMonitor";
 import { RedisConfigPanel } from "@/pages/RedisConfig";
@@ -57,6 +57,8 @@ export function Databases() {
   const [redisErr, setRedisErr] = useState("");
   const [ioBusy, setIoBusy] = useState("");
   const [importPct, setImportPct] = useState(0);
+  const [importSpeed, setImportSpeed] = useState(0);
+  const importAbort = useRef<AbortController | null>(null);
   const [importFile, setImportFile] = useState("");
   const [importId, setImportId] = useState(0);
   const [importDbName, setImportDbName] = useState("");
@@ -303,22 +305,40 @@ export function Databases() {
           setImportId(d.id);
           setImportDbName(d.dbName);
           setImportPct(0);
+          setImportSpeed(0);
           setImportErr("");
           setImportOk("");
           setImportLive(true);
           setLogToken((n) => n + 1);
           setLogOpen(true);
-          api.uploadProgress(`/api/databases/${d.id}/import`, file, setImportPct)
+          const ctrl = new AbortController();
+          importAbort.current = ctrl;
+          api.uploadProgress(
+            `/api/databases/${d.id}/import`,
+            file,
+            (pct, speed) => {
+              setImportPct(pct);
+              setImportSpeed(speed);
+            },
+            "file",
+            ctrl.signal,
+          )
             .then(() => {
               setImportOk(`Imported into ${d.dbName}`);
               message.success(`Imported into ${d.dbName}`);
             })
             .catch((err) => {
+              if (uploadWasCancelled(err)) {
+                message.info("Upload cancelled");
+                setLogOpen(false);
+                return;
+              }
               const text = err instanceof Error ? err.message : "Import failed";
               setImportErr(text);
               message.error(text);
             })
             .finally(() => {
+              importAbort.current = null;
               setIoBusy("");
               setImportLive(false);
             });
@@ -729,10 +749,22 @@ export function Databases() {
         title={importDbName ? `Import log · ${importDbName}` : "Import log"}
         open={logOpen}
         width={760}
-        footer={importLive ? null : <Button onClick={() => setLogOpen(false)}>Close</Button>}
-        closable={!importLive}
+        footer={
+          importLive && importPct < 100 ? (
+            <Button danger onClick={() => importAbort.current?.abort()}>
+              Cancel upload
+            </Button>
+          ) : importLive ? null : (
+            <Button onClick={() => setLogOpen(false)}>Close</Button>
+          )
+        }
+        closable={!importLive || importPct < 100}
         maskClosable={false}
         onCancel={() => {
+          if (importLive && importPct < 100) {
+            importAbort.current?.abort();
+            return;
+          }
           if (!importLive) setLogOpen(false);
         }}
         destroyOnHidden
@@ -742,7 +774,9 @@ export function Databases() {
             <Typography.Paragraph style={{ marginTop: 0 }}>{importFile}</Typography.Paragraph>
             <Progress percent={importPct} status="active" />
             <Typography.Paragraph type="secondary">
-              {importPct >= 100 ? "File sent. MySQL import is still running." : "Sending the file. The log updates as the server receives it."}
+              {importPct >= 100
+                ? "File sent. MySQL import is still running."
+                : `Sending the file${importSpeed > 0 ? ` at ${formatRate(importSpeed)}/s` : ""}. The log updates as the server receives it.`}
             </Typography.Paragraph>
           </>
         ) : null}

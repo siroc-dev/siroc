@@ -223,6 +223,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/files/search", s.searchFiles)
 		r.Get("/api/backup/dests", s.listBackupDests)
 		r.Post("/api/backup/dests", s.createBackupDest)
+		r.Put("/api/backup/dests/{id}", s.updateBackupDest)
 		r.Delete("/api/backup/dests/{id}", s.deleteBackupDest)
 		r.Get("/api/backup/jobs", s.listBackupJobs)
 		r.Post("/api/backup/run", s.runBackup)

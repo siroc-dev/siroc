@@ -44,13 +44,13 @@ import {
   SnippetsOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
-import { api, redirectIfSessionExpired } from "@/lib/api";
+import { api, redirectIfSessionExpired, UploadCancelled, uploadWasCancelled } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { languageFromPath } from "@/lib/fileLang";
 import { filesFromDrop } from "@/lib/dropFiles";
-import { uploadGroups, uploadPercent } from "@/lib/uploadGroups";
+import { uploadGroups, uploadPercent, uploadSpeed } from "@/lib/uploadGroups";
 import { accountAbs, fileCrumbs, isSystemPath, joinPath, moveDestinations, normalizeFileJump, parentFilePath } from "@/lib/filePaths";
-import { editorWorkspace, formatBytes } from "@/lib/usage";
+import { editorWorkspace, formatBytes, formatRate } from "@/lib/usage";
 import { formatPanelTime } from "@/lib/panelTime";
 import { SSHTerminal } from "@/components/SSHTerminal";
 
@@ -123,9 +123,11 @@ export function Files() {
   const [absPath, setAbsPath] = useState("");
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
+  const uploadXhr = useRef<XMLHttpRequest | null>(null);
+  const uploadStop = useRef(false);
   const [editorReady, setEditorReady] = useState(false);
   const [lspOn, setLspOn] = useState(false);
-  const [upItems, setUpItems] = useState<{ key: string; name: string; folder: boolean; count: number; pct: number; status?: "active" | "success" | "exception" }[]>([]);
+  const [upItems, setUpItems] = useState<{ key: string; name: string; folder: boolean; count: number; pct: number; speed?: number; status?: "active" | "success" | "exception" }[]>([]);
   const [upOpen, setUpOpen] = useState(false);
   const [clip, setClip] = useState<Clip | null>(null);
   const [perm, setPerm] = useState<Entry | null>(null);
@@ -393,14 +395,20 @@ export function Files() {
     return rel.replace(/^\/+/, "");
   }
 
-  function patchUpload(key: string, patch: { pct?: number; status?: "active" | "success" | "exception" }) {
+  function patchUpload(key: string, patch: { pct?: number; speed?: number; status?: "active" | "success" | "exception" }) {
     setUpItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...patch } : it)));
+  }
+
+  function cancelUpload() {
+    uploadStop.current = true;
+    uploadXhr.current?.abort();
   }
 
   async function uploadMany(files: File[]) {
     const list = files.filter((f) => f && !skipFile(f.name));
     if (!list.length || !user) return;
     const groups = uploadGroups(list);
+    uploadStop.current = false;
     setBusy(true);
     setUpItems(groups.map((g) => ({ key: g.key, name: g.name, folder: g.folder, count: g.files.length, pct: 0 })));
     let ok = 0;
@@ -409,8 +417,10 @@ export function Files() {
         const totalBytes = g.files.reduce((n, f) => n + f.size, 0);
         let doneBytes = 0;
         let doneCount = 0;
-        patchUpload(g.key, { pct: 0, status: "active" });
+        patchUpload(g.key, { pct: 0, speed: 0, status: "active" });
+        const started = performance.now();
         for (const f of g.files) {
+          if (uploadStop.current) throw new UploadCancelled();
           const fd = new FormData();
           fd.append("user", user);
           fd.append("path", listing.path);
@@ -420,13 +430,24 @@ export function Files() {
           try {
             await new Promise<void>((resolve, reject) => {
               const xhr = new XMLHttpRequest();
+              uploadXhr.current = xhr;
               xhr.open("POST", "/api/files/upload");
               xhr.withCredentials = true;
               xhr.upload.onprogress = (ev) => {
+                if (uploadStop.current) return;
                 const loaded = ev.lengthComputable ? ev.loaded : 0;
-                patchUpload(g.key, { pct: uploadPercent(doneBytes + loaded, totalBytes, doneCount, g.files.length, false), status: "active" });
+                const sent = doneBytes + loaded;
+                patchUpload(g.key, {
+                  pct: uploadPercent(sent, totalBytes, doneCount, g.files.length, false),
+                  speed: uploadSpeed(sent, started, performance.now()),
+                  status: "active",
+                });
               };
               xhr.onload = () => {
+                if (xhr.status === 0) {
+                  reject(new UploadCancelled());
+                  return;
+                }
                 let data: { error?: string } = {};
                 try {
                   data = JSON.parse(xhr.responseText || "{}");
@@ -438,11 +459,14 @@ export function Files() {
                 else reject(new Error(data.error || `Upload failed: ${f.name}`));
               };
               xhr.onerror = () => reject(new Error(`Upload failed: ${f.name}`));
+              xhr.onabort = () => reject(new UploadCancelled());
               xhr.send(fd);
             });
           } catch (err) {
-            patchUpload(g.key, { status: "exception" });
+            if (!uploadWasCancelled(err)) patchUpload(g.key, { status: "exception" });
             throw err;
+          } finally {
+            uploadXhr.current = null;
           }
           doneBytes += f.size;
           doneCount++;
@@ -455,8 +479,15 @@ export function Files() {
       setUpItems([]);
       await load();
     } catch (err) {
-      message.error(err instanceof Error ? err.message : "Upload failed");
-      if (ok) await load();
+      if (uploadWasCancelled(err)) {
+        message.info(ok ? `Upload cancelled. ${ok} file${ok === 1 ? "" : "s"} saved.` : "Upload cancelled");
+        setUpOpen(false);
+        setUpItems([]);
+        if (ok) await load();
+      } else {
+        message.error(err instanceof Error ? err.message : "Upload failed");
+        if (ok) await load();
+      }
     } finally {
       setBusy(false);
     }
@@ -1167,8 +1198,12 @@ export function Files() {
       <Modal
         title={`Upload to ${listing.path}`}
         open={upOpen}
+        maskClosable={!busy}
         onCancel={() => {
-          if (busy) return;
+          if (busy) {
+            cancelUpload();
+            return;
+          }
           setUpOpen(false);
           setUpItems([]);
         }}
@@ -1201,6 +1236,11 @@ export function Files() {
               Upload folder
             </Button>
           </Upload>
+          {busy ? (
+            <Button danger onClick={cancelUpload}>
+              Cancel upload
+            </Button>
+          ) : null}
         </Space>
         {upItems.length ? (
           <div className="fm-upload-list">
@@ -1209,6 +1249,7 @@ export function Files() {
                 <span className="fm-upload-name" title={it.name}>
                   {it.name}
                   {it.folder ? <span className="fm-upload-meta">{` · ${it.count} file${it.count === 1 ? "" : "s"}`}</span> : null}
+                  {it.status === "active" && it.speed ? <span className="fm-upload-meta">{` · ${formatRate(it.speed)}/s`}</span> : null}
                 </span>
                 <Progress percent={it.pct} size="small" status={it.status} />
               </div>

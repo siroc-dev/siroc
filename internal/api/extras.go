@@ -84,36 +84,86 @@ func (s *Server) createBackupDest(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
 		return
 	}
-	var body struct {
-		Name      string `json:"name"`
-		Kind      string `json:"kind"`
-		Host      string `json:"host"`
-		Port      int    `json:"port"`
-		User      string `json:"user"`
-		Password  string `json:"password"`
-		Path      string `json:"path"`
-		Bucket    string `json:"bucket"`
-		Region    string `json:"region"`
-		Endpoint  string `json:"endpoint"`
-		Prefix    string `json:"prefix"`
-		UseSSL    *bool  `json:"useSSL"`
-		AccessKey string `json:"accessKey"`
-		SecretKey string `json:"secretKey"`
-	}
+	var body backupDestBody
 	if !decode(w, r, &body) {
 		return
 	}
+	d, err := s.fillBackupDest(body, nil)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	out, err := s.Store.CreateBackupDest(d)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) updateBackupDest(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(currentUser(r)) {
+		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
+		return
+	}
+	prev, err := s.Store.GetBackupDest(id)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("destination not found"))
+		return
+	}
+	var body backupDestBody
+	if !decode(w, r, &body) {
+		return
+	}
+	d, err := s.fillBackupDest(body, prev)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.Store.UpdateBackupDest(d); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	out, err := s.Store.GetBackupDest(id)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type backupDestBody struct {
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	User      string `json:"user"`
+	Password  string `json:"password"`
+	Path      string `json:"path"`
+	Bucket    string `json:"bucket"`
+	Region    string `json:"region"`
+	Endpoint  string `json:"endpoint"`
+	Prefix    string `json:"prefix"`
+	UseSSL    *bool  `json:"useSSL"`
+	AccessKey string `json:"accessKey"`
+	SecretKey string `json:"secretKey"`
+}
+
+func (s *Server) fillBackupDest(body backupDestBody, prev *store.BackupDest) (store.BackupDest, error) {
 	kind := strings.ToLower(strings.TrimSpace(body.Kind))
 	switch kind {
 	case "local", "ftp", "s3":
 	default:
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("kind must be local, ftp, or s3"))
-		return
+		return store.BackupDest{}, fmt.Errorf("kind must be local, ftp, or s3")
 	}
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("name required"))
-		return
+		return store.BackupDest{}, fmt.Errorf("name required")
 	}
 	d := store.BackupDest{
 		Name:     name,
@@ -128,38 +178,42 @@ func (s *Server) createBackupDest(w http.ResponseWriter, r *http.Request) {
 		Prefix:   strings.TrimSpace(body.Prefix),
 		UseSSL:   true,
 	}
+	if prev != nil {
+		d.ID = prev.ID
+		d.PasswordEnc = prev.PasswordEnc
+		d.SecretEnc = prev.SecretEnc
+	}
 	if body.UseSSL != nil {
 		d.UseSSL = *body.UseSSL
+	} else if prev != nil {
+		d.UseSSL = prev.UseSSL
 	}
-	if kind == "s3" && body.AccessKey != "" {
-		d.User = strings.TrimSpace(body.AccessKey)
+	if kind == "s3" {
+		if strings.TrimSpace(body.AccessKey) != "" {
+			d.User = strings.TrimSpace(body.AccessKey)
+		} else if prev != nil {
+			d.User = prev.User
+		}
 	}
 	if body.Password != "" {
 		enc, err := s.encryptPassword(body.Password)
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err)
-			return
+			return store.BackupDest{}, err
 		}
 		d.PasswordEnc = enc
 	}
 	secretVal := body.SecretKey
-	if secretVal == "" && kind == "s3" {
+	if secretVal == "" && kind == "s3" && body.Password != "" {
 		secretVal = body.Password
 	}
 	if secretVal != "" {
 		enc, err := s.encryptPassword(secretVal)
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err)
-			return
+			return store.BackupDest{}, err
 		}
 		d.SecretEnc = enc
 	}
-	out, err := s.Store.CreateBackupDest(d)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, out)
+	return d, nil
 }
 
 func (s *Server) sysopsStatus(w http.ResponseWriter, _ *http.Request) {
@@ -633,81 +687,17 @@ func (s *Server) createBackupCron(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
 		return
 	}
-	var body struct {
-		Name      string `json:"name"`
-		Username  string `json:"username"`
-		DestID    int64  `json:"destId"`
-		IncludeDB *bool  `json:"includeDB"`
-		Cycle     string `json:"cycle"`
-		Minute    int    `json:"minute"`
-		Hour      int    `json:"hour"`
-		Weekday   int    `json:"weekday"`
-		Monthday  int    `json:"monthday"`
-		Retain    int    `json:"retain"`
-	}
+	var body backupCronBody
 	if !decode(w, r, &body) {
 		return
 	}
-	account := strings.TrimSpace(body.Username)
-	if account == "" {
-		account = "*"
-	}
-	if account != "*" {
-		if err := validate.LinuxUser(account); err != nil {
-			writeErr(w, http.StatusBadRequest, err)
-			return
-		}
-		if _, err := s.Store.GetAccountByName(account); err != nil {
-			writeErr(w, http.StatusBadRequest, fmt.Errorf("account not found"))
-			return
-		}
-	}
-	if _, err := s.Store.GetBackupDest(body.DestID); err != nil {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("destination not found"))
-		return
-	}
-	cycle := strings.ToLower(strings.TrimSpace(body.Cycle))
-	if cycle == "" {
-		cycle = "daily"
-	}
-	retain := body.Retain
-	if retain == 0 {
-		retain = 3
-	}
-	if retain < 1 || retain > 30 {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("retain must be 1-30"))
-		return
-	}
-	monthday := body.Monthday
-	if monthday == 0 {
-		monthday = 1
-	}
-	task := backup.CronTask{ID: 1, Cycle: cycle, Minute: body.Minute, Hour: body.Hour, Weekday: body.Weekday, Monthday: monthday, Enabled: true}
-	if _, err := backup.RenderCronFile("/usr/local/bin/siroc-panel", []backup.CronTask{task}); err != nil {
+	row, err := s.buildBackupCron(body, nil)
+	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	name := strings.TrimSpace(body.Name)
-	if name == "" {
-		if account == "*" {
-			name = "Backup all accounts"
-		} else {
-			name = "Backup " + account
-		}
-	}
-	if len(name) > 80 || strings.ContainsAny(name, "\r\n") {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("task name is invalid"))
-		return
-	}
-	includeDB := true
-	if body.IncludeDB != nil {
-		includeDB = *body.IncludeDB
-	}
-	created, err := s.Store.CreateBackupCron(store.BackupCron{
-		Name: name, Account: account, DestID: body.DestID, IncludeDB: includeDB,
-		Cycle: cycle, Minute: body.Minute, Hour: body.Hour, Weekday: body.Weekday, Monthday: monthday,
-		Retain: retain, Enabled: true,
-	})
+	row.Enabled = true
+	created, err := s.Store.CreateBackupCron(row)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -730,14 +720,8 @@ func (s *Server) setBackupCron(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
 		return
 	}
-	var body struct {
-		Enabled *bool `json:"enabled"`
-	}
+	var body backupCronBody
 	if !decode(w, r, &body) {
-		return
-	}
-	if body.Enabled == nil {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("enabled is required"))
 		return
 	}
 	prev, err := s.Store.GetBackupCron(id)
@@ -745,12 +729,40 @@ func (s *Server) setBackupCron(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("schedule not found"))
 		return
 	}
-	if err := s.Store.SetBackupCronEnabled(id, *body.Enabled); err != nil {
+	if !backupCronEdit(body) {
+		if body.Enabled == nil {
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("enabled is required"))
+			return
+		}
+		if err := s.Store.SetBackupCronEnabled(id, *body.Enabled); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		if err := s.SyncBackupCron(); err != nil {
+			_ = s.Store.SetBackupCronEnabled(id, prev.Enabled)
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("schedule could not be updated in cron: %w", err))
+			return
+		}
+		updated, err := s.Store.GetBackupCron(id)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, updated)
+		return
+	}
+	row, err := s.buildBackupCron(body, prev)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	row.ID = id
+	if err := s.Store.UpdateBackupCron(row); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
 	if err := s.SyncBackupCron(); err != nil {
-		_ = s.Store.SetBackupCronEnabled(id, prev.Enabled)
+		_ = s.Store.UpdateBackupCron(*prev)
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("schedule could not be updated in cron: %w", err))
 		return
 	}
@@ -760,6 +772,121 @@ func (s *Server) setBackupCron(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
+}
+
+type backupCronBody struct {
+	Name      string `json:"name"`
+	Username  string `json:"username"`
+	DestID    int64  `json:"destId"`
+	IncludeDB *bool  `json:"includeDB"`
+	Cycle     string `json:"cycle"`
+	Minute    int    `json:"minute"`
+	Hour      int    `json:"hour"`
+	Weekday   int    `json:"weekday"`
+	Monthday  int    `json:"monthday"`
+	Retain    int    `json:"retain"`
+	Enabled   *bool  `json:"enabled"`
+}
+
+func backupCronEdit(body backupCronBody) bool {
+	return body.DestID != 0 || strings.TrimSpace(body.Name) != "" || strings.TrimSpace(body.Username) != "" || strings.TrimSpace(body.Cycle) != ""
+}
+
+func (s *Server) buildBackupCron(body backupCronBody, prev *store.BackupCron) (store.BackupCron, error) {
+	account := strings.TrimSpace(body.Username)
+	if account == "" && prev != nil {
+		account = prev.Account
+	}
+	if account == "" {
+		account = "*"
+	}
+	if account != "*" {
+		if err := validate.LinuxUser(account); err != nil {
+			return store.BackupCron{}, err
+		}
+		if _, err := s.Store.GetAccountByName(account); err != nil {
+			return store.BackupCron{}, fmt.Errorf("account not found")
+		}
+	}
+	destID := body.DestID
+	if destID == 0 && prev != nil {
+		destID = prev.DestID
+	}
+	if _, err := s.Store.GetBackupDest(destID); err != nil {
+		return store.BackupCron{}, fmt.Errorf("destination not found")
+	}
+	cycle := strings.ToLower(strings.TrimSpace(body.Cycle))
+	if cycle == "" && prev != nil {
+		cycle = prev.Cycle
+	}
+	if cycle == "" {
+		cycle = "daily"
+	}
+	retain := body.Retain
+	if retain == 0 && prev != nil {
+		retain = prev.Retain
+	}
+	if retain == 0 {
+		retain = 3
+	}
+	if retain < 1 || retain > 30 {
+		return store.BackupCron{}, fmt.Errorf("retain must be 1-30")
+	}
+	minute, hour, weekday := body.Minute, body.Hour, body.Weekday
+	monthday := body.Monthday
+	if prev != nil {
+		// The form only sends the fields for the selected cycle.
+		switch cycle {
+		case "hourly":
+			hour, weekday, monthday = prev.Hour, prev.Weekday, prev.Monthday
+		case "daily":
+			weekday, monthday = prev.Weekday, prev.Monthday
+		case "weekly":
+			monthday = prev.Monthday
+		case "monthly":
+			weekday = prev.Weekday
+		}
+	}
+	if monthday == 0 {
+		monthday = 1
+	}
+	task := backup.CronTask{ID: 1, Cycle: cycle, Minute: minute, Hour: hour, Weekday: weekday, Monthday: monthday, Enabled: true}
+	if _, err := backup.RenderCronFile("/usr/local/bin/siroc-panel", []backup.CronTask{task}); err != nil {
+		return store.BackupCron{}, err
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" && prev != nil {
+		name = prev.Name
+	}
+	if name == "" {
+		if account == "*" {
+			name = "Backup all accounts"
+		} else {
+			name = "Backup " + account
+		}
+	}
+	if len(name) > 80 || strings.ContainsAny(name, "\r\n") {
+		return store.BackupCron{}, fmt.Errorf("task name is invalid")
+	}
+	includeDB := true
+	if prev != nil {
+		includeDB = prev.IncludeDB
+	}
+	if body.IncludeDB != nil {
+		includeDB = *body.IncludeDB
+	}
+	enabled := true
+	if prev != nil {
+		enabled = prev.Enabled
+	}
+	if body.Enabled != nil {
+		enabled = *body.Enabled
+	}
+	return store.BackupCron{
+		Name: name, Account: account, DestID: destID, IncludeDB: includeDB,
+		Cycle: cycle, Minute: minute, Hour: hour, Weekday: weekday, Monthday: monthday,
+		Retain: retain, Enabled: enabled,
+	}, nil
 }
 
 func (s *Server) deleteBackupCron(w http.ResponseWriter, r *http.Request) {

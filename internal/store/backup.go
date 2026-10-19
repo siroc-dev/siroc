@@ -70,6 +70,28 @@ func (s *Store) DeleteBackupDest(id int64) error {
 	return err
 }
 
+func (s *Store) UpdateBackupDest(d BackupDest) error {
+	ssl := 0
+	if d.UseSSL {
+		ssl = 1
+	}
+	res, err := s.DB.Exec(`UPDATE backup_dests SET name = ?, kind = ?, host = ?, port = ?, user_name = ?, path = ?, bucket = ?, region = ?, endpoint = ?, prefix = ?, use_ssl = ?, password_enc = ?, secret_enc = ? WHERE id = ?`,
+		d.Name, d.Kind, d.Host, d.Port, d.User, d.Path, d.Bucket, d.Region, d.Endpoint, d.Prefix, ssl, d.PasswordEnc, d.SecretEnc, d.ID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		// SQLite reports 0 when every column is already that value.
+		var exists int64
+		return s.DB.QueryRow(`SELECT id FROM backup_dests WHERE id = ?`, d.ID).Scan(&exists)
+	}
+	return nil
+}
+
 func (s *Store) CreateBackupJob(account string, destID int64, destName string) (*BackupJob, error) {
 	res, err := s.DB.Exec(`INSERT INTO backup_jobs (account, dest_id, dest_name, status) VALUES (?, ?, ?, 'running')`, account, destID, destName)
 	if err != nil {
@@ -199,6 +221,30 @@ func (s *Store) SetBackupCronEnabled(id int64, enabled bool) error {
 	}
 	if n == 0 {
 		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (s *Store) UpdateBackupCron(c BackupCron) error {
+	inc, en := 0, 0
+	if c.IncludeDB {
+		inc = 1
+	}
+	if c.Enabled {
+		en = 1
+	}
+	res, err := s.DB.Exec(`UPDATE backup_crons SET name = ?, account = ?, dest_id = ?, include_db = ?, cycle = ?, minute = ?, hour = ?, weekday = ?, monthday = ?, retain = ?, enabled = ? WHERE id = ?`,
+		c.Name, c.Account, c.DestID, inc, c.Cycle, c.Minute, c.Hour, c.Weekday, c.Monthday, c.Retain, en, c.ID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		var exists int64
+		return s.DB.QueryRow(`SELECT id FROM backup_crons WHERE id = ?`, c.ID).Scan(&exists)
 	}
 	return nil
 }

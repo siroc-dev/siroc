@@ -100,6 +100,19 @@ rewrite ^/label-(.*)$ /index.php?m=label-$1 break;
 rewrite ^/map-(.*)$ /index.php?m=map-$1 break;`,
   },
   {
+    id: "vod",
+    body: `location /vod/ {
+    # nginx-vod-module. Change the alias to the folder that holds the media files.
+    # /home/user/videos/movie.mp4 is played at /vod/movie.mp4/index.m3u8
+    vod hls;
+    vod_mode local;
+    alias /home/user/videos/;
+    add_header Access-Control-Allow-Origin *;
+    add_header Access-Control-Allow-Headers *;
+    add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
+}`,
+  },
+  {
     id: "thinkphp",
     body: `if (!-e $request_filename) {
     rewrite ^(.*)$ /index.php?s=$1 last;

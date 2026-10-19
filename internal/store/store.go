@@ -120,7 +120,7 @@ type BackupDest struct {
 	Region      string    `json:"region,omitempty"`
 	Endpoint    string    `json:"endpoint,omitempty"`
 	Prefix      string    `json:"prefix,omitempty"`
-	UseSSL      bool      `json:"useSSL,omitempty"`
+	UseSSL      bool      `json:"useSSL"`
 	HasSecret   bool      `json:"hasSecret"`
 	PasswordEnc string    `json:"-"`
 	SecretEnc   string    `json:"-"`
