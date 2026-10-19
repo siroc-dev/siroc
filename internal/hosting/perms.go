@@ -49,7 +49,7 @@ func chmodWebTree(home, root string) {
 				if st.IsDir() {
 					walk(target)
 				} else {
-					_ = os.Chmod(target, 0644)
+					chmodWebFile(target)
 				}
 				continue
 			}
@@ -57,10 +57,20 @@ func chmodWebTree(home, root string) {
 				walk(path)
 				continue
 			}
-			_ = os.Chmod(path, 0644)
+			chmodWebFile(path)
 		}
 	}
 	walk(root)
+}
+
+// Keeps a file readable by the web server without clearing an execute bit.
+// node_modules/.bin shims such as vite and vp are executed by npm run build.
+func chmodWebFile(path string) {
+	st, err := os.Stat(path)
+	if err != nil || st.IsDir() {
+		return
+	}
+	_ = os.Chmod(path, 0644|(st.Mode().Perm()&0111))
 }
 
 func chmodAncestors(home, dir string) {

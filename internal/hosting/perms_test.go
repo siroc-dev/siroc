@@ -61,4 +61,16 @@ func TestChmodWebTreeFollowsStorageLink(t *testing.T) {
 	if ht.Mode().Perm()&0444 != 0444 {
 		t.Fatalf(".htaccess is not world-readable: %o", ht.Mode().Perm())
 	}
+	bin := filepath.Join(target, "vp")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	chmodWebTree(home, site)
+	st, err := os.Stat(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode().Perm()&0111 == 0 || st.Mode().Perm()&0444 != 0444 {
+		t.Fatalf("executable file lost its execute bit or is not readable: %o", st.Mode().Perm())
+	}
 }

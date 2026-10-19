@@ -130,7 +130,7 @@ func laravelAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, 
 			return nil, err
 		}
 		script = prefixBin("npm", resolveUserBin(req.Username, "npm"), script)
-		msg, err := runAs(req.Username, root, 10*time.Minute, script)
+		msg, err := runAs(req.Username, root, 10*time.Minute, wrapNpmBins(script))
 		out.Output = msg
 		if err != nil {
 			return nil, err
