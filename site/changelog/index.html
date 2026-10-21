@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.84">0.2.84</a>
           <a href="#v0.2.83">0.2.83</a>
           <a href="#v0.2.82">0.2.82</a>
           <a href="#v0.2.81">0.2.81</a>
@@ -112,6 +113,19 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.84">
+          <h2><a href="#v0.2.84">0.2.84</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>No new features in this release.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>A failed npm or Composer command shows the error, such as a Vite+ build failure, instead of only the last lines of the stack trace.</li>
+            <li>Websites no longer send <code>Strict-Transport-Security</code>. Nginx hides the header and Apache unsets it. Rebuild configs applies this to existing sites. A saved custom config loses any line that sets the header the next time it is written.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.83">
           <h2><a href="#v0.2.83">0.2.83</a></h2>

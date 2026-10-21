@@ -119,10 +119,10 @@ func laravelAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, 
 			return nil, err
 		}
 		msg, err := runAs(req.Username, dir, 10*time.Minute, script)
-		out.Output = msg
 		if err != nil {
-			return nil, err
+			return commandFailed(out, req, root, "composer", msg, err)
 		}
+		out.Output = msg
 	case "npm":
 		_, scripts := listNPMPkgs(req.Username, root)
 		script, err := npmScript(req.NPM, scripts)
@@ -131,10 +131,10 @@ func laravelAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, 
 		}
 		script = prefixBin("npm", resolveUserBin(req.Username, "npm"), script)
 		msg, err := runAs(req.Username, root, 10*time.Minute, wrapNpmBins(script))
-		out.Output = msg
 		if err != nil {
-			return nil, err
+			return commandFailed(out, req, root, "npm", msg, err)
 		}
+		out.Output = msg
 	case "artisan":
 		if !fileOK(filepath.Join(root, "artisan")) {
 			return nil, fmt.Errorf("artisan not found in %s", root)
@@ -204,6 +204,19 @@ func laravelAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, 
 	if req.Action == "artisan" {
 		out.Laravel.ArtisanCmds = listArtisan(req.Username, root, req.PHPVersion)
 	}
+	return out, nil
+}
+
+func commandFailed(out *rpc.SiteAppResp, req rpc.SiteAppReq, root, what, msg string, err error) (*rpc.SiteAppResp, error) {
+	if strings.TrimSpace(msg) == "" && err != nil {
+		msg = err.Error()
+	}
+	out.Output = clipLog(msg)
+	out.Message = what + " exited with an error"
+	if line := commandErrorLine(msg); line != "" {
+		out.Message += ": " + line
+	}
+	out.Laravel = laravelStatus(req.Username, req.Domain, root, req.PHPVersion)
 	return out, nil
 }
 

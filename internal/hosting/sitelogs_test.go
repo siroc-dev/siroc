@@ -45,3 +45,26 @@ func TestApacheLogLines(t *testing.T) {
 		t.Fatalf("apache:\n%s", off)
 	}
 }
+
+func TestWithoutHSTS(t *testing.T) {
+	nginx := "server {\n    server_name ex.com;\n    add_header Strict-Transport-Security \"max-age=31536000\" always;\n    location / { proxy_pass http://127.0.0.1:8080; }\n}\n"
+	got := withoutHSTS(nginx)
+	if strings.Contains(strings.ToLower(got), "add_header strict-transport-security") {
+		t.Fatalf("nginx still sets the header:\n%s", got)
+	}
+	if strings.Count(got, "proxy_hide_header Strict-Transport-Security;") != 1 {
+		t.Fatalf("nginx hide:\n%s", got)
+	}
+	again := withoutHSTS(got)
+	if strings.Count(again, "proxy_hide_header Strict-Transport-Security;") != 1 {
+		t.Fatalf("nginx hide duplicated:\n%s", again)
+	}
+	apache := "<VirtualHost 127.0.0.1:8080>\n    DocumentRoot /var/www\n    Header always set Strict-Transport-Security \"max-age=31536000\"\n</VirtualHost>\n"
+	got = withoutHSTS(apache)
+	if strings.Contains(strings.ToLower(got), "header always set strict-transport-security") {
+		t.Fatalf("apache still sets the header:\n%s", got)
+	}
+	if strings.Count(got, "Header always unset Strict-Transport-Security") != 1 {
+		t.Fatalf("apache unset:\n%s", got)
+	}
+}

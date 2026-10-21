@@ -40,6 +40,9 @@ func TestPHPTemplateStillProxies(t *testing.T) {
 	if !strings.Contains(body, "proxy_pass http://127.0.0.1:8080;") {
 		t.Fatal("php site should proxy to Apache")
 	}
+	if strings.Count(body, "proxy_hide_header Strict-Transport-Security;") != 1 {
+		t.Fatalf("http site should hide HSTS once:\n%s", body)
+	}
 }
 
 func TestSSLHTTP2Directive(t *testing.T) {

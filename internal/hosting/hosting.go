@@ -80,6 +80,7 @@ const nginxTmpl = `server {
     listen 80;
     listen [::]:80;
     server_name {{.AllNames}};
+    proxy_hide_header Strict-Transport-Security;
     root {{.DocRoot}};
     client_max_body_size {{.PostMaxSize}};
 {{.AccessLog}}
@@ -147,6 +148,7 @@ server {
     listen [::]:443 ssl http2;
 {{- end}}
     server_name {{.AllNames}};
+    proxy_hide_header Strict-Transport-Security;
     root {{.DocRoot}};
     client_max_body_size {{.PostMaxSize}};
     ssl_certificate {{.SSLCert}};
@@ -209,6 +211,9 @@ const apacheTmpl = `<VirtualHost 127.0.0.1:8080>
     UseCanonicalPhysicalPort Off
     SetEnvIf X-Forwarded-Proto "https" HTTPS=on
     DocumentRoot {{.DocRoot}}
+    <IfModule mod_headers.c>
+        Header always unset Strict-Transport-Security
+    </IfModule>
 {{- if .Index}}
     DirectoryIndex {{.Index}}
 {{- end}}
@@ -1034,6 +1039,7 @@ func writeNginxConf(domain, custom string, data any) error {
 		if access, errLog, ok := nginxLogLines(data); ok {
 			body = applyNginxLogLines(body, access, errLog)
 		}
+		body = withoutHSTS(body)
 		return writeConfFile(path, AddBandwidthLog(withDefaultSite(domain, body), domain))
 	}
 	switch row := data.(type) {
@@ -1047,6 +1053,7 @@ func writeNginxConf(domain, custom string, data any) error {
 	if err != nil {
 		return err
 	}
+	body = withoutHSTS(body)
 	return writeConfFile(path, AddBandwidthLog(withDefaultSite(domain, body), domain))
 }
 
@@ -1081,9 +1088,13 @@ func writeApacheConf(domain, custom string, data any) error {
 		if errLog, access, ok := apacheLogLines(data); ok {
 			body = applyApacheLogLines(body, errLog, access)
 		}
-		return writeConfFile(path, body)
+		return writeConfFile(path, withoutHSTS(body))
 	}
-	return writeTemplate(path, apacheTmpl, data, 0644)
+	body, err := renderConf(apacheTmpl, data)
+	if err != nil {
+		return err
+	}
+	return writeConfFile(path, withoutHSTS(body))
 }
 
 func writeConfFile(path, body string) error {

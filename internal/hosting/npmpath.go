@@ -39,3 +39,27 @@ func npmCommand(field string) bool {
 	field = strings.Trim(field, `"'`)
 	return field == "npm" || strings.HasSuffix(field, "/npm")
 }
+
+// commandErrorLine is the build failure, not the stack that follows it.
+// Vite+ prints the reason and then a long file:// trace ending in { errors: [Getter/Setter] }.
+func commandErrorLine(log string) string {
+	var picked string
+	for _, line := range strings.Split(log, "\n") {
+		s := strings.TrimSpace(line)
+		if s == "" || stackLine(s) {
+			continue
+		}
+		picked = s
+	}
+	if len(picked) > 300 {
+		picked = picked[:300]
+	}
+	return picked
+}
+
+func stackLine(s string) bool {
+	if strings.HasPrefix(s, "at ") || strings.HasPrefix(s, "{") || strings.HasPrefix(s, "}") {
+		return true
+	}
+	return strings.Contains(s, ") at ") && (strings.Contains(s, ".mjs:") || strings.Contains(s, ".js:"))
+}
