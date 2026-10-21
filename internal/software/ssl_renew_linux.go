@@ -2,7 +2,10 @@
 
 package software
 
-import "os"
+import (
+	"os"
+	"os/exec"
+)
 
 const sslRenewCronPath = "/etc/cron.d/siroc-ssl"
 
@@ -28,5 +31,9 @@ func InstallSSLRenew() error {
 	if err := os.WriteFile(tmp, []byte(SSLRenewCron()), 0644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, sslRenewCronPath)
+	if err := os.Rename(tmp, sslRenewCronPath); err != nil {
+		return err
+	}
+	_ = exec.Command("systemctl", "disable", "certbot.timer").Run()
+	return nil
 }

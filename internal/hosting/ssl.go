@@ -4,12 +4,16 @@ package hosting
 
 import (
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
+	"unicode"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/validate"
@@ -242,7 +246,7 @@ func (m *Manager) IssueSSL(req rpc.SiteSSLReq) (*rpc.SiteSSLResp, error) {
 		}
 		args = append(args, "-d", n)
 	}
-	out, err := exec.Command("certbot", args...).CombinedOutput()
+	out, err := runCertbot(args...)
 	log := clipLog(string(out))
 	resp := &rpc.SiteSSLResp{Log: log}
 	if err != nil {
@@ -281,7 +285,7 @@ func (m *Manager) RegisterLEAccount(req rpc.LEAccountReq) (*rpc.LEAccountResp, e
 	st := showLEAccount(flags)
 	if !st.Registered {
 		args := append([]string{"register", "--non-interactive", "--agree-tos", "-m", strings.TrimSpace(req.Email)}, flags...)
-		out, err := exec.Command("certbot", args...).CombinedOutput()
+		out, err := runCertbot(args...)
 		msg := strings.TrimSpace(string(out))
 		if err != nil && !certbotAccountExists(msg) {
 			if msg == "" {
@@ -302,7 +306,7 @@ func (m *Manager) RegisterLEAccount(req rpc.LEAccountReq) (*rpc.LEAccountResp, e
 		}
 	} else if email := strings.TrimSpace(req.Email); email != "" && !strings.EqualFold(email, st.Email) {
 		args := append([]string{"update_account", "--non-interactive", "-m", email}, flags...)
-		if out, err := exec.Command("certbot", args...).CombinedOutput(); err != nil {
+		if out, err := runCertbot(args...); err != nil {
 			return nil, fmt.Errorf("Let's Encrypt account: %s", tailOut(strings.TrimSpace(string(out))))
 		}
 		st = showLEAccount(flags)
@@ -334,7 +338,7 @@ func (m *Manager) LEAccountStatus(req rpc.LEAccountReq) (*rpc.LEAccountResp, err
 
 func showLEAccount(flags []string) *rpc.LEAccountResp {
 	args := append([]string{"show_account", "--non-interactive"}, flags...)
-	out, err := exec.Command("certbot", args...).CombinedOutput()
+	out, err := runCertbot(args...)
 	msg := strings.TrimSpace(string(out))
 	uri, email, ok := parseCertbotAccount(msg)
 	st := &rpc.LEAccountResp{CertbotInstalled: true, Registered: ok, URI: uri, Email: email}
@@ -342,6 +346,99 @@ func showLEAccount(flags []string) *rpc.LEAccountResp {
 		st.Message = tailOut(msg)
 	}
 	return st
+}
+
+var certbotMu sync.Mutex
+
+// runCertbot runs one Certbot command. The panel cron and Ubuntu's certbot.timer
+// share Certbot's lock, so a second start fails immediately. Later calls wait,
+// and a busy lock is retried until the other command exits.
+func runCertbot(args ...string) ([]byte, error) {
+	certbotMu.Lock()
+	defer certbotMu.Unlock()
+	_ = exec.Command("systemctl", "disable", "certbot.timer").Run()
+	var out []byte
+	var err error
+	detail := ""
+	for attempt := 0; attempt < 12; attempt++ {
+		if attempt > 0 {
+			time.Sleep(10 * time.Second)
+		}
+		out, err = exec.Command("certbot", args...).CombinedOutput()
+		if err == nil || !certbotBusy(string(out)) {
+			return out, err
+		}
+		if found := certbotRunningDetail(); found != "" {
+			detail = found
+		}
+	}
+	if detail != "" && !strings.Contains(string(out), detail) {
+		out = append(out, []byte("\n"+detail)...)
+	}
+	return out, err
+}
+
+func certbotRunningDetail() string {
+	return describeCertbotBusy(certbotCmdlines(), certbotLogTail())
+}
+
+func certbotCmdlines() []string {
+	ents, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range ents {
+		if !e.IsDir() || !allDigits(e.Name()) {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join("/proc", e.Name(), "cmdline"))
+		if err != nil || len(b) == 0 {
+			continue
+		}
+		line := strings.TrimSpace(strings.ReplaceAll(string(b), "\x00", " "))
+		if strings.Contains(line, "certbot") {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+func certbotLogTail() string {
+	f, err := os.Open("/var/log/letsencrypt/letsencrypt.log")
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+	const max = 32 << 10
+	start := int64(0)
+	if info.Size() > max {
+		start = info.Size() - max
+	}
+	if _, err := f.Seek(start, 0); err != nil {
+		return ""
+	}
+	b, err := io.ReadAll(io.LimitReader(f, max))
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+func allDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
 }
 
 func certbotACMEFlags(server, directory string, noVerify bool, eabKid, eabHmac string) ([]string, error) {

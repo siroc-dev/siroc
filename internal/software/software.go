@@ -842,7 +842,9 @@ func configureCertbot(string) error {
 	if err := InstallSSLRenew(); err != nil {
 		return err
 	}
-	_ = exec.Command("systemctl", "enable", "--now", "certbot.timer").Run()
+	// Ubuntu's timer renews on its own schedule and takes the same lock as
+	// certbot certonly, which fails the panel with "already running".
+	_ = exec.Command("systemctl", "disable", "certbot.timer").Run()
 	return nil
 }
 
