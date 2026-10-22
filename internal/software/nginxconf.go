@@ -8,6 +8,12 @@ var sirocLoadModules = []string{
 	"load_module /usr/lib/nginx/modules/ngx_http_vod_module.so;",
 }
 
+// NginxModuleStale reports a dynamic module built for a different Nginx
+// than the one now installed, for example "version 1031007 instead of 1031008".
+func NginxModuleStale(output string) bool {
+	return strings.Contains(output, ".so") && strings.Contains(output, "version ") && strings.Contains(output, "instead of")
+}
+
 func nginxHasDirective(conf, line string) bool {
 	for _, raw := range strings.Split(conf, "\n") {
 		trim := strings.TrimSpace(raw)

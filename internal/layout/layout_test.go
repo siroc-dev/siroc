@@ -30,6 +30,20 @@ func TestRewriteUnit(t *testing.T) {
 	}
 }
 
+func TestMissingAppArmorRules(t *testing.T) {
+	old := "# Added by siroc so data under /siroc stays readable.\n/siroc/db/ r,\n/siroc/db/** rwk,\n"
+	got := MissingAppArmorRules(old)
+	if !contains(got, "/siroc/etc/ r,\n") || !contains(got, "/siroc/etc/** rw,\n") {
+		t.Fatalf("etc rules missing:\n%s", got)
+	}
+	if contains(got, "/siroc/db/") {
+		t.Fatalf("db rules should stay put:\n%s", got)
+	}
+	if MissingAppArmorRules(old+got) != "" {
+		t.Fatal("complete profile should need nothing")
+	}
+}
+
 func contains(s, part string) bool {
 	return len(s) >= len(part) && (s == part || len(part) == 0 || indexOf(s, part) >= 0)
 }

@@ -128,6 +128,15 @@ describe("SiteSettings", () => {
     expect(screen.getByRole("button", { name: "Add" })).toBeTruthy();
   });
 
+  it("explains the nginx cache presets", () => {
+    renderSettings("server");
+    expect(screen.getByText("Nginx cache")).toBeTruthy();
+    expect(screen.getByText(/A cookie from the application is ignored/)).toBeTruthy();
+    expect(screen.getByText("Keep a successful page")).toBeTruthy();
+    expect(screen.getByText("Never cache these paths")).toBeTruthy();
+    expect(screen.getByText(/X-Cache-Status/)).toBeTruthy();
+  });
+
   it("shows composer packages and the composer.json directory", async () => {
     renderSettings("composer");
     expect(screen.getByText("composer.json directory")).toBeTruthy();

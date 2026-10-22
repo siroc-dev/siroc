@@ -14,6 +14,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/security"
 	"github.com/siroc-dev/siroc/internal/siteopts"
+	"github.com/siroc-dev/siroc/internal/software"
 	"github.com/siroc-dev/siroc/internal/validate"
 	"github.com/siroc-dev/siroc/internal/weblog"
 )
@@ -486,29 +487,29 @@ func applyGuards(data *siteData, opt siteopts.Options, proxy string) error {
 			return err
 		}
 		if cachePath, zone, on := siteopts.ProxyCache(opt); on {
-			if err := ensureProxyCache(cachePath, zone); err != nil {
+			if err := ensureProxyCache(cachePath, zone, siteopts.Cache{}); err != nil {
 				return err
 			}
 		}
 	}
 	if !data.Direct {
-		dir, zone, valid, err := siteopts.SiteCache(opt, data.Domain)
+		dir, zone, _, err := siteopts.SiteCache(opt, data.Domain)
 		if err != nil {
 			return err
 		}
-		if dir != "" {
-			lines := siteopts.CacheDirectives(zone, valid)
+		if dir != "" && opt.Cache != nil {
+			lines := siteopts.CacheDirectives(zone, *opt.Cache)
 			if data.ProxyLoc != "" {
 				next := siteopts.InsertCache(data.ProxyLoc, lines)
 				if next != data.ProxyLoc {
 					data.ProxyLoc = next
-					if err := ensureProxyCache(dir, zone); err != nil {
+					if err := ensureProxyCache(dir, zone, *opt.Cache); err != nil {
 						return err
 					}
 				}
 			} else {
 				data.Cache = lines
-				if err := ensureProxyCache(dir, zone); err != nil {
+				if err := ensureProxyCache(dir, zone, *opt.Cache); err != nil {
 					return err
 				}
 			}
@@ -566,7 +567,7 @@ func PurgeNginxCache(dir string) error {
 	return nil
 }
 
-func ensureProxyCache(cachePath, zone string) error {
+func ensureProxyCache(cachePath, zone string, c siteopts.Cache) error {
 	if cachePath == "" || zone == "" {
 		return nil
 	}
@@ -574,7 +575,7 @@ func ensureProxyCache(cachePath, zone string) error {
 		return err
 	}
 	_ = exec.Command("chown", "www-data:www-data", cachePath).Run()
-	body := fmt.Sprintf("proxy_cache_path %s levels=1:2 keys_zone=%s:10m max_size=1g inactive=1d use_temp_path=off;\n", cachePath, zone)
+	body := siteopts.CachePathLine(cachePath, zone, c)
 	name := "siroc-proxy-cache.conf"
 	if zone != siteopts.DefaultProxyCacheZone {
 		name = "siroc-cache-" + zone + ".conf"
@@ -1137,6 +1138,11 @@ func writeTemplate(path, tmpl string, data any, mode os.FileMode) error {
 
 func testReload(service, bin string, args ...string) error {
 	out, err := exec.Command(bin, args...).CombinedOutput()
+	if err != nil && service == "nginx" && software.NginxModuleStale(string(out)) {
+		if buildErr := software.EnsureNginxModules(); buildErr == nil {
+			out, err = exec.Command(bin, args...).CombinedOutput()
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("%s config test: %s", service, strings.TrimSpace(string(out)))
 	}

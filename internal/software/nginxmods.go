@@ -36,19 +36,23 @@ func EnsureNginxModules() error {
 	if err := installLuaResty(); err != nil {
 		return err
 	}
-	changed, err := ensureThreadPool()
-	if err != nil {
-		return err
-	}
 	ver, err := installedNginxVersion()
 	if err != nil {
 		return err
 	}
 	stamp := ver + " vod=" + vodVersion + " lua=" + luaVersion + " ndk=" + ndkVersion + " cc=" + vodCompilerOpt(cpuFlags())
-	if !nginxModulesReady(stamp) {
+	rebuilt := false
+	if nginxModuleABIMismatch() || !nginxModulesReady(stamp) {
 		if err := buildNginxModules(ver); err != nil {
 			return err
 		}
+		rebuilt = true
+	}
+	changed, err := ensureThreadPool()
+	if err != nil {
+		return err
+	}
+	if rebuilt {
 		changed = true
 	}
 	loaded, err := ensureLoadModules()
@@ -65,14 +69,33 @@ func EnsureNginxModules() error {
 	if err := os.WriteFile(nginxModStamp, []byte(stamp+"\n"), 0644); err != nil {
 		return err
 	}
-	if changed || loaded || vodConf {
-		if exec.Command("systemctl", "is-active", "--quiet", "nginx").Run() == nil {
-			if out, err := exec.Command("systemctl", "restart", "nginx").CombinedOutput(); err != nil {
-				return fmt.Errorf("restart nginx: %s: %w", strings.TrimSpace(string(out)), err)
+	if rebuilt {
+		if err := nginxConfigTest(); err != nil {
+			return err
+		}
+		if exec.Command("systemctl", "cat", "nginx").Run() == nil {
+			action := "restart"
+			if exec.Command("systemctl", "is-active", "--quiet", "nginx").Run() != nil {
+				action = "start"
 			}
+			if out, err := exec.Command("systemctl", action, "nginx").CombinedOutput(); err != nil {
+				return fmt.Errorf("%s nginx: %s: %w", action, strings.TrimSpace(string(out)), err)
+			}
+		}
+	} else if (changed || loaded || vodConf) && exec.Command("systemctl", "is-active", "--quiet", "nginx").Run() == nil {
+		if out, err := exec.Command("systemctl", "restart", "nginx").CombinedOutput(); err != nil {
+			return fmt.Errorf("restart nginx: %s: %w", strings.TrimSpace(string(out)), err)
 		}
 	}
 	return nil
+}
+
+func nginxModuleABIMismatch() bool {
+	out, err := exec.Command("nginx", "-t").CombinedOutput()
+	if err == nil {
+		return false
+	}
+	return NginxModuleStale(string(out))
 }
 
 func nginxModulesReady(stamp string) bool {

@@ -48,6 +48,33 @@ func rewriteUnitLine(line string) string {
 	return line
 }
 
+// AppArmorRules lets MariaDB, MySQL, Nginx, and Apache follow the symlinks
+// that point at data moved under /siroc. Without /siroc/etc, MariaDB cannot
+// open /etc/mysql/conf.d and aborts with "Permission denied".
+const AppArmorRules = "# Added by siroc so data under /siroc stays readable.\n" +
+	"/siroc/data/ r,\n/siroc/data/** rw,\n" +
+	"/siroc/log/ r,\n/siroc/log/** rw,\n" +
+	"/siroc/cache/ r,\n/siroc/cache/** rw,\n" +
+	"/siroc/db/ r,\n/siroc/db/** rwk,\n" +
+	"/siroc/etc/ r,\n/siroc/etc/** rw,\n"
+
+// MissingAppArmorRules returns the rule lines that are not in the local profile yet.
+func MissingAppArmorRules(existing string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(AppArmorRules, "\n") {
+		trim := strings.TrimSpace(line)
+		if trim == "" || strings.HasPrefix(trim, "#") {
+			continue
+		}
+		if strings.Contains(existing, trim) {
+			continue
+		}
+		b.WriteString(trim)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
 func replaceEnv(line, key, old, next string) string {
 	for _, prefix := range []string{key + "=", key + "=\""} {
 		if i := strings.Index(line, prefix); i >= 0 {

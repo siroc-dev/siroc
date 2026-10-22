@@ -106,6 +106,11 @@ func main() {
 	repairAgentUnit()
 	hosting.RepairNginxHTTP2()
 	hosting.RepairAssetLogs()
+	if repaired, err := dbmgmt.RepairMariaDBConfig(); err != nil {
+		log.Printf("mariadb config: %v", err)
+	} else if repaired {
+		log.Printf("removed obsolete MariaDB options so the server can start")
+	}
 
 	cfg := config.Load()
 	sockDir := filepath.Dir(cfg.SocketPath)

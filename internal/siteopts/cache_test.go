@@ -29,8 +29,8 @@ func TestSiteCache(t *testing.T) {
 	if dir != "/var/cache/nginx/siroc/example.com" || valid != "1h" || zone == "" || zone == DefaultProxyCacheZone {
 		t.Fatalf("dir %s zone %s valid %s", dir, zone, valid)
 	}
-	lines := CacheDirectives(zone, valid)
-	if !contains(lines, "proxy_cache "+zone+";") || !contains(lines, "proxy_cache_valid 200 301 302 1h;") {
+	lines := CacheDirectives(zone, Cache{})
+	if !contains(lines, "proxy_cache "+zone+";") || !contains(lines, "proxy_cache_valid 200 301 302 1h;") || !contains(lines, "proxy_no_cache $http_authorization;") {
 		t.Fatalf("lines:\n%s", lines)
 	}
 	loc := InsertCache("    location / {\n        proxy_pass http://127.0.0.1:8080;\n    }\n", lines)
@@ -63,5 +63,48 @@ func TestSiteCache(t *testing.T) {
 	}
 	if _, err := CachePurgePath("/etc/nginx"); err == nil {
 		t.Fatal("system path should be refused")
+	}
+}
+
+func TestCacheRecipes(t *testing.T) {
+	wp := Cache{
+		On: true, Preset: "wordpress", Idle: "7d", Stale: true, Refresh: true,
+		Cookies: "wordpress_logged_in, wp-postpass_",
+		Skip:    "wp-admin /wp-login.php",
+	}
+	got, err := Normalize(Options{Cache: &wp})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := *got.Cache
+	if c.Cookies != "wordpress_logged_in wp-postpass_" || c.Skip != "/wp-admin /wp-login.php" || c.Idle != "7d" {
+		t.Fatalf("%#v", c)
+	}
+	lines := CacheDirectives("zone", c)
+	for _, want := range []string{
+		`if ($request_uri ~* "^(/wp-admin(/|$)|/wp-login\.php(/|$))")`,
+		`if ($http_cookie ~* "wordpress_logged_in|wp-postpass_")`,
+		"proxy_cache_use_stale updating error timeout",
+		"proxy_cache_background_update on;",
+		"proxy_no_cache $siroc_cache_skip $http_authorization;",
+		"proxy_ignore_headers Set-Cookie Cache-Control Expires X-Accel-Expires;",
+	} {
+		if !contains(lines, want) {
+			t.Fatalf("missing %q\n%s", want, lines)
+		}
+	}
+	honor := CacheDirectives("zone", Cache{Honor: true})
+	if contains(honor, "Cache-Control") || !contains(honor, "proxy_ignore_headers Set-Cookie;") {
+		t.Fatalf("honor:\n%s", honor)
+	}
+	path := CachePathLine("/var/cache/nginx/siroc/example.com", "zone", Cache{Size: "10g", Idle: "30d"})
+	if !contains(path, "max_size=10g") || !contains(path, "inactive=30d") {
+		t.Fatalf("path %s", path)
+	}
+	if _, err := Normalize(Options{Cache: &Cache{On: true, Cookies: "bad cookie!"}}); err == nil {
+		t.Fatal("expected a rejected cookie")
+	}
+	if _, err := Normalize(Options{Cache: &Cache{On: true, Skip: "/../etc"}}); err == nil {
+		t.Fatal("expected a rejected skip path")
 	}
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, App, Button, Col, Descriptions, Input, InputNumber, Popconfirm, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/lib/nginxRewrites";
 import { ProxySettings, type ProxySettingsValue } from "@/components/ProxySettings";
+import { cacheDir, cacheFromSaved, cachePayload, NginxCacheForm, type NginxCacheValue } from "@/components/NginxCache";
 import { AppPackages, type PkgHit, type PkgRow } from "@/components/AppPackages";
 import { api, RequestError } from "@/lib/api";
 import { formatPanelTime } from "@/lib/panelTime";
@@ -22,7 +23,20 @@ export type SiteOptions = {
   errorLog?: boolean;
   php?: SitePHP;
   composerRoot?: string;
-  cache?: { on?: boolean; enabled?: boolean; valid?: string; path?: string };
+  cache?: {
+    on?: boolean;
+    enabled?: boolean;
+    valid?: string;
+    path?: string;
+    preset?: string;
+    size?: string;
+    idle?: string;
+    stale?: boolean;
+    refresh?: boolean;
+    honor?: boolean;
+    cookies?: string;
+    skip?: string;
+  };
 };
 
 export type SitePHP = {
@@ -155,16 +169,6 @@ const KINDS = [
 
 const APP = new Set(["nodejs", "python", "go", "rust", "docker"]);
 
-const CACHE_TIMES = [
-  { value: "10m", label: "10 minutes" },
-  { value: "30m", label: "30 minutes" },
-  { value: "1h", label: "1 hour" },
-  { value: "6h", label: "6 hours" },
-  { value: "12h", label: "12 hours" },
-  { value: "1d", label: "1 day" },
-  { value: "7d", label: "7 days" },
-];
-
 const DEFAULT_STATIC_EXT =
   "ac3 avi bmp bz2 css cue dat doc docx dts eot exe flv gif gz htm html ico img iso jpeg jpg js mkv mp3 mp4 mpeg mpg ogg pdf png ppt pptx qt rar rm svg swf tar tgz ttf txt wav webp woff woff2 xls xlsx zip";
 
@@ -203,15 +207,6 @@ function baseOpts(site: SiteSettingsSite): SiteOptions {
     composerRoot: o.composerRoot,
     cache: o.cache,
   };
-}
-
-function cacheEnabled(cache?: { on?: boolean; enabled?: boolean }) {
-  return cache?.enabled === true || cache?.on === true;
-}
-
-function cacheDir(domain: string) {
-  const host = domain.trim().toLowerCase().replace(/\.$/, "");
-  return host ? `/var/cache/nginx/siroc/${host}` : "/var/cache/nginx/siroc";
 }
 
 function defaultCmd(kind: string) {
@@ -299,9 +294,7 @@ export function SiteSettings({
   const [proxyPass, setProxyPass] = useState("");
   const [appCmd, setAppCmd] = useState("");
   const [appPort, setAppPort] = useState("");
-  const [cacheOn, setCacheOn] = useState(false);
-  const [cacheValid, setCacheValid] = useState("1h");
-  const [cachePath, setCachePath] = useState("");
+  const [cache, setCache] = useState<NginxCacheValue>(() => cacheFromSaved(undefined, ""));
   const [cacheBusy, setCacheBusy] = useState(false);
   const [access, setAccess] = useState<"" | "allow" | "deny">("");
   const [ips, setIps] = useState("");
@@ -425,9 +418,7 @@ export function SiteSettings({
     setProxyPass(site.proxyPass || "");
     setAppCmd(site.appCmd || "");
     setAppPort(site.appPort ? String(site.appPort) : "");
-    setCacheOn(cacheEnabled(o.cache));
-    setCacheValid(o.cache?.valid || "1h");
-    setCachePath(o.cache?.path || cacheDir(site.domain));
+    setCache(cacheFromSaved(o.cache, site.domain));
     setAccess(o.access || "");
     setIps((o.ips || []).join("\n"));
     setIndex((o.index || []).join(" "));
@@ -1084,26 +1075,16 @@ export function SiteSettings({
                 Nginx cache
               </Typography.Title>
               <Space>
-                <Switch checked={cacheOn} onChange={(checked) => setCacheOn(checked)} />
+                <Switch checked={cache.on} onChange={(on) => setCache({ ...cache, on })} />
                 <span>Cache</span>
               </Space>
               <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-                Nginx stores successful responses and serves them again for the chosen time. The cache directory is filled in for this site. A request with Authorization is not cached. A cookie from the backend is ignored, so a public page can be stored. Files served directly from disk are not stored. A reverse proxy that already has its own cache keeps that cache. A custom nginx file is left as written.
+                Nginx remembers pages it fetched from Apache or the app and serves them again. Files read straight from disk are not stored. A reverse proxy that already has its own cache keeps that cache. A custom nginx file is left as written.
               </Typography.Paragraph>
-              <Space wrap>
-                <Select style={{ width: 160 }} value={cacheValid} options={CACHE_TIMES} disabled={!cacheOn} onChange={setCacheValid} />
-                <Input
-                  style={{ width: 360 }}
-                  value={cachePath || cacheDir(site.domain)}
-                  onChange={(e) => setCachePath(e.target.value)}
-                  onBlur={() => {
-                    if (!cachePath.trim()) setCachePath(cacheDir(site.domain));
-                  }}
-                />
-                <Popconfirm title="Clear the saved cache for this site?" onConfirm={() => void purgeCache()}>
-                  <Button loading={cacheBusy}>Clear cache</Button>
-                </Popconfirm>
-              </Space>
+              <NginxCacheForm value={cache} onChange={setCache} />
+              <Popconfirm title="Clear the saved cache for this site?" onConfirm={() => void purgeCache()}>
+                <Button loading={cacheBusy}>Clear cache</Button>
+              </Popconfirm>
               <Button
                 style={{ marginTop: 16 }}
                 type="primary"
@@ -1113,9 +1094,7 @@ export function SiteSettings({
                   const options = {
                     ...baseOpts(site),
                     ...(phpSite ? { static: staticOn, staticExt: ext === DEFAULT_STATIC_EXT ? "" : ext } : {}),
-                    cache: cacheOn
-                      ? { enabled: true, on: true, valid: cacheValid === "1h" ? "" : cacheValid, path: cachePath.trim() || cacheDir(site.domain) }
-                      : { enabled: false, on: false },
+                    cache: { ...cachePayload(cache), path: cache.path.trim() || cacheDir(site.domain) },
                   };
                   if (kind === "proxy") {
                     return onPatch({ kind: "proxy", proxyPass: proxyPass.trim(), appCmd: "", appPort: 0, options }, "Web server saved");

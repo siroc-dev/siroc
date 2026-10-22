@@ -310,31 +310,48 @@ func allowAppArmor() error {
 	if _, err := os.Stat("/etc/apparmor.d/local"); err != nil {
 		return nil
 	}
-	body := "# Added by siroc so data under /siroc stays readable.\n" +
-		"/siroc/data/ r,\n/siroc/data/** rw,\n" +
-		"/siroc/log/ r,\n/siroc/log/** rw,\n" +
-		"/siroc/cache/ r,\n/siroc/cache/** rw,\n" +
-		"/siroc/db/ r,\n/siroc/db/** rwk,\n" +
-		"/siroc/etc/ r,\n/siroc/etc/** rw,\n"
-	for _, name := range []string{"usr.sbin.mysqld", "usr.sbin.mariadbd", "usr.sbin.nginx", "usr.sbin.apache2"} {
+	seen := map[string]bool{}
+	var names []string
+	// MariaDB 11.8 ships /etc/apparmor.d/mariadbd. The old usr.sbin.mariadbd
+	// name was removed, and that profile is what blocks /siroc after an upgrade.
+	for _, name := range []string{"mariadbd", "usr.sbin.mysqld", "usr.sbin.mariadbd", "usr.sbin.nginx", "usr.sbin.apache2"} {
+		names = append(names, name)
+	}
+	for _, pattern := range []string{"/etc/apparmor.d/*mariadb*", "/etc/apparmor.d/*mysql*"} {
+		matches, _ := filepath.Glob(pattern)
+		for _, match := range matches {
+			names = append(names, filepath.Base(match))
+		}
+	}
+	for _, name := range names {
+		if seen[name] || strings.Contains(name, "/") {
+			continue
+		}
+		seen[name] = true
 		if _, err := os.Stat("/etc/apparmor.d/" + name); err != nil {
 			continue
 		}
 		path := "/etc/apparmor.d/local/" + name
 		existing, _ := os.ReadFile(path)
-		if !strings.Contains(string(existing), "/siroc/db/") {
-			f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-			if err != nil {
-				return err
-			}
-			_, err = f.WriteString(body)
-			closeErr := f.Close()
-			if err != nil {
-				return err
-			}
-			if closeErr != nil {
-				return closeErr
-			}
+		missing := MissingAppArmorRules(string(existing))
+		if missing == "" {
+			continue
+		}
+		body := missing
+		if !strings.Contains(string(existing), "Added by siroc") {
+			body = "# Added by siroc so data under /siroc stays readable.\n" + missing
+		}
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			return err
+		}
+		_, err = f.WriteString(body)
+		closeErr := f.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
 		}
 		if out, err := exec.Command("apparmor_parser", "-r", "/etc/apparmor.d/"+name).CombinedOutput(); err != nil {
 			log.Printf("siroc layout: apparmor %s: %s", name, strings.TrimSpace(string(out)))

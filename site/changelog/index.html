@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.86">0.2.86</a>
           <a href="#v0.2.85">0.2.85</a>
           <a href="#v0.2.84">0.2.84</a>
           <a href="#v0.2.83">0.2.83</a>
@@ -114,6 +115,19 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.86">
+          <h2><a href="#v0.2.86">0.2.86</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Nginx cache has ready-made setups: Public pages, WordPress, Respect the app, and Long cache. Each one explains what is stored. Lifetime, disk limit, unused files, a saved page when the origin fails, background refresh, application cache headers, skipped paths, and cookie names can be set on their own. The response includes <code>X-Cache-Status</code>.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>After a MariaDB package upgrade, the agent allows AppArmor to read <code>/siroc/etc</code> and use <code>/siroc/db</code>, including the MariaDB 11.8 <code>mariadbd</code> profile. Options MariaDB no longer accepts, such as <code>innodb_buffer_pool_instances</code>, are removed. A config that stops the server is rolled back and the previous one is restored.</li>
+            <li>Nginx modules are rebuilt when <code>nginx -t</code> reports a module built for an older Nginx. Nginx is started again after that rebuild.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.85">
           <h2><a href="#v0.2.85">0.2.85</a></h2>

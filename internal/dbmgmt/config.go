@@ -30,13 +30,17 @@ func dbKnobs(mariadb bool) []dbKnob {
 	out := []dbKnob{
 		{Name: "bind_address", Label: "Bind address"},
 		{Name: "innodb_buffer_pool_size", Label: "InnoDB buffer pool"},
-		{Name: "innodb_buffer_pool_instances", Label: "Buffer pool instances"},
 		{Name: "innodb_log_buffer_size", Label: "InnoDB log buffer"},
 	}
 	if mariadb {
+		// innodb_buffer_pool_instances was removed in MariaDB 10.6. Writing it
+		// makes 10.6+ abort with "Fatal error in defaults handling".
 		out = append(out, dbKnob{Name: "innodb_log_file_size", Label: "InnoDB log file"})
 	} else {
-		out = append(out, dbKnob{Name: "innodb_redo_log_capacity", Label: "InnoDB redo log"})
+		out = append(out,
+			dbKnob{Name: "innodb_buffer_pool_instances", Label: "Buffer pool instances"},
+			dbKnob{Name: "innodb_redo_log_capacity", Label: "InnoDB redo log"},
+		)
 	}
 	out = append(out,
 		dbKnob{Name: "innodb_flush_log_at_trx_commit", Label: "Flush log at commit"},
@@ -133,6 +137,9 @@ func (m *Manager) ApplyConfig(in rpc.DBConfigApply) error {
 	for name, v := range in.Settings {
 		name = strings.TrimSpace(name)
 		v = strings.TrimSpace(v)
+		if mariadb && removedMariaDBOption(name) {
+			continue
+		}
 		if !allowed[name] {
 			return fmt.Errorf("unknown setting %s", name)
 		}
@@ -148,6 +155,7 @@ func (m *Manager) ApplyConfig(in rpc.DBConfigApply) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
+	prev, prevErr := os.ReadFile(path)
 	var b strings.Builder
 	fmt.Fprintf(&b, "# managed by siroc\n# siroc-ram-gb=%d\n[mysqld]\n", ramGB)
 	for _, k := range dbKnobs(mariadb) {
@@ -173,7 +181,18 @@ func (m *Manager) ApplyConfig(in rpc.DBConfigApply) error {
 	if n, err := strconv.Atoi(vals["open_files_limit"]); err == nil && n >= 1024 {
 		_ = writeMySQLLimits(engine, n)
 	}
-	return restartMySQL(engine)
+	if err := restartMySQL(engine); err != nil {
+		if prevErr == nil {
+			_ = os.WriteFile(path, prev, 0644)
+		} else {
+			_ = os.Remove(path)
+		}
+		if back := restartMySQL(engine); back != nil {
+			return fmt.Errorf("%v (restoring the previous config also failed: %v)", err, back)
+		}
+		return fmt.Errorf("%v (the previous config was restored and the server is running)", err)
+	}
+	return nil
 }
 
 func validDBValue(name, v string) bool {
@@ -250,7 +269,6 @@ func mysqlTune(ramGB int, mariadb bool) map[string]string {
 	openFiles := clampInt(tableOpen*2+maxConn+1024, 4096, 1048576)
 	out := map[string]string{
 		"innodb_buffer_pool_size":        sizeMB(bufMB),
-		"innodb_buffer_pool_instances":   strconv.Itoa(instances),
 		"innodb_log_buffer_size":         sizeMB(logBufMB),
 		"innodb_flush_log_at_trx_commit": "1",
 		"innodb_flush_method":            "O_DIRECT",
@@ -278,6 +296,7 @@ func mysqlTune(ramGB int, mariadb bool) map[string]string {
 		out["query_cache_type"] = "0"
 		out["query_cache_size"] = "0"
 	} else {
+		out["innodb_buffer_pool_instances"] = strconv.Itoa(instances)
 		out["innodb_redo_log_capacity"] = sizeMB(redoMB)
 	}
 	return out
@@ -407,6 +426,262 @@ func mysqlServiceNames(engine string) []string {
 		return []string{"mariadb", "mysql"}
 	}
 	return []string{"mysql", "mysqld", "mariadb"}
+}
+
+// RepairMariaDBConfig makes MariaDB able to read its option files again.
+// A missing !includedir directory or a removed option aborts startup with
+// "Fatal error in defaults handling". Journald often hides the real line.
+func RepairMariaDBConfig() (bool, error) {
+	if !mariaInstalled() {
+		return false, nil
+	}
+	changed := ensureMariaDBLayout()
+	stripped, err := stripManagedMySQLConf()
+	if err != nil {
+		return changed, err
+	}
+	changed = changed || stripped
+	for i := 0; i < 3; i++ {
+		msg := mariadbDefaultsError()
+		if msg == "" {
+			break
+		}
+		if dir := missingDefaultsDir(msg); dir != "" {
+			if _, err := chmodMySQLDir(dir); err != nil {
+				return changed, err
+			}
+			changed = true
+			continue
+		}
+		if opt := unknownDefaultsOption(msg); opt != "" {
+			ok, err := stripMySQLOptionTree(opt)
+			if err != nil {
+				return changed, err
+			}
+			if !ok {
+				return changed, fmt.Errorf("mariadb defaults: %s", oneLine(msg))
+			}
+			changed = true
+			continue
+		}
+		return changed, fmt.Errorf("mariadb defaults: %s", oneLine(msg))
+	}
+	if msg := mariadbDefaultsError(); msg != "" {
+		return changed, fmt.Errorf("mariadb defaults: %s", oneLine(msg))
+	}
+	if !changed && !mysqlServiceFailed("mariadb") {
+		return false, nil
+	}
+	if mysqlServiceActive("mariadb") || !mysqlUnitExists("mariadb") {
+		return changed, nil
+	}
+	if err := restartMySQL("mariadb"); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+func ensureMariaDBLayout() bool {
+	changed := false
+	if ok, err := chmod755("/etc/mysql"); err == nil && ok {
+		changed = true
+	}
+	for _, dir := range []string{"/etc/mysql/conf.d", "/etc/mysql/mariadb.conf.d", "/etc/mysql/mysql.conf.d"} {
+		ok, err := chmodMySQLDir(dir)
+		if err == nil && ok {
+			changed = true
+		}
+	}
+	if _, err := os.Stat("/etc/mysql/mariadb.cnf"); err != nil {
+		return changed
+	}
+	fi, err := os.Lstat("/etc/mysql/my.cnf")
+	if err == nil && fi.Mode()&os.ModeSymlink == 0 {
+		return changed
+	}
+	if err == nil {
+		if _, statErr := os.Stat("/etc/mysql/my.cnf"); statErr == nil {
+			return changed
+		}
+		_ = os.Remove("/etc/mysql/my.cnf")
+	}
+	if err := os.Symlink("mariadb.cnf", "/etc/mysql/my.cnf"); err == nil {
+		changed = true
+	}
+	return changed
+}
+
+func chmodMySQLDir(dir string) (bool, error) {
+	changed := false
+	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return false, err
+		}
+		changed = true
+	}
+	if ok, err := chmod755(dir); err != nil {
+		return changed, err
+	} else if ok {
+		changed = true
+	}
+	target, err := os.Readlink(dir)
+	if err != nil {
+		return changed, nil
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(dir), target)
+	}
+	if ok, err := chmod755(filepath.Clean(target)); err == nil && ok {
+		changed = true
+	}
+	return changed, nil
+}
+
+// chmod755 opens a directory the mysql user must be able to list. A mode such
+// as 0700 is "Permission denied" (Errcode 13) even though the directory exists.
+func chmod755(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		return false, err
+	}
+	if info.Mode().Perm()&0005 == 0005 {
+		return false, nil
+	}
+	if err := os.Chmod(path, 0755); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func stripManagedMySQLConf() (bool, error) {
+	changed := false
+	for _, path := range mysqlManagedConfPaths() {
+		b, err := os.ReadFile(path)
+		if err != nil || !strings.Contains(string(b), "managed by siroc") {
+			continue
+		}
+		next, ok := stripRemovedMariaDBOptions(string(b))
+		if !ok {
+			continue
+		}
+		if err := os.WriteFile(path, []byte(next), 0644); err != nil {
+			return changed, err
+		}
+		changed = true
+	}
+	return changed, nil
+}
+
+func stripMySQLOptionTree(name string) (bool, error) {
+	if _, err := os.Stat("/etc/mysql"); err != nil {
+		return false, nil
+	}
+	changed := false
+	err := filepath.Walk("/etc/mysql", func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		base := info.Name()
+		if !strings.HasSuffix(base, ".cnf") && base != "my.cnf" {
+			return nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		next, ok := stripMySQLOption(string(b), name)
+		if !ok {
+			return nil
+		}
+		mode := info.Mode().Perm()
+		if mode == 0 {
+			mode = 0644
+		}
+		if err := os.WriteFile(path, []byte(next), mode); err != nil {
+			return err
+		}
+		changed = true
+		return nil
+	})
+	return changed, err
+}
+
+func mysqlManagedConfPaths() []string {
+	return []string{
+		"/etc/mysql/mariadb.conf.d/" + sirocMySQLConfName,
+		"/etc/mysql/mysql.conf.d/" + sirocMySQLConfName,
+		"/etc/mysql/conf.d/" + sirocMySQLConfName,
+	}
+}
+
+func mariadbDefaultsError() string {
+	bin := "/usr/sbin/mariadbd"
+	if _, err := os.Stat(bin); err != nil {
+		bin = "/usr/bin/mariadbd"
+	}
+	var last string
+	for _, args := range [][]string{
+		{"runuser", "-u", "mysql", "--", bin, "--print-defaults"},
+		{bin, "--print-defaults"},
+	} {
+		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+		if err == nil {
+			return ""
+		}
+		last = string(out)
+		if missingDefaultsDir(last) != "" || unknownDefaultsOption(last) != "" || strings.Contains(last, "Fatal error in defaults handling") {
+			return last
+		}
+	}
+	return last
+}
+
+func oneLine(msg string) string {
+	var parts []string
+	for _, line := range strings.Split(msg, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, "Fatal error in defaults handling") {
+			continue
+		}
+		parts = append(parts, line)
+	}
+	s := strings.Join(parts, " ")
+	if len(s) > 400 {
+		s = s[:400]
+	}
+	if s == "" {
+		return "defaults file could not be read"
+	}
+	return s
+}
+
+func mysqlServiceFailed(engine string) bool {
+	for _, name := range mysqlServiceNames(engine) {
+		out, _ := exec.Command("systemctl", "is-failed", name).Output()
+		if strings.TrimSpace(string(out)) == "failed" {
+			return true
+		}
+	}
+	return false
+}
+
+func mariaInstalled() bool {
+	for _, path := range []string{"/usr/sbin/mariadbd", "/usr/bin/mariadbd"} {
+		st, err := os.Stat(path)
+		if err == nil && !st.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+func mysqlUnitExists(engine string) bool {
+	for _, name := range mysqlServiceNames(engine) {
+		if exec.Command("systemctl", "cat", name).Run() == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func restartMySQL(engine string) error {
