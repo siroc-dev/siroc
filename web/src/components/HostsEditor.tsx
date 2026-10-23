@@ -84,7 +84,7 @@ export function HostsEditor() {
       }
     >
       <Typography.Paragraph type="secondary">
-        Address lines in /etc/hosts. A row added here records when it was created. Names written for local scans stay in their own block and are not listed.
+        Address lines in /etc/hosts. A row added here records when it was created and is put back if the system rewrites this file on boot. Names written for local scans stay in their own block and are not listed.
       </Typography.Paragraph>
       <Table
         size="small"

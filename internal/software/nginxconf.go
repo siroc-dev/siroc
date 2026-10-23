@@ -14,6 +14,22 @@ func NginxModuleStale(output string) bool {
 	return strings.Contains(output, ".so") && strings.Contains(output, "version ") && strings.Contains(output, "instead of")
 }
 
+// NginxModuleHook is the apt snippet that runs after a package install.
+// The binary is this agent. The command only rebuilds when the modules do not match.
+func NginxModuleHook(bin string) string {
+	bin = strings.TrimSpace(bin)
+	if bin == "" {
+		bin = "/usr/local/bin/siroc-agent"
+	}
+	return "// Added by siroc. An upgraded Nginx must not load modules built for the previous version.\n" +
+		"DPkg::Post-Invoke { \"" + bin + " nginx-modules-hook || true\"; };\n"
+}
+
+func aptLockBusy(msg string) bool {
+	s := strings.ToLower(msg)
+	return strings.Contains(s, "could not get lock") || strings.Contains(s, "dpkg frontend lock") || strings.Contains(s, "resource temporarily unavailable")
+}
+
 func nginxHasDirective(conf, line string) bool {
 	for _, raw := range strings.Split(conf, "\n") {
 		trim := strings.TrimSpace(raw)

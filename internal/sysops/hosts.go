@@ -32,6 +32,80 @@ func ListHostsText(text string) []rpc.HostEntry {
 	return entriesOf(parseHostLines(body))
 }
 
+// managedHostText is the panel rows, recognized by the created time on the line.
+// System lines such as 127.0.0.1 localhost are left for the OS.
+func managedHostText(text string) string {
+	body, _ := peelScanner(text)
+	var kept []hostLine
+	for _, ln := range parseHostLines(body) {
+		if ln.entry && ln.created != "" {
+			kept = append(kept, ln)
+		}
+	}
+	return renderHostLines(kept)
+}
+
+// mergeManagedHosts appends saved panel rows that a boot-time rewrite removed.
+func mergeManagedHosts(current, managed string) (string, bool) {
+	if strings.TrimSpace(managed) == "" {
+		return current, false
+	}
+	body, block := peelScanner(current)
+	lines := parseHostLines(body)
+	changed := false
+	for _, add := range parseHostLines(managed) {
+		if !add.entry || add.created == "" || hostLinePresent(lines, add) {
+			continue
+		}
+		lines = append(lines, hostLine{
+			entry:   true,
+			ip:      add.ip,
+			names:   append([]string(nil), add.names...),
+			created: add.created,
+			note:    add.note,
+		})
+		changed = true
+	}
+	if !changed {
+		return current, false
+	}
+	return joinScanner(renderHostLines(lines), block), true
+}
+
+// unionManaged keeps every panel row from either copy. A reboot can wipe
+// /etc/hosts while the saved copy still has the rows, and the opposite happens
+// on the first start after an upgrade.
+func unionManaged(stored, live string) string {
+	merged, _ := mergeManagedHosts(managedHostText(stored), managedHostText(live))
+	return managedHostText(merged)
+}
+
+func hostLinePresent(lines []hostLine, want hostLine) bool {
+	for _, ln := range lines {
+		if ln.entry && ln.ip == want.ip && sameNames(ln.names, want.names) {
+			return true
+		}
+	}
+	return false
+}
+
+func sameNames(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := map[string]int{}
+	for _, n := range a {
+		seen[strings.ToLower(n)]++
+	}
+	for _, n := range b {
+		seen[strings.ToLower(n)]--
+		if seen[strings.ToLower(n)] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func MutateHosts(text, op string, id int, ip string, names []string, now time.Time) (string, []rpc.HostEntry, error) {
 	body, block := peelScanner(text)
 	lines := parseHostLines(body)

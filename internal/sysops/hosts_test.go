@@ -87,3 +87,37 @@ func TestMutateHostsRejectsBadRows(t *testing.T) {
 		t.Fatal("localhost delete accepted")
 	}
 }
+
+func TestManagedHostsSurviveRewrite(t *testing.T) {
+	wiped := "" +
+		"127.0.0.1 localhost\n" +
+		"127.0.1.1 web\n" +
+		"\n" +
+		"# BEGIN SIROC\n" +
+		"127.0.0.1 scan.test\n" +
+		"# END SIROC\n"
+	saved := managedHostText(sampleHosts)
+	if !strings.Contains(saved, "10.0.0.5\tdb.internal # created 2026-10-01T01:02:03Z") || strings.Contains(saved, "localhost") {
+		t.Fatalf("saved:\n%s", saved)
+	}
+	got, changed := mergeManagedHosts(wiped, saved)
+	if !changed {
+		t.Fatal("expected the saved row to be put back")
+	}
+	if !strings.Contains(got, "10.0.0.5\tdb.internal # created 2026-10-01T01:02:03Z") {
+		t.Fatalf("row missing:\n%s", got)
+	}
+	if !strings.Contains(got, "localhost") || !strings.Contains(got, "127.0.1.1") || !strings.Contains(got, "scan.test") {
+		t.Fatalf("system lines changed:\n%s", got)
+	}
+	again, changed := mergeManagedHosts(got, saved)
+	if changed || again != got {
+		t.Fatal("second pass should leave the file alone")
+	}
+	if unionManaged(saved, wiped) != saved {
+		t.Fatal("a wiped hosts file should not drop the saved rows")
+	}
+	if !strings.Contains(unionManaged("", sampleHosts), "db.internal") {
+		t.Fatal("current rows should be captured when nothing is saved yet")
+	}
+}

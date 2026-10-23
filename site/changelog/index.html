@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.87">0.2.87</a>
           <a href="#v0.2.86">0.2.86</a>
           <a href="#v0.2.85">0.2.85</a>
           <a href="#v0.2.84">0.2.84</a>
@@ -115,6 +116,19 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.87">
+          <h2><a href="#v0.2.87">0.2.87</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>The Nginx cache disk limit can be typed, such as <code>500m</code> or <code>2g</code>. It cannot pass 90% of the disk that holds the cache folder. The page shows that limit.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>After apt upgrades Nginx, modules built for the previous version are unloaded so Nginx can start. They are compiled again for the new Nginx and loaded back. This runs for an upgrade from the panel, unattended upgrades, or apt itself.</li>
+            <li>Hosts rows added in System tools are saved by the panel and put back when <code>/etc/hosts</code> is rewritten on boot. cloud-init is told to leave that file alone. Rows already removed by an earlier reboot have to be added again.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.86">
           <h2><a href="#v0.2.86">0.2.86</a></h2>

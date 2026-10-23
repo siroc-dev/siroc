@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyCachePreset, cacheFromSaved, cachePayload, type NginxCacheValue } from "./NginxCache";
+import { applyCachePreset, cacheFromSaved, cachePayload, cacheSizeBytes, cacheSizeToken, type NginxCacheValue } from "./NginxCache";
 
 const blank: NginxCacheValue = {
   on: true,
@@ -27,6 +27,16 @@ describe("Nginx cache presets", () => {
     expect(saved.preset).toBe("wordpress");
     expect(saved.valid).toBe("");
     expect(saved.idle).toBe("7d");
+  });
+
+  it("stores a typed disk limit and treats 1 GB as the default", () => {
+    expect(cacheSizeToken("500 MB")).toBe("500m");
+    expect(cacheSizeToken("1024m")).toBe("");
+    expect(cacheSizeToken("1.5g")).toBeNull();
+    expect(cacheSizeBytes("9g")).toBe(9 * 1024 ** 3);
+    const saved = cachePayload({ ...blank, size: "2 GB" });
+    expect(saved.size).toBe("2g");
+    expect(cachePayload({ ...blank, size: "1g" }).size).toBe("");
   });
 
   it("recognizes a saved public cache", () => {

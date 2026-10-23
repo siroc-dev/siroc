@@ -70,6 +70,25 @@ func main() {
 				log.Fatal(err)
 			}
 			return
+		case "nginx-modules-hook":
+			if os.Geteuid() != 0 {
+				log.Fatal("siroc-agent must run as root")
+			}
+			if err := software.InstallNginxModuleHook(); err != nil {
+				log.Printf("nginx module hook: %v", err)
+			}
+			if err := software.RecoverNginxModules(); err != nil {
+				log.Printf("nginx modules: %v", err)
+			}
+			return
+		case "nginx-modules":
+			if os.Geteuid() != 0 {
+				log.Fatal("siroc-agent must run as root")
+			}
+			if err := software.RebuildNginxModules(); err != nil {
+				log.Fatal(err)
+			}
+			return
 		case "os-check":
 			if os.Geteuid() != 0 {
 				log.Fatal("siroc-agent must run as root")
@@ -103,6 +122,9 @@ func main() {
 	}
 	log.Printf("siroc-agent %s", version.Current())
 	ensureLayout()
+	if err := sysops.RestoreManagedHosts(); err != nil {
+		log.Printf("hosts: %v", err)
+	}
 	repairAgentUnit()
 	hosting.RepairNginxHTTP2()
 	hosting.RepairAssetLogs()
@@ -156,6 +178,9 @@ func main() {
 	}
 	if err := osupdate.InstallTimer(); err != nil {
 		log.Printf("os update timer: %v", err)
+	}
+	if err := software.InstallNginxModuleHook(); err != nil {
+		log.Printf("nginx module hook: %v", err)
 	}
 	if err := security.EnsureWAF(); err != nil {
 		log.Printf("waf config: %v", err)
@@ -241,6 +266,11 @@ func main() {
 			out, err = osupdate.Update()
 		case "upgrade":
 			out, err = osupdate.Upgrade()
+			if err == nil {
+				if rerr := software.RecoverNginxModules(); rerr != nil {
+					log.Printf("nginx modules: %v", rerr)
+				}
+			}
 		default:
 			writeErr(w, http.StatusBadRequest, fmt.Errorf("action must be update or upgrade"))
 			return
@@ -1843,6 +1873,10 @@ func repairAgentUnit() {
 		return
 	}
 	next, changed := update.StripRuntimeDirectoryGroup(string(b))
+	if withCloud, cloudChanged := update.AfterCloudInit(next); cloudChanged {
+		next = withCloud
+		changed = true
+	}
 	if !changed {
 		return
 	}

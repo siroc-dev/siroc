@@ -108,3 +108,32 @@ func TestCacheRecipes(t *testing.T) {
 		t.Fatal("expected a rejected skip path")
 	}
 }
+
+func TestCacheDiskLimit(t *testing.T) {
+	prev := lookupCacheDisk
+	lookupCacheDisk = func(string) uint64 { return 10 << 30 }
+	t.Cleanup(func() { lookupCacheDisk = prev })
+
+	got, err := Normalize(Options{Cache: &Cache{On: true, Size: "500 MB"}})
+	if err != nil || got.Cache == nil || got.Cache.Size != "500m" {
+		t.Fatalf("%v %#v", err, got.Cache)
+	}
+	one, err := Normalize(Options{Cache: &Cache{On: true, Size: "1024m"}})
+	if err != nil || one.Cache == nil || one.Cache.Size != "" {
+		t.Fatalf("1g stored empty: %v %#v", err, one.Cache)
+	}
+	line := CachePathLine("/var/cache/nginx/siroc/example.com", "zone", *got.Cache)
+	if !contains(line, "max_size=500m") {
+		t.Fatalf("path %s", line)
+	}
+	nine, err := Normalize(Options{Cache: &Cache{On: true, Size: "9g"}})
+	if err != nil || nine.Cache == nil || nine.Cache.Size != "9g" {
+		t.Fatalf("90%% should be allowed: %v %#v", err, nine.Cache)
+	}
+	if _, err := Normalize(Options{Cache: &Cache{On: true, Size: "10g"}}); err == nil || !contains(err.Error(), "90%") {
+		t.Fatalf("over 90%%: %v", err)
+	}
+	if _, err := Normalize(Options{Cache: &Cache{On: true, Size: "1.5g"}}); err == nil {
+		t.Fatal("expected a rejected size")
+	}
+}

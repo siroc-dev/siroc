@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/siroc-dev/siroc/internal/validate"
@@ -20,6 +21,7 @@ type Cache struct {
 	// Preset is the recipe the form last applied: public, wordpress, app, long, or custom.
 	Preset string `json:"preset,omitempty"`
 	// Size is the disk cap (proxy_cache_path max_size). Empty means 1g.
+	// A custom value is a number and a unit, such as 500m or 2g, and cannot pass 90% of the disk.
 	Size string `json:"size,omitempty"`
 	// Idle is how long an unused file stays (inactive). Empty means 1d.
 	Idle string `json:"idle,omitempty"`
@@ -85,15 +87,6 @@ var cacheValids = map[string]string{
 	"7d":  "7d",
 }
 
-var cacheSizes = map[string]string{
-	"":     "",
-	"256m": "256m",
-	"1g":   "",
-	"5g":   "5g",
-	"10g":  "10g",
-	"20g":  "20g",
-}
-
 var cacheIdles = map[string]string{
 	"":    "",
 	"1h":  "1h",
@@ -122,10 +115,6 @@ func normalizeSiteCache(in *Cache) (*Cache, error) {
 	if !ok {
 		return nil, fmt.Errorf("cache time must be 10m, 30m, 1h, 6h, 12h, 1d, or 7d")
 	}
-	size, ok := cacheSizes[strings.TrimSpace(in.Size)]
-	if !ok {
-		return nil, fmt.Errorf("cache disk size must be 256m, 1g, 5g, 10g, or 20g")
-	}
 	idle, ok := cacheIdles[strings.TrimSpace(in.Idle)]
 	if !ok {
 		return nil, fmt.Errorf("cache idle time must be 1h, 1d, 7d, or 30d")
@@ -146,6 +135,10 @@ func normalizeSiteCache(in *Cache) (*Cache, error) {
 	if err != nil {
 		return nil, err
 	}
+	size, err := normalizeCacheSize(in.Size, pth)
+	if err != nil {
+		return nil, err
+	}
 	out := &Cache{
 		On: in.On, Valid: valid, Path: pth, Preset: preset, Size: size, Idle: idle,
 		Stale: in.Stale, Refresh: in.Refresh, Honor: in.Honor, Cookies: cookies, Skip: skip,
@@ -154,6 +147,123 @@ func normalizeSiteCache(in *Cache) (*Cache, error) {
 		return nil, nil
 	}
 	return out, nil
+}
+
+// lookupCacheDisk reports the filesystem size in bytes for a cache directory.
+// Zero means the disk could not be read. Linux replaces this at init.
+var lookupCacheDisk = func(string) uint64 { return 0 }
+
+var errCacheSize = fmt.Errorf("cache disk size must be a number and a unit, such as 500m or 2g")
+
+func cacheSizeProbe(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return "/var/cache/nginx/siroc"
+	}
+	return path
+}
+
+// CacheDiskTotal is the size of the filesystem that holds path.
+func CacheDiskTotal(path string) uint64 {
+	return lookupCacheDisk(cacheSizeProbe(path))
+}
+
+// CacheDiskMax is 90% of the filesystem that holds path.
+func CacheDiskMax(path string) uint64 {
+	return cacheDiskCap(CacheDiskTotal(path))
+}
+
+func cacheDiskCap(total uint64) uint64 {
+	if total == 0 {
+		return 0
+	}
+	return total/10*9 + (total%10)*9/10
+}
+
+func normalizeCacheSize(raw, path string) (string, error) {
+	token, bytes, err := parseCacheSize(raw)
+	if err != nil {
+		return "", err
+	}
+	total := CacheDiskTotal(path)
+	if total > 0 {
+		if max := cacheDiskCap(total); bytes > max {
+			return "", fmt.Errorf("cache disk limit is at most 90%% of this disk (%s)", formatCacheBytes(max))
+		}
+	} else if bytes != 1<<30 {
+		return "", fmt.Errorf("cache disk limit could not be checked against this disk")
+	}
+	return token, nil
+}
+
+func parseCacheSize(raw string) (string, uint64, error) {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	s = strings.ReplaceAll(s, " ", "")
+	if s == "" || s == "1g" || s == "1gb" {
+		return "", 1 << 30, nil
+	}
+	s = strings.TrimSuffix(s, "b")
+	if len(s) < 2 {
+		return "", 0, errCacheSize
+	}
+	unit := s[len(s)-1]
+	num := s[:len(s)-1]
+	var mul uint64
+	switch unit {
+	case 'k':
+		mul = 1 << 10
+	case 'm':
+		mul = 1 << 20
+	case 'g':
+		mul = 1 << 30
+	default:
+		return "", 0, errCacheSize
+	}
+	if num == "" || len(num) > 7 {
+		return "", 0, errCacheSize
+	}
+	for _, c := range num {
+		if c < '0' || c > '9' {
+			return "", 0, errCacheSize
+		}
+	}
+	n, err := strconv.ParseUint(num, 10, 64)
+	if err != nil || n == 0 || n > (^uint64(0))/mul {
+		return "", 0, errCacheSize
+	}
+	return canonicalCacheSize(n * mul)
+}
+
+func canonicalCacheSize(bytes uint64) (string, uint64, error) {
+	if bytes == 1<<30 {
+		return "", bytes, nil
+	}
+	switch {
+	case bytes%(1<<30) == 0:
+		return strconv.FormatUint(bytes>>30, 10) + "g", bytes, nil
+	case bytes%(1<<20) == 0:
+		return strconv.FormatUint(bytes>>20, 10) + "m", bytes, nil
+	case bytes%(1<<10) == 0:
+		return strconv.FormatUint(bytes>>10, 10) + "k", bytes, nil
+	default:
+		return "", 0, errCacheSize
+	}
+}
+
+func formatCacheBytes(n uint64) string {
+	const gb = 1 << 30
+	const mb = 1 << 20
+	if n >= gb {
+		whole := n / gb
+		frac := (n % gb) * 10 / gb
+		if frac == 0 {
+			return strconv.FormatUint(whole, 10) + " GB"
+		}
+		return strconv.FormatUint(whole, 10) + "." + strconv.FormatUint(frac, 10) + " GB"
+	}
+	if n >= mb {
+		return strconv.FormatUint(n/mb, 10) + " MB"
+	}
+	return strconv.FormatUint(n, 10) + " B"
 }
 
 func normalizeCacheCookies(raw string) (string, error) {

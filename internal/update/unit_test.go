@@ -22,3 +22,19 @@ func TestStripRuntimeDirectoryGroup(t *testing.T) {
 		t.Fatal("second pass should be a no-op")
 	}
 }
+
+func TestAfterCloudInit(t *testing.T) {
+	in := "[Unit]\nDescription=Siroc privileged agent\nAfter=network.target\n\n[Service]\nExecStart=/usr/local/bin/siroc-agent\n"
+	got, changed := AfterCloudInit(in)
+	if !changed || !strings.Contains(got, "After=network.target cloud-init.service\n") {
+		t.Fatalf("unit:\n%s", got)
+	}
+	again, changed := AfterCloudInit(got)
+	if changed || again != got {
+		t.Fatal("second pass should be a no-op")
+	}
+	bare, changed := AfterCloudInit("[Unit]\nDescription=Siroc\n")
+	if !changed || !strings.Contains(bare, "After=cloud-init.service\n") {
+		t.Fatalf("missing After:\n%s", bare)
+	}
+}

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Input, Select, Space, Switch, Typography } from "antd";
+import { formatBytes } from "@/lib/usage";
 
 export type CachePreset = "public" | "wordpress" | "app" | "long" | "custom";
 
@@ -104,14 +105,6 @@ export const CACHE_TIMES = [
   { value: "7d", label: "7 days" },
 ];
 
-const CACHE_SIZES = [
-  { value: "256m", label: "256 MB" },
-  { value: "1g", label: "1 GB" },
-  { value: "5g", label: "5 GB" },
-  { value: "10g", label: "10 GB" },
-  { value: "20g", label: "20 GB" },
-];
-
 const CACHE_IDLES = [
   { value: "1h", label: "1 hour" },
   { value: "1d", label: "1 day" },
@@ -186,14 +179,42 @@ export function applyCachePreset(current: NginxCacheValue, preset: CachePreset):
   };
 }
 
+export function cacheSizeToken(raw: string): string | null {
+  const s = raw.toLowerCase().replace(/\s+/g, "");
+  if (s === "" || s === "1g" || s === "1gb") return "";
+  const m = /^(\d+)(k|m|g)b?$/.exec(s);
+  if (!m || m[1].length > 7) return null;
+  const n = Number(m[1]);
+  if (!Number.isSafeInteger(n) || n <= 0) return null;
+  const mul = m[2] === "g" ? 1024 ** 3 : m[2] === "m" ? 1024 ** 2 : 1024;
+  const bytes = n * mul;
+  if (!Number.isSafeInteger(bytes) || bytes <= 0) return null;
+  if (bytes === 1024 ** 3) return "";
+  if (bytes % 1024 ** 3 === 0) return `${bytes / 1024 ** 3}g`;
+  if (bytes % 1024 ** 2 === 0) return `${bytes / 1024 ** 2}m`;
+  return `${bytes / 1024}k`;
+}
+
+export function cacheSizeBytes(raw: string): number {
+  const token = cacheSizeToken(raw);
+  if (token === null) return 0;
+  if (token === "") return 1024 ** 3;
+  const m = /^(\d+)(k|m|g)$/.exec(token);
+  if (!m) return 0;
+  const n = Number(m[1]);
+  const mul = m[2] === "g" ? 1024 ** 3 : m[2] === "m" ? 1024 ** 2 : 1024;
+  return n * mul;
+}
+
 export function cachePayload(c: NginxCacheValue) {
+  const sizeToken = cacheSizeToken(c.size);
   return {
     enabled: c.on,
     on: c.on,
     preset: c.preset === "public" ? "" : c.preset,
     valid: c.valid === "1h" ? "" : c.valid,
     path: c.path.trim(),
-    size: c.size === "1g" ? "" : c.size,
+    size: sizeToken === null ? c.size.trim() : sizeToken,
     idle: c.idle === "1d" ? "" : c.idle,
     stale: c.stale || undefined,
     refresh: c.refresh || undefined,
@@ -208,7 +229,8 @@ function matchingPreset(value: NginxCacheValue): CachePreset {
     const recipe = RECIPES[name];
     if (
       value.valid === recipe.valid &&
-      value.size === recipe.size &&
+      cacheSizeToken(value.size) !== null &&
+      cacheSizeBytes(value.size) === cacheSizeBytes(recipe.size) &&
       value.idle === recipe.idle &&
       value.stale === recipe.stale &&
       value.refresh === recipe.refresh &&
@@ -230,12 +252,26 @@ function edit(value: NginxCacheValue, patch: Partial<NginxCacheValue>): NginxCac
 export function NginxCacheForm({
   value,
   onChange,
+  maxBytes = 0,
 }: {
   value: NginxCacheValue;
   onChange: (next: NginxCacheValue) => void;
+  maxBytes?: number;
 }) {
   const recipe = value.preset === "custom" ? CUSTOM : RECIPES[value.preset];
   const off = !value.on;
+  const sizeBytes = cacheSizeBytes(value.size);
+  const sizeInvalid = !off && value.size.trim() !== "" && cacheSizeToken(value.size) === null;
+  const sizeOver = !off && maxBytes > 0 && sizeBytes > maxBytes;
+  const cap =
+    maxBytes > 0
+      ? `At most ${formatBytes(maxBytes)}, 90% of the disk that holds this folder.`
+      : "At most 90% of the disk that holds this folder.";
+  const sizeWarn = sizeInvalid
+    ? "Use a size such as 500m or 2g."
+    : sizeOver
+      ? `At most ${formatBytes(maxBytes)}, which is 90% of this disk.`
+      : "";
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
       <div>
@@ -255,8 +291,18 @@ export function NginxCacheForm({
         <Field label="Keep a successful page" help="Pages with status 200, 301, and 302 are stored for this long. Error pages are not stored.">
           <Select style={{ width: 160 }} value={value.valid} options={CACHE_TIMES} disabled={off} onChange={(valid) => onChange(edit(value, { valid }))} />
         </Field>
-        <Field label="Disk limit" help="The oldest saved files are deleted after the folder reaches this size.">
-          <Select style={{ width: 140 }} value={value.size} options={CACHE_SIZES} disabled={off} onChange={(size) => onChange(edit(value, { size }))} />
+        <Field
+          label="Disk limit"
+          help={`The oldest saved files are deleted after the folder reaches this size. Type a size such as 500m or 2g. ${cap}`}
+          warn={sizeWarn}
+        >
+          <Input
+            style={{ width: 160 }}
+            value={value.size}
+            disabled={off}
+            placeholder="1g"
+            onChange={(e) => onChange(edit(value, { size: e.target.value }))}
+          />
         </Field>
         <Field label="Drop unused files" help="A saved file that nobody requests is deleted after this time, even when the folder is still small.">
           <Select style={{ width: 140 }} value={value.idle} options={CACHE_IDLES} disabled={off} onChange={(idle) => onChange(edit(value, { idle }))} />
@@ -306,7 +352,7 @@ export function NginxCacheForm({
   );
 }
 
-function Field({ label, help, children }: { label: string; help: string; children: ReactNode }) {
+function Field({ label, help, warn, children }: { label: string; help: string; warn?: string; children: ReactNode }) {
   return (
     <div style={{ flex: "1 1 220px" }}>
       <Typography.Text>{label}</Typography.Text>
@@ -314,6 +360,11 @@ function Field({ label, help, children }: { label: string; help: string; childre
       <Typography.Paragraph type="secondary" style={{ marginTop: 4, marginBottom: 0 }}>
         {help}
       </Typography.Paragraph>
+      {warn ? (
+        <Typography.Paragraph type="danger" style={{ marginTop: 4, marginBottom: 0 }}>
+          {warn}
+        </Typography.Paragraph>
+      ) : null}
     </div>
   );
 }

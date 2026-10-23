@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, App, Button, Col, Descriptions, Input, InputNumber, Popconfirm, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/lib/nginxRewrites";
 import { ProxySettings, type ProxySettingsValue } from "@/components/ProxySettings";
-import { cacheDir, cacheFromSaved, cachePayload, NginxCacheForm, type NginxCacheValue } from "@/components/NginxCache";
+import { cacheDir, cacheFromSaved, cachePayload, cacheSizeBytes, cacheSizeToken, NginxCacheForm, type NginxCacheValue } from "@/components/NginxCache";
 import { AppPackages, type PkgHit, type PkgRow } from "@/components/AppPackages";
 import { api, RequestError } from "@/lib/api";
 import { formatPanelTime } from "@/lib/panelTime";
+import { formatBytes } from "@/lib/usage";
 
 export type SiteOptions = {
   index?: string[];
@@ -295,6 +296,7 @@ export function SiteSettings({
   const [appCmd, setAppCmd] = useState("");
   const [appPort, setAppPort] = useState("");
   const [cache, setCache] = useState<NginxCacheValue>(() => cacheFromSaved(undefined, ""));
+  const [cacheMax, setCacheMax] = useState(0);
   const [cacheBusy, setCacheBusy] = useState(false);
   const [access, setAccess] = useState<"" | "allow" | "deny">("");
   const [ips, setIps] = useState("");
@@ -398,6 +400,27 @@ export function SiteSettings({
       stop = true;
     };
   }, [tab, site.id, site.options?.composerRoot, message]);
+
+  useEffect(() => {
+    if (tab !== "server") return;
+    const path = cache.path.trim();
+    let stop = false;
+    const timer = window.setTimeout(() => {
+      const q = path ? `?path=${encodeURIComponent(path)}` : "";
+      api
+        .get<{ total?: number; max?: number }>(`/api/sites/${site.id}/cache-disk${q}`)
+        .then((row) => {
+          if (!stop) setCacheMax(row?.max || 0);
+        })
+        .catch(() => {
+          if (!stop) setCacheMax(0);
+        });
+    }, 300);
+    return () => {
+      stop = true;
+      window.clearTimeout(timer);
+    };
+  }, [tab, site.id, cache.path]);
 
   useEffect(() => {
     const o = baseOpts(site);
@@ -1081,7 +1104,7 @@ export function SiteSettings({
               <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
                 Nginx remembers pages it fetched from Apache or the app and serves them again. Files read straight from disk are not stored. A reverse proxy that already has its own cache keeps that cache. A custom nginx file is left as written.
               </Typography.Paragraph>
-              <NginxCacheForm value={cache} onChange={setCache} />
+              <NginxCacheForm value={cache} maxBytes={cacheMax} onChange={setCache} />
               <Popconfirm title="Clear the saved cache for this site?" onConfirm={() => void purgeCache()}>
                 <Button loading={cacheBusy}>Clear cache</Button>
               </Popconfirm>
@@ -1090,6 +1113,15 @@ export function SiteSettings({
                 type="primary"
                 loading={busy}
                 onClick={() => {
+                  if (cache.on && cacheSizeToken(cache.size) === null) {
+                    message.error("Disk limit must be a size such as 500m or 2g.");
+                    return;
+                  }
+                  const bytes = cacheSizeBytes(cache.size);
+                  if (cache.on && cacheMax > 0 && bytes > cacheMax) {
+                    message.error(`Disk limit is at most ${formatBytes(cacheMax)}, 90% of this disk.`);
+                    return;
+                  }
                   const ext = staticExt.trim().replace(/\s+/g, " ");
                   const options = {
                     ...baseOpts(site),

@@ -30,7 +30,67 @@ func ChangeHosts(op string, id int, ip string, names []string) (*rpc.HostsResp, 
 	if err := writeHostsFile(hostsPath, next); err != nil {
 		return nil, err
 	}
+	if err := saveManagedHosts(next); err != nil {
+		return nil, err
+	}
 	return &rpc.HostsResp{Entries: entries}, nil
+}
+
+const managedHostsPath = "/var/lib/siroc/hosts-managed"
+
+const cloudInitHostsCfg = "# Added by siroc. cloud-init rewrites /etc/hosts on boot and drops addresses saved in System tools.\nmanage_etc_hosts: false\n"
+
+// RestoreManagedHosts puts panel rows back after a boot script replaces /etc/hosts,
+// and tells cloud-init to stop doing that on the next boot.
+func RestoreManagedHosts() error {
+	stopCloudInitHosts()
+	live, err := readHostsFile(hostsPath)
+	if err != nil {
+		return err
+	}
+	stored, err := readHostsFile(managedHostsPath)
+	if err != nil {
+		return err
+	}
+	snap := unionManaged(stored, live)
+	if snap != stored {
+		if err := saveManagedText(snap); err != nil {
+			return err
+		}
+	}
+	merged, changed := mergeManagedHosts(live, snap)
+	if !changed {
+		return nil
+	}
+	return writeHostsFile(hostsPath, merged)
+}
+
+func saveManagedHosts(hostsText string) error {
+	return saveManagedText(managedHostText(hostsText))
+}
+
+func saveManagedText(text string) error {
+	if err := os.MkdirAll(filepath.Dir(managedHostsPath), 0755); err != nil {
+		return err
+	}
+	return writeHostsFile(managedHostsPath, text)
+}
+
+func stopCloudInitHosts() {
+	if _, err := os.Stat("/etc/cloud"); err != nil {
+		if _, err := os.Stat("/usr/bin/cloud-init"); err != nil {
+			return
+		}
+	}
+	dir := "/etc/cloud/cloud.cfg.d"
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return
+	}
+	path := filepath.Join(dir, "99-siroc-hosts.cfg")
+	if b, err := os.ReadFile(path); err == nil && string(b) == cloudInitHostsCfg {
+		return
+	}
+	_ = os.WriteFile(path, []byte(cloudInitHostsCfg), 0644)
 }
 
 const hostsPath = "/etc/hosts"

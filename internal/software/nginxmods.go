@@ -4,6 +4,7 @@ package software
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,7 +41,7 @@ func EnsureNginxModules() error {
 	if err != nil {
 		return err
 	}
-	stamp := ver + " vod=" + vodVersion + " lua=" + luaVersion + " ndk=" + ndkVersion + " cc=" + vodCompilerOpt(cpuFlags())
+	stamp := nginxModuleStampFor(ver)
 	rebuilt := false
 	if nginxModuleABIMismatch() || !nginxModulesReady(stamp) {
 		if err := buildNginxModules(ver); err != nil {
@@ -88,6 +89,138 @@ func EnsureNginxModules() error {
 		}
 	}
 	return nil
+}
+
+func nginxModuleStamp() (string, error) {
+	ver, err := installedNginxVersion()
+	if err != nil {
+		return "", err
+	}
+	return nginxModuleStampFor(ver), nil
+}
+
+func nginxModuleStampFor(ver string) string {
+	return ver + " vod=" + vodVersion + " lua=" + luaVersion + " ndk=" + ndkVersion + " cc=" + vodCompilerOpt(cpuFlags())
+}
+
+const nginxModuleHookPath = "/etc/apt/apt.conf.d/99siroc-nginx"
+
+// InstallNginxModuleHook makes apt unload modules built for an older Nginx
+// before that upgrade can leave the service stopped.
+func InstallNginxModuleHook() error {
+	bin, err := agentExecutable()
+	if err != nil {
+		return err
+	}
+	body := NginxModuleHook(bin)
+	if b, err := os.ReadFile(nginxModuleHookPath); err == nil && string(b) == body {
+		return nil
+	}
+	return os.WriteFile(nginxModuleHookPath, []byte(body), 0644)
+}
+
+// RecoverNginxModules runs from apt after a package change. A stale module is
+// unloaded so Nginx can start, and the rebuild is scheduled after apt releases
+// its lock.
+func RecoverNginxModules() error {
+	if _, err := exec.LookPath("nginx"); err != nil {
+		return nil
+	}
+	stamp, err := nginxModuleStamp()
+	if err != nil {
+		return err
+	}
+	staleABI := nginxModuleABIMismatch()
+	if !staleABI && nginxModulesReady(stamp) {
+		return nil
+	}
+	if staleABI {
+		if err := suspendSirocNginxHooks(); err != nil {
+			return err
+		}
+		_ = os.Remove(nginxModStamp)
+		startNginxIfConfigured()
+	}
+	return scheduleNginxModuleBuild()
+}
+
+// RebuildNginxModules compiles the modules for the Nginx that is installed now.
+// Apt may still be exiting when the timer fires, so a held lock is retried.
+func RebuildNginxModules() error {
+	var err error
+	for attempt := 1; attempt <= 5; attempt++ {
+		err = EnsureNginxModules()
+		if err == nil {
+			log.Printf("nginx modules match this nginx")
+			return nil
+		}
+		if !aptLockBusy(err.Error()) || attempt == 5 {
+			return err
+		}
+		log.Printf("nginx modules: apt is busy, retrying")
+		time.Sleep(30 * time.Second)
+	}
+	return err
+}
+
+func scheduleNginxModuleBuild() error {
+	if exec.Command("systemctl", "is-active", "--quiet", "siroc-nginx-modules.service").Run() == nil {
+		return nil
+	}
+	_ = exec.Command("systemctl", "stop", "siroc-nginx-modules.timer").Run()
+	_ = exec.Command("systemctl", "reset-failed", "siroc-nginx-modules.service").Run()
+	bin, err := agentExecutable()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command("systemd-run",
+		"--unit=siroc-nginx-modules",
+		"--description=Rebuild Siroc Nginx modules for the installed Nginx",
+		"--on-active=30s",
+		"--timer-property=AccuracySec=1s",
+		"--collect",
+		bin, "nginx-modules",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if strings.Contains(strings.ToLower(msg), "already exists") {
+			return nil
+		}
+		return fmt.Errorf("schedule nginx module rebuild: %s: %w", msg, err)
+	}
+	log.Printf("nginx module rebuild scheduled")
+	return nil
+}
+
+func startNginxIfConfigured() {
+	if exec.Command("systemctl", "cat", "nginx").Run() != nil {
+		return
+	}
+	if err := nginxConfigTest(); err != nil {
+		log.Printf("nginx modules: config still fails after unloading old modules: %v", err)
+		return
+	}
+	action := "restart"
+	if exec.Command("systemctl", "is-active", "--quiet", "nginx").Run() != nil {
+		action = "start"
+	}
+	if out, err := exec.Command("systemctl", action, "nginx").CombinedOutput(); err != nil {
+		log.Printf("nginx modules: %s nginx: %s", action, strings.TrimSpace(string(out)))
+		return
+	}
+	log.Printf("nginx is running without the modules from the previous nginx version")
+}
+
+func agentExecutable() (string, error) {
+	bin, err := os.Executable()
+	if err != nil || strings.TrimSpace(bin) == "" {
+		return "/usr/local/bin/siroc-agent", nil
+	}
+	if resolved, err := filepath.EvalSymlinks(bin); err == nil && resolved != "" {
+		bin = resolved
+	}
+	return bin, nil
 }
 
 func nginxModuleABIMismatch() bool {

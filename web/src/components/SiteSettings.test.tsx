@@ -134,6 +134,8 @@ describe("SiteSettings", () => {
     expect(screen.getByText(/A cookie from the application is ignored/)).toBeTruthy();
     expect(screen.getByText("Keep a successful page")).toBeTruthy();
     expect(screen.getByText("Never cache these paths")).toBeTruthy();
+    expect(screen.getByText(/90% of the disk/)).toBeTruthy();
+    expect(screen.getByPlaceholderText("1g")).toBeTruthy();
     expect(screen.getByText(/X-Cache-Status/)).toBeTruthy();
   });
 

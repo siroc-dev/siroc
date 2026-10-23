@@ -13,6 +13,22 @@ nginx: configuration file /etc/nginx/nginx.conf test failed`
 	}
 }
 
+func TestNginxModuleHook(t *testing.T) {
+	got := NginxModuleHook("/usr/local/bin/siroc-agent")
+	if !stringsContains(got, "DPkg::Post-Invoke { \"/usr/local/bin/siroc-agent nginx-modules-hook || true\"; };") {
+		t.Fatalf("hook:\n%s", got)
+	}
+	if NginxModuleHook("  ") != NginxModuleHook("") {
+		t.Fatal("blank binary should use the default path")
+	}
+	if !aptLockBusy("Could not get lock /var/lib/dpkg/lock-frontend") {
+		t.Fatal("expected a busy apt lock")
+	}
+	if aptLockBusy("nginx: [emerg] unexpected }") {
+		t.Fatal("a config error is not an apt lock")
+	}
+}
+
 func TestStripSirocLoadModules(t *testing.T) {
 	conf := "user nginx;\nload_module /usr/lib/nginx/modules/ndk_http_module.so;\nload_module /usr/lib/nginx/modules/ngx_http_lua_module.so;\nload_module /usr/lib/nginx/modules/ngx_http_vod_module.so;\nevents {}\n"
 	got, changed := stripSirocLoadModules(conf)
