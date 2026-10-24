@@ -289,7 +289,7 @@ func applyNginxOptimize(vals map[string]string) error {
 	if err := os.MkdirAll("/etc/nginx/conf.d", 0755); err != nil {
 		return err
 	}
-	body := nginxOptimizeConf(vals)
+	body, _ := withoutHeaderBuffers(nginxOptimizeConf(vals))
 	return os.WriteFile(nginxOptimizePath, []byte(body), 0644)
 }
 
@@ -367,8 +367,6 @@ server_tokens ` + v["server_tokens"] + `;
 server_names_hash_bucket_size ` + v["server_names_hash_bucket_size"] + `;
 types_hash_max_size 4096;
 client_body_buffer_size 128k;
-client_header_buffer_size 1k;
-large_client_header_buffers 4 32k;
 reset_timedout_connection on;
 gzip ` + v["gzip"] + `;
 gzip_vary on;

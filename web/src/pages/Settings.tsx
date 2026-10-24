@@ -1,13 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
-import {
-  DesktopOutlined,
-  MoonOutlined,
-  PlayCircleFilled,
-  SearchOutlined,
-  SunOutlined,
-} from "@ant-design/icons";
-import { App, Button, Card, ColorPicker, Form, Input, Select, Space, Switch, Table, Typography } from "antd";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { DesktopOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
+import { App, Button, Card, ColorPicker, Form, Select, Space, Switch, Typography } from "antd";
 import { api } from "@/lib/api";
 import { setPanelTimezone } from "@/lib/panelTime";
 import { useBrand } from "@/components/ThemeProvider";
@@ -19,15 +12,6 @@ type Sys = {
   timezone: string;
   ntp: boolean;
   timezones?: string[];
-};
-
-type Svc = {
-  name: string;
-  title: string;
-  version: string;
-  active: boolean;
-  monitor: boolean;
-  manage?: string;
 };
 
 function timezoneOptions(st: Sys | null) {
@@ -59,8 +43,6 @@ export function Settings() {
   const { message } = App.useApp();
   const { brand, setBrand } = useBrand();
   const [sys, setSys] = useState<Sys | null>(null);
-  const [svc, setSvc] = useState<Svc[]>([]);
-  const [q, setQ] = useState("");
   const [busy, setBusy] = useState("");
   const [tzForm] = Form.useForm();
   const logoInput = useRef<HTMLInputElement>(null);
@@ -73,15 +55,10 @@ export function Settings() {
     tzForm.setFieldsValue({ timezone: data.timezone, ntp: data.ntp });
   }
 
-  async function loadSvc() {
-    setSvc(await api.get<Svc[]>("/api/settings/services"));
-  }
-
   useEffect(() => {
-    Promise.all([
-      loadSys().catch((e) => message.error(e.message)),
-      loadSvc().catch((e) => message.error(e.message)),
-    ]).finally(() => setReady(true));
+    loadSys()
+      .catch((e) => message.error(e.message))
+      .finally(() => setReady(true));
   }, []);
 
   async function saveTheme(next: Brand) {
@@ -141,35 +118,6 @@ export function Settings() {
       setBusy("");
     }
   }
-
-  async function toggleMonitor(row: Svc, monitor: boolean) {
-    setSvc((cur) => cur.map((s) => (s.name === row.name ? { ...s, monitor } : s)));
-    try {
-      await api.put("/api/settings/services/monitor", { name: row.name, monitor });
-    } catch (err) {
-      setSvc((cur) => cur.map((s) => (s.name === row.name ? { ...s, monitor: row.monitor } : s)));
-      message.error(err instanceof Error ? err.message : "Failed");
-    }
-  }
-
-  async function restart(row: Svc) {
-    setBusy("svc:" + row.name);
-    try {
-      await api.post("/api/software/service", { name: row.name, action: "restart" });
-      message.success(`Restarted ${row.title}`);
-      await loadSvc();
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : "Failed");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  const rows = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    if (!needle) return svc;
-    return svc.filter((s) => `${s.title} ${s.name} ${s.version}`.toLowerCase().includes(needle));
-  }, [svc, q]);
 
   if (!ready) return <PageSkeleton cards={2} rows={6} />;
 
@@ -340,67 +288,6 @@ export function Settings() {
             </Space>
           </div>
         </div>
-      </Card>
-
-      <Card
-        title={
-          <Space>
-            <span>Service Status</span>
-            <Button onClick={() => loadSvc().catch((e) => message.error(e.message))}>Refresh</Button>
-          </Space>
-        }
-        extra={
-          <Input
-            allowClear
-            prefix={<SearchOutlined />}
-            placeholder="Please enter the service name"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            style={{ width: 240 }}
-          />
-        }
-      >
-        <Table
-          size="small"
-          rowKey="name"
-          dataSource={rows}
-          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (n) => `Total ${n}` }}
-          columns={[
-            { title: "Service Name", dataIndex: "title" },
-            {
-              title: "Monitor",
-              width: 110,
-              render: (_, row) => <Switch checked={row.monitor} onChange={(v) => toggleMonitor(row, v)} />,
-            },
-            { title: "Version", dataIndex: "version", width: 180, render: (v: string) => v || "—" },
-            {
-              title: "Status",
-              width: 140,
-              render: (_, row) =>
-                row.active ? (
-                  <Typography.Text type="success">
-                    <PlayCircleFilled /> Running
-                  </Typography.Text>
-                ) : (
-                  <Typography.Text type="secondary">Stopped</Typography.Text>
-                ),
-            },
-            {
-              title: "Operate",
-              width: 180,
-              render: (_, row) => (
-                <Space>
-                  <Button type="link" size="small" loading={busy === "svc:" + row.name} onClick={() => restart(row)}>
-                    Restart
-                  </Button>
-                  {row.manage ? (
-                    <Link to={row.manage}>Manage</Link>
-                  ) : null}
-                </Space>
-              ),
-            },
-          ]}
-        />
       </Card>
     </div>
   );

@@ -126,8 +126,10 @@ func main() {
 		log.Printf("hosts: %v", err)
 	}
 	repairAgentUnit()
+	security.SyncLocalVhostHosts()
 	hosting.RepairNginxHTTP2()
 	hosting.RepairAssetLogs()
+	software.EnsureHeaderBuffers()
 	if repaired, err := dbmgmt.RepairMariaDBConfig(); err != nil {
 		log.Printf("mariadb config: %v", err)
 	} else if repaired {

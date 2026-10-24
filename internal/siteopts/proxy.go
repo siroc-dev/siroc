@@ -376,7 +376,15 @@ func writeProxyHeaders(b *strings.Builder, target, host string, https, websocket
 	fmt.Fprintf(b, "        proxy_set_header Host %s;\n", host)
 	b.WriteString("        proxy_set_header X-Real-IP $remote_addr;\n")
 	b.WriteString("        proxy_set_header X-Real-Port $remote_port;\n")
-	b.WriteString("        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n")
+	// Cloudflare rejects a second pass when this chain is over 100 characters,
+	// when the header is repeated, or when CF-Connecting-IP is already set.
+	b.WriteString("        proxy_set_header X-Forwarded-For $remote_addr;\n")
+	b.WriteString("        proxy_set_header CF-Connecting-IP \"\";\n")
+	b.WriteString("        proxy_set_header CF-Ray \"\";\n")
+	b.WriteString("        proxy_set_header CF-Visitor \"\";\n")
+	b.WriteString("        proxy_set_header CF-IPCountry \"\";\n")
+	b.WriteString("        proxy_set_header True-Client-IP \"\";\n")
+	b.WriteString("        proxy_set_header CDN-Loop \"\";\n")
 	b.WriteString("        proxy_set_header REMOTE-HOST $remote_addr;\n")
 	if https {
 		b.WriteString("        proxy_ssl_server_name on;\n")

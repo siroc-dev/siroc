@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.88">0.2.88</a>
           <a href="#v0.2.87">0.2.87</a>
           <a href="#v0.2.86">0.2.86</a>
           <a href="#v0.2.85">0.2.85</a>
@@ -116,6 +117,21 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.88">
+          <h2><a href="#v0.2.88">0.2.88</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Service Status moves from Settings to System tools. Search, monitor, restart, and manage stay on that tab, above Memcached and FFmpeg.</li>
+            <li>Nginx accepts a larger Cookie header. One header can be 128k (<code>large_client_header_buffers 4 128k</code>). Apache uses the same limit (<code>LimitRequestFieldSize 131072</code>).</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li><code>client_header_buffer_size</code> is set only in <code>/etc/nginx/conf.d/00-siroc-headers.conf</code>. On start the agent removes the same lines from <code>nginx.conf</code> and <code>99-cp-optimize.conf</code>, so <code>nginx -t</code> does not fail on a duplicate directive. Optimize no longer writes those lines back.</li>
+            <li>The panel hosts block no longer points public website names at <code>127.0.0.1</code>. Only <code>pma.cp.local</code> and local names, such as <code>.test</code> and <code>.local</code>, stay there. A reverse proxy to a public hostname uses DNS instead of looping into this server.</li>
+            <li>A reverse proxy sends <code>X-Forwarded-For</code> as the client address only, and does not forward <code>CF-Connecting-IP</code>, <code>CF-Ray</code>, <code>CF-Visitor</code>, <code>CF-IPCountry</code>, <code>True-Client-IP</code>, or <code>CDN-Loop</code>. Use Rebuild configs once after upgrading so existing proxy sites pick this up.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.87">
           <h2><a href="#v0.2.87">0.2.87</a></h2>

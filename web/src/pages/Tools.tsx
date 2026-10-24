@@ -7,6 +7,7 @@ import { PanelUpdate } from "@/components/PanelUpdate";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { Fail2banBans, type Fail2banBan } from "@/components/Fail2banBans";
 import { HostsEditor } from "@/components/HostsEditor";
+import { ServiceStatus } from "@/components/ServiceStatus";
 import { NFSManager } from "@/components/NFSManager";
 import { OptionList, type CheckOption } from "@/components/OptionChecks";
 
@@ -419,9 +420,10 @@ export function Tools() {
           },
           {
             key: "svc",
-            label: "Services",
+            label: "Service Status",
             children: (
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                <ServiceStatus />
                 <Card title="Memcached">
                   {!st?.memcached?.installed ? (
                     <Alert type="info" showIcon message="Install Memcached from Software." />
