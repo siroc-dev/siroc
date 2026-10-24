@@ -33,6 +33,7 @@ func Status() (*rpc.SysopsStatus, error) {
 		IPs:       addrs(),
 		Routes:    routes(),
 		Ifaces:    ifaces(),
+		Netplan:   useNetplan(),
 		Mounts:    mounts(),
 		Fstab:     fstab(),
 		Fail2ban:  fail2banStatus(),
@@ -125,7 +126,7 @@ func Apply(req rpc.SysopsReq) (*rpc.SysopsStatus, error) {
 	case "swap":
 		err = setSwap(req.SwapMB)
 	case "ip-add":
-		err = addIP(req.Interface, req.Address, req.VLAN)
+		err = addIP(req.Interface, req.Address, req.VLAN, strings.TrimSpace(req.Gateway))
 	case "ip-del":
 		err = delIP(req.Interface, req.Address)
 	case "route":
@@ -541,35 +542,51 @@ func routes() []string {
 	return out
 }
 
-func addIP(iface, addr string, vlan int) error {
+func addIP(iface, addr string, vlan int, gateway string) error {
 	if iface == "" || addr == "" {
 		return fmt.Errorf("interface and CIDR address required")
 	}
 	if err := validIface(iface); err != nil {
 		return err
 	}
-	if _, _, err := net.ParseCIDR(addr); err != nil {
-		return fmt.Errorf("address must be CIDR, e.g. 192.168.1.10/24")
+	cidr, gw, err := normalizeNetAddr(addr, gateway)
+	if err != nil {
+		return err
 	}
 	dev := iface
+	section := "ethernets"
+	vlanID := 0
 	if vlan > 0 {
 		name, err := vlanIfaceName(iface, vlan)
 		if err != nil {
 			return err
 		}
-		if err := ensureVLAN(iface, name, vlan); err != nil {
+		dev = name
+		section = "vlans"
+		vlanID = vlan
+	}
+	if useNetplan() {
+		return persistNetplanAdd(section, dev, iface, vlanID, cidr, gw)
+	}
+	if vlan > 0 {
+		if err := ensureVLAN(iface, dev, vlan); err != nil {
 			return err
 		}
 		if err := linkUp(iface); err != nil {
 			return err
 		}
-		if err := linkUp(name); err != nil {
-			return err
-		}
-		dev = name
 	}
-	if out, err := exec.Command("ip", "addr", "add", addr, "dev", dev).CombinedOutput(); err != nil {
-		return fmt.Errorf("ip add: %s", strings.TrimSpace(string(out)))
+	if err := linkUp(dev); err != nil {
+		return err
+	}
+	if out, err := exec.Command("ip", "addr", "add", cidr, "dev", dev).CombinedOutput(); err != nil {
+		msg := strings.TrimSpace(string(out))
+		if gw == "" || !strings.Contains(msg, "File exists") {
+			return fmt.Errorf("ip add: %s", msg)
+		}
+	}
+	if gw != "" {
+		return setGateway(gw, dev)
 	}
 	return nil
 }
@@ -614,15 +631,31 @@ func delIP(iface, addr string) error {
 	if err := validIface(iface); err != nil {
 		return err
 	}
+	if cidr, _, err := normalizeNetAddr(addr, ""); err == nil && useNetplan() {
+		if err := persistNetplanDel(iface, cidr); err != nil {
+			return err
+		}
+	}
 	if out, err := exec.Command("ip", "addr", "del", addr, "dev", iface).CombinedOutput(); err != nil {
-		return fmt.Errorf("ip del: %s", strings.TrimSpace(string(out)))
+		msg := strings.TrimSpace(string(out))
+		if !addrAlreadyGone(msg) {
+			return fmt.Errorf("ip del: %s", msg)
+		}
 	}
 	if _, ok := vlanDevices()[iface]; ok && !hasRoutableAddr(iface) {
 		if out, err := exec.Command("ip", "link", "delete", iface).CombinedOutput(); err != nil {
-			return fmt.Errorf("vlan delete: %s", strings.TrimSpace(string(out)))
+			msg := strings.TrimSpace(string(out))
+			if !strings.Contains(strings.ToLower(msg), "cannot find") && !strings.Contains(strings.ToLower(msg), "does not exist") {
+				return fmt.Errorf("vlan delete: %s", msg)
+			}
 		}
 	}
 	return nil
+}
+
+func addrAlreadyGone(msg string) bool {
+	low := strings.ToLower(msg)
+	return strings.Contains(low, "cannot assign") || strings.Contains(low, "not found") || strings.Contains(low, "no such")
 }
 
 func hasRoutableAddr(iface string) bool {

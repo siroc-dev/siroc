@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.89">0.2.89</a>
           <a href="#v0.2.88">0.2.88</a>
           <a href="#v0.2.87">0.2.87</a>
           <a href="#v0.2.86">0.2.86</a>
@@ -117,6 +118,18 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.89">
+          <h2><a href="#v0.2.89">0.2.89</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>On Ubuntu, IP addresses added in System tools are written to <code>/etc/netplan/99-siroc.yaml</code> and kept after reboot. The form has a gateway. It replaces the default route on that interface. If the interface uses DHCP, the DHCP gateway is no longer used once a gateway is set. Leave the gateway empty to keep the current route. Submitting an address that is already present updates the gateway. cloud-init is told not to rewrite netplan on boot.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Adding an address brings the interface up. Removing the last address on a VLAN removes that VLAN from netplan as well.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.88">
           <h2><a href="#v0.2.88">0.2.88</a></h2>

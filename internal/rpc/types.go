@@ -1554,6 +1554,7 @@ type SysopsStatus struct {
 	IPs             []NetAddr        `json:"ips,omitempty"`
 	Routes          []string         `json:"routes,omitempty"`
 	Ifaces          []string         `json:"ifaces,omitempty"`
+	Netplan         bool             `json:"netplan,omitempty"`
 	Mounts          []MountInfo      `json:"mounts,omitempty"`
 	Fstab           []FstabEntry     `json:"fstab,omitempty"`
 	Fail2ban        *Fail2banStatus  `json:"fail2ban,omitempty"`

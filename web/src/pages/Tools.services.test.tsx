@@ -19,7 +19,7 @@ describe("System tools services", () => {
       if (String(url).includes("/services")) {
         return [{ name: "nginx", title: "Nginx", version: "1.31.8", active: true, monitor: true, manage: "/nginx" }];
       }
-      return { hostname: "box", time: "now", timezone: "UTC", ntp: true, dns: [], mounts: [], ips: [], routes: [], ifaces: [] };
+      return { hostname: "box", time: "now", timezone: "UTC", ntp: true, dns: [], mounts: [], ips: [], routes: [], ifaces: ["eth0"], netplan: true };
     });
   });
 
@@ -34,5 +34,18 @@ describe("System tools services", () => {
     fireEvent.click(await screen.findByRole("tab", { name: "Service Status" }));
     expect(await screen.findByText("Nginx")).toBeInTheDocument();
     expect(screen.getByText("Memcached")).toBeInTheDocument();
+  });
+
+  it("saves an address and gateway on the IP form", async () => {
+    render(
+      <MemoryRouter>
+        <AntdApp>
+          <Tools />
+        </AntdApp>
+      </MemoryRouter>,
+    );
+    fireEvent.click(await screen.findByRole("tab", { name: "OS" }));
+    expect(await screen.findByPlaceholderText("Gateway")).toBeInTheDocument();
+    expect(screen.getByText(/written to netplan/)).toBeInTheDocument();
   });
 });

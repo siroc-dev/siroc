@@ -23,6 +23,7 @@ type Status = {
   ips?: { iface: string; address: string; family: string; vlan?: number; parent?: string }[];
   routes?: string[];
   ifaces?: string[];
+  netplan?: boolean;
   mounts?: { device: string; mountPoint: string; fsType: string; size?: string; used?: string; avail?: string; usePct?: string }[];
   fstab?: { device: string; mountPoint: string; fsType: string; options: string }[];
   fail2ban?: { installed: boolean; active: boolean; jails?: { name: string; banned?: string[]; failed?: number; total?: number }[]; bans?: Fail2banBan[]; whitelist?: string[]; message?: string };
@@ -211,7 +212,15 @@ export function Tools() {
                     form={ipForm}
                     layout="inline"
                     style={{ marginTop: 12 }}
-                    onFinish={(v) => apply({ action: "ip-add", interface: v.interface, address: v.address, vlan: v.vlan || undefined })}
+                    onFinish={(v) =>
+                      apply({
+                        action: "ip-add",
+                        interface: v.interface,
+                        address: v.address,
+                        vlan: v.vlan || undefined,
+                        gateway: String(v.gateway || "").trim() || undefined,
+                      })
+                    }
                   >
                     <Form.Item name="interface" rules={[{ required: true }]}>
                       <Select
@@ -228,12 +237,19 @@ export function Tools() {
                     <Form.Item name="address" rules={[{ required: true }]}>
                       <Input placeholder="10.0.0.5/24" style={{ width: 200 }} />
                     </Form.Item>
+                    <Form.Item name="gateway">
+                      <Input placeholder="Gateway" style={{ width: 160 }} />
+                    </Form.Item>
                     <Button htmlType="submit" loading={busy}>
                       Add
                     </Button>
                   </Form>
                   <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
-                    Leave VLAN empty for the interface itself. A VLAN ID creates that VLAN, brings it up, and puts the address on it.
+                    Leave VLAN empty for the interface itself. A VLAN ID creates that VLAN and puts the address on it.
+                    {st?.netplan
+                      ? " On Ubuntu the address and gateway are written to netplan and kept after reboot."
+                      : " The address and gateway apply until the next reboot."}{" "}
+                    Gateway replaces the default route on that interface. Leave gateway empty to keep the current route.
                   </Typography.Paragraph>
                   <Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>
                     {(st?.routes || []).join(" · ") || "No routes"}
