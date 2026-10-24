@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.90">0.2.90</a>
           <a href="#v0.2.89">0.2.89</a>
           <a href="#v0.2.88">0.2.88</a>
           <a href="#v0.2.87">0.2.87</a>
@@ -118,6 +119,14 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.90">
+          <h2><a href="#v0.2.90">0.2.90</a></h2>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>An address added to a bond, bridge, or VLAN stays on that device type in <code>/etc/netplan/99-siroc.yaml</code>. Netplan no longer fails with <code>changes device type</code> when the interface is <code>bond_public</code>. The bond members, the existing IPv6 address, and the <code>fe80::1</code> route stay in the original netplan file. If <code>99-siroc.yaml</code> already listed that bond under <code>ethernets</code>, delete the file and run <code>netplan generate</code> before adding the address again.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.89">
           <h2><a href="#v0.2.89">0.2.89</a></h2>

@@ -189,6 +189,83 @@ func TestStripGatewayKeepsNameservers(t *testing.T) {
 	}
 }
 
+const bondNet = `
+network:
+  version: 2
+  ethernets:
+    ens22f0np0:
+      match:
+        macaddress: "9c:63:c0:1b:57:c6"
+      set-name: "ens22f0np0"
+    ens33f1np1:
+      match:
+        macaddress: "58:a2:e1:9a:ad:2f"
+      set-name: "ens33f1np1"
+  bonds:
+    bond_public:
+      addresses:
+        - "2001:41d0:726:b600::/56"
+      dhcp4: true
+      accept-ra: false
+      macaddress: "9c:63:c0:1b:57:c6"
+      interfaces:
+        - ens22f0np0
+        - ens33f1np1
+      parameters:
+        mode: "802.3ad"
+        lacp-rate: "fast"
+        transmit-hash-policy: "layer3+4"
+      routes:
+        - on-link: true
+          to: default
+          via: "fe80::1"
+`
+
+func TestPlanNetplanAddBondKeepsType(t *testing.T) {
+	files := map[string]string{
+		"50-cloud-init.yaml": bondNet,
+		sirocNetplanName: `
+network:
+  version: 2
+  ethernets:
+    bond_public:
+      addresses:
+        - 203.0.113.10/24
+`,
+	}
+	plan, err := planNetplanAdd(files, "ethernets", "bond_public", "bond_public", 0, "203.0.113.20/24", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := plan.Update["50-cloud-init.yaml"]; ok {
+		t.Fatal("bond file should stay unchanged")
+	}
+	got := plan.Update[sirocNetplanName]
+	if strings.Contains(got, "ethernets:") {
+		t.Fatalf("bond was written as an ethernet:\n%s", got)
+	}
+	if !strings.Contains(got, "bonds:") || !strings.Contains(got, "bond_public:") {
+		t.Fatalf("bond section missing:\n%s", got)
+	}
+	for _, want := range []string{"2001:41d0:726:b600::/56", "203.0.113.10/24", "203.0.113.20/24"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %s:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "interfaces:") || strings.Contains(got, "802.3ad") {
+		t.Fatalf("overlay replaced bond members:\n%s", got)
+	}
+
+	withGW, err := planNetplanAdd(map[string]string{"50-cloud-init.yaml": bondNet}, "ethernets", "bond_public", "bond_public", 0, "203.0.113.20/24", "203.0.113.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw := withGW.Update[sirocNetplanName]
+	if !strings.Contains(gw, "via: fe80::1") || !strings.Contains(gw, "on-link: true") || !strings.Contains(gw, "via: 203.0.113.1") {
+		t.Fatalf("ipv6 default route was dropped:\n%s", gw)
+	}
+}
+
 func TestOSReleaseID(t *testing.T) {
 	if osReleaseID("NAME=Ubuntu\nID=ubuntu\n") != "ubuntu" {
 		t.Fatal("ubuntu")

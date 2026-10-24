@@ -24,10 +24,22 @@ type sirocNetplan struct {
 	Network sirocNetwork `yaml:"network"`
 }
 
+// netplanDeviceSections are the device groups that can hold an address.
+// A later file must use the same group. Writing a bond under ethernets makes
+// netplan reject the file because the device type changed.
+var netplanDeviceSections = []string{
+	"ethernets", "bonds", "bridges", "vlans", "tunnels", "vrfs", "dummy-devices",
+}
+
 type sirocNetwork struct {
-	Version   int                     `yaml:"version"`
-	Ethernets map[string]*sirocDevice `yaml:"ethernets,omitempty"`
-	VLANs     map[string]*sirocDevice `yaml:"vlans,omitempty"`
+	Version      int                     `yaml:"version"`
+	Ethernets    map[string]*sirocDevice `yaml:"ethernets,omitempty"`
+	Bonds        map[string]*sirocDevice `yaml:"bonds,omitempty"`
+	Bridges      map[string]*sirocDevice `yaml:"bridges,omitempty"`
+	VLANs        map[string]*sirocDevice `yaml:"vlans,omitempty"`
+	Tunnels      map[string]*sirocDevice `yaml:"tunnels,omitempty"`
+	VRFs         map[string]*sirocDevice `yaml:"vrfs,omitempty"`
+	DummyDevices map[string]*sirocDevice `yaml:"dummy-devices,omitempty"`
 }
 
 type sirocDevice struct {
@@ -105,14 +117,12 @@ func osReleaseID(text string) string {
 // in place except for gateway4 and gateway6, which would otherwise add a
 // second default route.
 func planNetplanAdd(files map[string]string, section, dev, parent string, vlanID int, cidr, gw string) (netplanPlan, error) {
-	eth, vlans, err := mergeDocs(files)
+	section = deviceSection(files, dev, vlanID, section)
+	devs, err := mergeDocs(files)
 	if err != nil {
 		return netplanPlan{}, err
 	}
-	merged := eth[dev]
-	if section == "vlans" {
-		merged = vlans[dev]
-	}
+	merged := devs[section][dev]
 	var have []string
 	var routes []sirocRoute
 	dhcp4 := false
@@ -120,6 +130,14 @@ func planNetplanAdd(files map[string]string, section, dev, parent string, vlanID
 		have = merged.addresses
 		routes = merged.routes
 		dhcp4 = merged.dhcp4
+	}
+	// A previous file may have saved this device under the wrong group.
+	// Keep those addresses, then drop the wrong group so the type matches.
+	for _, other := range netplanDeviceSections {
+		if other == section || devs[other] == nil || devs[other][dev] == nil {
+			continue
+		}
+		have = append(have, devs[other][dev].addresses...)
 	}
 	list := canonList(have)
 	if containsAddr(list, cidr) {
@@ -133,6 +151,7 @@ func planNetplanAdd(files map[string]string, section, dev, parent string, vlanID
 	if err != nil {
 		return netplanPlan{}, err
 	}
+	dropOtherSections(&overlay, section, dev)
 	devices := overlayDevices(&overlay, section)
 	cur := devices[dev]
 	if cur == nil {
@@ -176,16 +195,21 @@ func planNetplanAdd(files map[string]string, section, dev, parent string, vlanID
 // address on a VLAN also removes that VLAN, so the interface does not stay
 // behind with no address.
 func planNetplanDel(files map[string]string, iface, cidr string) (netplanPlan, error) {
-	eth, vlans, err := mergeDocs(files)
+	devs, err := mergeDocs(files)
 	if err != nil {
 		return netplanPlan{}, err
 	}
-	section := ""
-	if vlans[iface] != nil && containsAddr(canonList(vlans[iface].addresses), cidr) {
-		section = "vlans"
-	} else if eth[iface] != nil && containsAddr(canonList(eth[iface].addresses), cidr) {
-		section = "ethernets"
-	} else {
+	section := deviceSection(files, iface, 0, "")
+	if section == "" || devs[section] == nil || devs[section][iface] == nil || !containsAddr(canonList(devs[section][iface].addresses), cidr) {
+		section = ""
+		for _, candidate := range netplanDeviceSections {
+			if devs[candidate][iface] != nil && containsAddr(canonList(devs[candidate][iface].addresses), cidr) {
+				section = candidate
+				break
+			}
+		}
+	}
+	if section == "" {
 		return netplanPlan{}, nil
 	}
 	plan := netplanPlan{Update: map[string]string{}}
@@ -199,6 +223,21 @@ func planNetplanDel(files map[string]string, iface, cidr string) (netplanPlan, e
 			changedFiles[name] = next
 		} else {
 			changedFiles[name] = content
+		}
+	}
+	if content, ok := changedFiles[sirocNetplanName]; ok {
+		for _, other := range netplanDeviceSections {
+			if other == section {
+				continue
+			}
+			next, changed, err := removeNetplanDevice(content, other, iface)
+			if err != nil {
+				return netplanPlan{}, err
+			}
+			if changed {
+				content = next
+				changedFiles[sirocNetplanName] = next
+			}
 		}
 	}
 	if section == "vlans" && !vlanHasAddress(changedFiles, iface) {
@@ -227,17 +266,115 @@ func planNetplanDel(files map[string]string, iface, cidr string) (netplanPlan, e
 	return plan, nil
 }
 
+func deviceSection(files map[string]string, dev string, vlanID int, fallback string) string {
+	if vlanID > 0 {
+		return "vlans"
+	}
+	if section := definedSection(files, dev, true); section != "" {
+		return section
+	}
+	if section := definedSection(files, dev, false); section != "" {
+		return section
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return "ethernets"
+}
+
+// definedSection reports the device group in netplan files. skipSiroc ignores
+// 99-siroc.yaml so a bond saved earlier as an ethernet does not hide the real type.
+func definedSection(files map[string]string, dev string, skipSiroc bool) string {
+	names := make([]string, 0, len(files))
+	for name := range files {
+		if skipSiroc && name == sirocNetplanName {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	found := ""
+	for _, name := range names {
+		var doc map[string]any
+		if yaml.Unmarshal([]byte(files[name]), &doc) != nil {
+			continue
+		}
+		network, _ := doc["network"].(map[string]any)
+		if network == nil {
+			continue
+		}
+		for _, section := range netplanDeviceSections {
+			sec, _ := network[section].(map[string]any)
+			if _, ok := sec[dev]; ok {
+				found = section
+			}
+		}
+	}
+	return found
+}
+
 func overlayDevices(doc *sirocNetplan, section string) map[string]*sirocDevice {
-	if section == "vlans" {
+	switch section {
+	case "bonds":
+		if doc.Network.Bonds == nil {
+			doc.Network.Bonds = map[string]*sirocDevice{}
+		}
+		return doc.Network.Bonds
+	case "bridges":
+		if doc.Network.Bridges == nil {
+			doc.Network.Bridges = map[string]*sirocDevice{}
+		}
+		return doc.Network.Bridges
+	case "vlans":
 		if doc.Network.VLANs == nil {
 			doc.Network.VLANs = map[string]*sirocDevice{}
 		}
 		return doc.Network.VLANs
+	case "tunnels":
+		if doc.Network.Tunnels == nil {
+			doc.Network.Tunnels = map[string]*sirocDevice{}
+		}
+		return doc.Network.Tunnels
+	case "vrfs":
+		if doc.Network.VRFs == nil {
+			doc.Network.VRFs = map[string]*sirocDevice{}
+		}
+		return doc.Network.VRFs
+	case "dummy-devices":
+		if doc.Network.DummyDevices == nil {
+			doc.Network.DummyDevices = map[string]*sirocDevice{}
+		}
+		return doc.Network.DummyDevices
+	default:
+		if doc.Network.Ethernets == nil {
+			doc.Network.Ethernets = map[string]*sirocDevice{}
+		}
+		return doc.Network.Ethernets
 	}
-	if doc.Network.Ethernets == nil {
-		doc.Network.Ethernets = map[string]*sirocDevice{}
+}
+
+func dropOtherSections(doc *sirocNetplan, keep, name string) {
+	if keep != "ethernets" {
+		delete(doc.Network.Ethernets, name)
 	}
-	return doc.Network.Ethernets
+	if keep != "bonds" {
+		delete(doc.Network.Bonds, name)
+	}
+	if keep != "bridges" {
+		delete(doc.Network.Bridges, name)
+	}
+	if keep != "vlans" {
+		delete(doc.Network.VLANs, name)
+	}
+	if keep != "tunnels" {
+		delete(doc.Network.Tunnels, name)
+	}
+	if keep != "vrfs" {
+		delete(doc.Network.VRFs, name)
+	}
+	if keep != "dummy-devices" {
+		delete(doc.Network.DummyDevices, name)
+	}
 }
 
 func parseOverlay(content string) (sirocNetplan, error) {
@@ -258,8 +395,23 @@ func marshalOverlay(doc sirocNetplan) (string, error) {
 	if len(doc.Network.Ethernets) == 0 {
 		doc.Network.Ethernets = nil
 	}
+	if len(doc.Network.Bonds) == 0 {
+		doc.Network.Bonds = nil
+	}
+	if len(doc.Network.Bridges) == 0 {
+		doc.Network.Bridges = nil
+	}
 	if len(doc.Network.VLANs) == 0 {
 		doc.Network.VLANs = nil
+	}
+	if len(doc.Network.Tunnels) == 0 {
+		doc.Network.Tunnels = nil
+	}
+	if len(doc.Network.VRFs) == 0 {
+		doc.Network.VRFs = nil
+	}
+	if len(doc.Network.DummyDevices) == 0 {
+		doc.Network.DummyDevices = nil
 	}
 	doc.Network.Version = 2
 	var buf bytes.Buffer
@@ -274,27 +426,30 @@ func marshalOverlay(doc sirocNetplan) (string, error) {
 	return buf.String(), nil
 }
 
-func mergeDocs(files map[string]string) (map[string]*npDev, map[string]*npDev, error) {
+func mergeDocs(files map[string]string) (map[string]map[string]*npDev, error) {
 	names := make([]string, 0, len(files))
 	for name := range files {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	eth := map[string]*npDev{}
-	vlans := map[string]*npDev{}
+	out := map[string]map[string]*npDev{}
+	for _, section := range netplanDeviceSections {
+		out[section] = map[string]*npDev{}
+	}
 	for _, name := range names {
 		var doc map[string]any
 		if err := yaml.Unmarshal([]byte(files[name]), &doc); err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", name, err)
+			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 		network, _ := doc["network"].(map[string]any)
 		if network == nil {
 			continue
 		}
-		absorbDevices(eth, network["ethernets"])
-		absorbDevices(vlans, network["vlans"])
+		for _, section := range netplanDeviceSections {
+			absorbDevices(out[section], network[section])
+		}
 	}
-	return eth, vlans, nil
+	return out, nil
 }
 
 func absorbDevices(dst map[string]*npDev, raw any) {
@@ -465,11 +620,11 @@ func v6Default(route sirocRoute) bool {
 }
 
 func vlanHasAddress(files map[string]string, iface string) bool {
-	_, vlans, err := mergeDocs(files)
-	if err != nil || vlans[iface] == nil {
+	devs, err := mergeDocs(files)
+	if err != nil || devs["vlans"][iface] == nil {
 		return false
 	}
-	return len(canonList(vlans[iface].addresses)) > 0
+	return len(canonList(devs["vlans"][iface].addresses)) > 0
 }
 
 func netplanBlank(content string) bool {
