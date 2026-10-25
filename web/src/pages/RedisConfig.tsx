@@ -16,6 +16,8 @@ export type RedisSettings = {
   saveToDisk?: boolean;
   timeout: number;
   databases: number;
+  ioThreads: number;
+  ioThreadsDoReads: boolean;
   confPath?: string;
   conf?: string;
   message?: string;
@@ -48,6 +50,8 @@ export function RedisConfigPanel() {
         saveToDisk: data.saveToDisk !== false,
         timeout: data.timeout || 0,
         databases: data.databases || 16,
+        ioThreads: data.ioThreads || 1,
+        ioThreadsDoReads: !!data.ioThreadsDoReads && (data.ioThreads || 1) > 1,
       });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to load Redis config");
@@ -70,6 +74,8 @@ export function RedisConfigPanel() {
     saveToDisk?: boolean;
     timeout: number;
     databases: number;
+    ioThreads: number;
+    ioThreadsDoReads: boolean;
   }) {
     setFormBusy(true);
     try {
@@ -108,6 +114,8 @@ export function RedisConfigPanel() {
         saveToDisk: next.saveToDisk !== false,
         timeout: next.timeout || 0,
         databases: next.databases || 16,
+        ioThreads: next.ioThreads || 1,
+        ioThreadsDoReads: !!next.ioThreadsDoReads && (next.ioThreads || 1) > 1,
         password: "",
         clearPassword: false,
       });
@@ -178,6 +186,32 @@ export function RedisConfigPanel() {
           </Form.Item>
           <Form.Item name="databases" label="Logical databases">
             <InputNumber min={1} max={1024} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            name="ioThreads"
+            label="I/O threads"
+            extra="1 uses the main thread only. A higher number uses extra threads for socket writes. Redis restarts when this is saved."
+          >
+            <InputNumber
+              min={1}
+              max={128}
+              style={{ width: "100%" }}
+              onChange={(n) => {
+                if ((n || 1) <= 1) form.setFieldValue("ioThreadsDoReads", false);
+              }}
+            />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate>
+            {() => (
+              <Form.Item
+                name="ioThreadsDoReads"
+                valuePropName="checked"
+                label="I/O threads read"
+                extra="Also read and parse commands on the I/O threads. Available when I/O threads is greater than 1."
+              >
+                <Switch disabled={(form.getFieldValue("ioThreads") || 1) <= 1} />
+              </Form.Item>
+            )}
           </Form.Item>
           <Popconfirm title="Save settings and restart Redis?" onConfirm={() => form.submit()}>
             <Button type="primary" htmlType="button" loading={formBusy}>

@@ -108,7 +108,7 @@ func (m *Manager) LockOpenBasedir() {
 		}
 	}
 	for ver := range reload {
-		_ = exec.Command("systemctl", "reload", "php"+ver+"-fpm").Run()
+		_ = reloadPHPFPM(ver)
 	}
 }
 

@@ -189,6 +189,8 @@ type WPStatus = {
   pingbacksOff?: boolean;
   uploadsPhpBlocked?: boolean;
   users?: WPUser[];
+  usersAt?: string;
+  cachedAt?: string;
   plugins?: WPPlugin[];
   updates?: WPUpdates;
   security?: WPIssue[];
@@ -256,6 +258,17 @@ function randomWPPrefix() {
   let s = letters[bytes[0] % letters.length];
   for (let i = 1; i < 5; i++) s += alnum[bytes[i] % alnum.length];
   return `${s}_`;
+}
+
+function wpStaffUsers(users?: WPUser[]) {
+  return (users || []).filter((u) => /(^|[,\s])(administrator|editor)([,\s]|$)/i.test(u.roles || ""));
+}
+
+function wpUsersUpdated(at?: string) {
+  if (!at) return "";
+  const when = new Date(at);
+  if (Number.isNaN(when.getTime())) return "";
+  return ` Updated ${when.toLocaleString()}.`;
 }
 
 function randomWPLogin() {
@@ -1787,9 +1800,16 @@ export function Sites() {
                 label: "Site",
                 children: (
                   <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                    <Typography.Text type="secondary">
-                      WordPress {app.wordpress?.version} · {app.appRoot}
-                    </Typography.Text>
+                    <Space style={{ width: "100%", justifyContent: "space-between" }} align="start">
+                      <Typography.Text type="secondary">
+                        WordPress {app.wordpress?.version} · {app.appRoot}
+                        <br />
+                        Site title, URL, plugins, and WP-CLI commands are cached for 1 hour.{wpUsersUpdated(app.wordpress?.cachedAt)}
+                      </Typography.Text>
+                      <Button loading={appBusy} onClick={() => void runApp(appSite, { action: "site-refresh" })}>
+                        Refresh
+                      </Button>
+                    </Space>
                     <Typography.Text>Site title</Typography.Text>
                     <Input value={wpName} onChange={(e) => setWpName(e.target.value)} />
                     <Typography.Text>Site URL</Typography.Text>
@@ -1849,11 +1869,21 @@ export function Sites() {
                 key: "users",
                 label: "Users",
                 children: (
+                  <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                    <Space style={{ width: "100%", justifyContent: "space-between" }} align="start">
+                      <Typography.Text type="secondary">
+                        Administrator and editor only. Cached for 1 hour.{wpUsersUpdated(app.wordpress?.usersAt)}
+                      </Typography.Text>
+                      <Button loading={appBusy} onClick={() => void runApp(appSite, { action: "users-refresh" })}>
+                        Refresh
+                      </Button>
+                    </Space>
                   <Table
                     rowKey="id"
                     size="small"
-                    pagination={false}
-                    dataSource={app.wordpress?.users || []}
+                    pagination={{ pageSize: 20, hideOnSinglePage: true }}
+                    locale={{ emptyText: "No administrator or editor users" }}
+                    dataSource={wpStaffUsers(app.wordpress?.users)}
                     columns={[
                       { title: "Login", dataIndex: "login" },
                       { title: "Name", dataIndex: "name" },
@@ -1887,12 +1917,20 @@ export function Sites() {
                       },
                     ]}
                   />
+                  </Space>
                 ),
               },
               {
                 key: "plugins",
                 label: "Plugins",
                 children: (
+                  <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                    <Space style={{ width: "100%", justifyContent: "space-between" }}>
+                      <Typography.Text type="secondary">Cached with the website for 1 hour.{wpUsersUpdated(app.wordpress?.cachedAt)}</Typography.Text>
+                      <Button loading={appBusy} onClick={() => void runApp(appSite, { action: "site-refresh" })}>
+                        Refresh
+                      </Button>
+                    </Space>
                   <Table
                     rowKey="name"
                     size="small"
@@ -1940,6 +1978,7 @@ export function Sites() {
                       },
                     ]}
                   />
+                  </Space>
                 ),
               },
               {

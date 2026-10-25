@@ -162,6 +162,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/api/mysql/status", s.mysqlStatus)
 			r.Get("/api/mariadb/status", s.mariadbStatus)
 			r.Get("/api/redis/status", s.redisStatus)
+			r.Post("/api/redis/start", s.startRedis)
 			r.Get("/api/databases/monitor", s.dbMonitor)
 			r.Get("/api/databases/config", s.dbConfig)
 			r.Put("/api/databases/config", s.setDBConfig)
@@ -673,6 +674,19 @@ func (s *Server) mariadbStatus(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) redisStatus(w http.ResponseWriter, _ *http.Request) {
+	st, err := s.Agent.RedisStatus()
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+func (s *Server) startRedis(w http.ResponseWriter, _ *http.Request) {
+	if err := s.Agent.RedisStart(); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
 	st, err := s.Agent.RedisStatus()
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)

@@ -436,8 +436,8 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 	}
 
 	if !req.SkipReload {
-		if err := exec.Command("systemctl", "reload", "php"+req.PHPVersion+"-fpm").Run(); err != nil {
-			return fmt.Errorf("reload php%s-fpm: %w", req.PHPVersion, err)
+		if err := reloadPHPFPM(req.PHPVersion); err != nil {
+			return err
 		}
 		if err := testReload("nginx", "nginx", "-t"); err != nil {
 			return err
@@ -810,7 +810,9 @@ func (m *Manager) Rebuild(reqs []rpc.SiteWriteReq) (*rpc.SitesRebuildResp, error
 		}
 	}
 	for ver := range php {
-		_ = exec.Command("systemctl", "reload", "php"+ver+"-fpm").Run()
+		if err := reloadPHPFPM(ver); err != nil {
+			out.Failed = append(out.Failed, "php"+ver+"-fpm: "+err.Error())
+		}
 	}
 	if err := testReload("nginx", "nginx", "-t"); err != nil {
 		return out, err
@@ -1018,7 +1020,7 @@ func dropSitePools(username, domain, keep string) {
 			continue
 		}
 		_ = os.Remove(path)
-		_ = exec.Command("systemctl", "reload", "php"+v+"-fpm").Run()
+		_ = reloadPHPFPM(v)
 	}
 }
 
@@ -1148,6 +1150,33 @@ func testReload(service, bin string, args ...string) error {
 	}
 	if err := exec.Command("systemctl", "reload", service).Run(); err != nil {
 		return fmt.Errorf("reload %s: %w", service, err)
+	}
+	return nil
+}
+
+func reloadPHPFPM(ver string) error {
+	unit := "php" + ver + "-fpm"
+	test := exec.Command("php-fpm"+ver, "--fpm-config", "/etc/php/"+ver+"/fpm/php-fpm.conf", "-t")
+	if out, err := test.CombinedOutput(); err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("php%s-fpm config: %s", ver, msg)
+	}
+	if exec.Command("systemctl", "is-active", "--quiet", unit).Run() == nil {
+		if exec.Command("systemctl", "reload", unit).Run() == nil {
+			return nil
+		}
+	}
+	_ = exec.Command("systemctl", "reset-failed", unit).Run()
+	out, err := exec.Command("systemctl", "start", unit).CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("start %s: %s", unit, msg)
 	}
 	return nil
 }

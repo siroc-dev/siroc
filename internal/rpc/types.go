@@ -447,7 +447,9 @@ type WPStatus struct {
 	XMLRPCBlocked     bool       `json:"xmlrpcBlocked"`
 	PingbacksOff      bool       `json:"pingbacksOff"`
 	UploadsPHPBlocked bool       `json:"uploadsPhpBlocked"`
-	Users             []WPUser   `json:"users,omitempty"`
+	Users             []WPUser   `json:"users"`
+	UsersAt           string     `json:"usersAt,omitempty"`
+	CachedAt          string     `json:"cachedAt,omitempty"`
 	Plugins           []WPPlugin `json:"plugins,omitempty"`
 	Updates           *WPUpdates `json:"updates,omitempty"`
 	Security          []WPIssue  `json:"security,omitempty"`
@@ -759,22 +761,24 @@ type AVScanResp struct {
 }
 
 type RedisSettings struct {
-	Installed       bool   `json:"installed"`
-	Version         string `json:"version,omitempty"`
-	Bind            string `json:"bind"`
-	Port            int    `json:"port"`
-	Password        string `json:"password,omitempty"`
-	ClearPassword   bool   `json:"clearPassword,omitempty"`
-	HasPassword     bool   `json:"hasPassword"`
-	ProtectedMode   bool   `json:"protectedMode"`
-	MaxMemory       string `json:"maxMemory"`
-	MaxMemoryPolicy string `json:"maxMemoryPolicy"`
-	AppendOnly      bool   `json:"appendOnly"`
-	SaveToDisk      bool   `json:"saveToDisk"`
-	Timeout         int    `json:"timeout"`
-	Databases       int    `json:"databases"`
-	ConfPath        string `json:"confPath,omitempty"`
-	Conf            string `json:"conf,omitempty"`
+	Installed        bool   `json:"installed"`
+	Version          string `json:"version,omitempty"`
+	Bind             string `json:"bind"`
+	Port             int    `json:"port"`
+	Password         string `json:"password,omitempty"`
+	ClearPassword    bool   `json:"clearPassword,omitempty"`
+	HasPassword      bool   `json:"hasPassword"`
+	ProtectedMode    bool   `json:"protectedMode"`
+	MaxMemory        string `json:"maxMemory"`
+	MaxMemoryPolicy  string `json:"maxMemoryPolicy"`
+	AppendOnly       bool   `json:"appendOnly"`
+	SaveToDisk       bool   `json:"saveToDisk"`
+	Timeout          int    `json:"timeout"`
+	Databases        int    `json:"databases"`
+	IOThreads        int    `json:"ioThreads"`
+	IOThreadsDoReads bool   `json:"ioThreadsDoReads"`
+	ConfPath         string `json:"confPath,omitempty"`
+	Conf             string `json:"conf,omitempty"`
 }
 
 type RedisConfApply struct {

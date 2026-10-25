@@ -71,6 +71,7 @@ func WebOptimize(ramGB int) *rpc.WebOptimize {
 		st.TotalRAMGB = 1
 	}
 	st.SuggestedGB = clampInt(st.TotalRAMGB, 1, 128)
+	preset := ramGB > 0
 	if ramGB <= 0 {
 		if n := readSavedWebRAM(); n > 0 {
 			ramGB = n
@@ -108,22 +109,21 @@ func WebOptimize(ramGB int) *rpc.WebOptimize {
 		if k.Group == "apache" && !apOK {
 			continue
 		}
-		item := rpc.WebOptimizeItem{Name: k.Name, Label: k.Label, Group: k.Group, Recommend: rec[k.Name]}
-		if v := live[k.Name]; v != "" {
-			item.Live = v
-			item.Value = rec[k.Name]
-			if rec[k.Name] == "" {
-				item.Value = v
-			}
-		} else if rec[k.Name] != "" {
-			item.Value = rec[k.Name]
+		item := rpc.WebOptimizeItem{
+			Name:      k.Name,
+			Label:     k.Label,
+			Group:     k.Group,
+			Recommend: rec[k.Name],
+			Live:      live[k.Name],
+			Value:     webShownValue(live[k.Name], rec[k.Name], preset),
 		}
 		st.Settings = append(st.Settings, item)
 	}
 	if !ngxOK && apOK {
 		st.Settings = append(st.Settings, rpc.WebOptimizeItem{
 			Name: "cookie_httponly", Label: "HttpOnly cookies", Group: "apache",
-			Recommend: rec["cookie_httponly"], Value: rec["cookie_httponly"], Live: live["cookie_httponly"],
+			Recommend: rec["cookie_httponly"], Live: live["cookie_httponly"],
+			Value: webShownValue(live["cookie_httponly"], rec["cookie_httponly"], preset),
 		})
 	}
 	return st

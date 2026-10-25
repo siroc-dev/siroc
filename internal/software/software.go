@@ -482,6 +482,9 @@ func (m *Manager) List() []rpc.PackageInfo {
 		if s.Service != "" && inst {
 			info.Active = serviceActive(s.Service)
 		}
+		if s.Name == "redis" && inst {
+			info.Active = redisProcessUp()
+		}
 		if s.Name == "php" && inst {
 			info.Active = phpAnyActive()
 			info.Service = "php-fpm"

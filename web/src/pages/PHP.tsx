@@ -299,15 +299,18 @@ export function PHP() {
             <>
               <Col xs={24} md={8}>
                 <Typography.Text type="secondary">Start servers</Typography.Text>
-                <InputNumber style={{ width: "100%", marginTop: 4 }} min={1} value={settings.startServers} onChange={(v) => patch("startServers", Number(v || 1))} />
+                <InputNumber style={{ width: "100%", marginTop: 4 }} min={settings.minSpare} max={settings.maxSpare} value={settings.startServers} onChange={(v) => patch("startServers", Number(v || 1))} />
               </Col>
               <Col xs={24} md={8}>
                 <Typography.Text type="secondary">Min spare</Typography.Text>
-                <InputNumber style={{ width: "100%", marginTop: 4 }} min={1} value={settings.minSpare} onChange={(v) => patch("minSpare", Number(v || 1))} />
+                <InputNumber style={{ width: "100%", marginTop: 4 }} min={1} max={settings.maxSpare} value={settings.minSpare} onChange={(v) => patch("minSpare", Number(v || 1))} />
               </Col>
               <Col xs={24} md={8}>
                 <Typography.Text type="secondary">Max spare</Typography.Text>
-                <InputNumber style={{ width: "100%", marginTop: 4 }} min={1} value={settings.maxSpare} onChange={(v) => patch("maxSpare", Number(v || 1))} />
+                <InputNumber style={{ width: "100%", marginTop: 4 }} min={Math.max(settings.minSpare, settings.startServers)} max={settings.maxChildren} value={settings.maxSpare} onChange={(v) => patch("maxSpare", Number(v || 1))} />
+              </Col>
+              <Col span={24}>
+                <Typography.Text type="secondary">Start servers must be between min spare and max spare.</Typography.Text>
               </Col>
             </>
           ) : null}

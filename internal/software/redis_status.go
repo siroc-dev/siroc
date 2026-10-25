@@ -18,7 +18,7 @@ func RedisStatus() *rpc.RedisStatus {
 		st.Message = "Redis is not installed. Install it from Software."
 		return st
 	}
-	st.Active = serviceActive("redis-server") || serviceActive("redis")
+	st.Active = redisProcessUp()
 	if !st.Active {
 		st.Message = "Redis is installed but not running."
 		return st

@@ -904,7 +904,7 @@ func main() {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, dbMgr.Config(req.RAMGB))
+		writeJSON(w, http.StatusOK, dbMgr.Config(0))
 	})
 	r.Post("/db/create", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.DBCreateReq
@@ -1126,7 +1126,7 @@ func main() {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, software.WebOptimize(req.RAMGB))
+		writeJSON(w, http.StatusOK, software.WebOptimize(0))
 	})
 	r.Get("/php-fpm/status", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, software.PHPFPMStatus())
@@ -1138,6 +1138,13 @@ func main() {
 		writeJSON(w, http.StatusOK, software.DBStatus("mariadb"))
 	})
 	r.Get("/redis/status", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, software.RedisStatus())
+	})
+	r.Post("/redis/start", func(w http.ResponseWriter, _ *http.Request) {
+		if err := software.StartRedis(); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, software.RedisStatus())
 	})
 	r.Get("/databases/monitor", func(w http.ResponseWriter, _ *http.Request) {

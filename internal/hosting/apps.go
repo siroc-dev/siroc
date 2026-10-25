@@ -209,9 +209,6 @@ func (m *Manager) SiteApp(req rpc.SiteAppReq) (*rpc.SiteAppResp, error) {
 			if err != nil {
 				out.Message = err.Error()
 			}
-			if wp != nil {
-				wp.WPCmds = listWPCLI(req.Username, root)
-			}
 			out.WordPress = wp
 		}
 		return out, nil

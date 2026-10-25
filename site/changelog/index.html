@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.96">0.2.96</a>
           <a href="#v0.2.95">0.2.95</a>
           <a href="#v0.2.94">0.2.94</a>
           <a href="#v0.2.93">0.2.93</a>
@@ -124,6 +125,20 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.96">
+          <h2><a href="#v0.2.96">0.2.96</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Web server and database optimize show the current value until Optimize for RAM is changed. Changing the RAM amount fills the preset for that amount.</li>
+            <li>Redis settings include I/O threads and I/O threads read. One thread keeps reads on the main thread. The Redis tab can start Redis or Valkey, and a process that answers PING counts as running.</li>
+            <li>WordPress users lists only administrator and editor accounts. Site title, URL, plugins, and WP-CLI commands are cached for 1 hour. Refresh loads that part again.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>A dynamic PHP-FPM pool cannot set start servers outside min spare and max spare. That combination stopped PHP 7.4 with exit status 78. Reloading PHP-FPM tests the config first, and a stopped service is started after a valid write.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.95">
           <h2><a href="#v0.2.95">0.2.95</a></h2>

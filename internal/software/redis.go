@@ -262,6 +262,8 @@ dir /var/lib/redis
 appendonly no
 maxmemory 0
 maxmemory-policy noeviction
+io-threads 1
+io-threads-do-reads no
 `
 }
 
@@ -289,6 +291,7 @@ func GetRedis() (*rpc.RedisSettings, error) {
 	if b, err := os.ReadFile(redisConfPath); err == nil {
 		mergeRedisConf(st, string(b))
 	}
+	st.IOThreads, st.IOThreadsDoReads = normalizeRedisIOThreads(st.IOThreads, st.IOThreadsDoReads)
 	st.HasPassword = redisHasPassword()
 	st.Password = ""
 	st.ConfPath = redisConfPath
@@ -346,6 +349,12 @@ func mergeRedisConf(st *rpc.RedisSettings, conf string) {
 			if n, err := strconv.Atoi(val); err == nil {
 				st.Databases = n
 			}
+		case "io-threads":
+			if n, err := strconv.Atoi(val); err == nil {
+				st.IOThreads = n
+			}
+		case "io-threads-do-reads":
+			st.IOThreadsDoReads = val == "yes"
 		}
 	}
 	st.SaveToDisk = redisSaves(conf) || st.AppendOnly
@@ -388,6 +397,7 @@ func ApplyRedis(in rpc.RedisSettings) error {
 	if in.Timeout < 0 {
 		in.Timeout = 0
 	}
+	threads, doReads := normalizeRedisIOThreads(in.IOThreads, in.IOThreadsDoReads)
 	if bind != "127.0.0.1" && bind != "127.0.0.1 -::1" && strings.TrimSpace(in.Password) == "" && !in.ClearPassword && !cur.HasPassword {
 		return fmt.Errorf("set a password before binding Redis on a public address")
 	}
@@ -411,6 +421,12 @@ func ApplyRedis(in rpc.RedisSettings) error {
 	conf = applyRedisPersistence(conf, saveToDisk, appendOnly)
 	conf = setRedisLine(conf, "timeout", strconv.Itoa(in.Timeout))
 	conf = setRedisLine(conf, "databases", strconv.Itoa(in.Databases))
+	conf = setRedisLine(conf, "io-threads", strconv.Itoa(threads))
+	if doReads {
+		conf = setRedisLine(conf, "io-threads-do-reads", "yes")
+	} else {
+		conf = setRedisLine(conf, "io-threads-do-reads", "no")
+	}
 	if in.ClearPassword {
 		conf = commentRedisLine(conf, "requirepass")
 	} else if strings.TrimSpace(in.Password) != "" {
@@ -424,16 +440,18 @@ func ApplyRedis(in rpc.RedisSettings) error {
 	}
 	_ = exec.Command("chown", "redis:redis", redisConfPath).Run()
 	save := rpc.RedisSettings{
-		Bind:            bind,
-		Port:            port,
-		ProtectedMode:   in.ProtectedMode,
-		MaxMemory:       mem,
-		MaxMemoryPolicy: policy,
-		AppendOnly:      appendOnly,
-		SaveToDisk:      saveToDisk,
-		Timeout:         in.Timeout,
-		Databases:       in.Databases,
-		HasPassword:     !in.ClearPassword && (strings.TrimSpace(in.Password) != "" || cur.HasPassword),
+		Bind:             bind,
+		Port:             port,
+		ProtectedMode:    in.ProtectedMode,
+		MaxMemory:        mem,
+		MaxMemoryPolicy:  policy,
+		AppendOnly:       appendOnly,
+		SaveToDisk:       saveToDisk,
+		Timeout:          in.Timeout,
+		Databases:        in.Databases,
+		IOThreads:        threads,
+		IOThreadsDoReads: doReads,
+		HasPassword:      !in.ClearPassword && (strings.TrimSpace(in.Password) != "" || cur.HasPassword),
 	}
 	raw, _ := json.Marshal(save)
 	_ = os.MkdirAll(filepath.Dir(redisStatePath), 0750)
@@ -447,6 +465,7 @@ func ApplyRedisConf(conf string) error {
 	}
 	st := &rpc.RedisSettings{}
 	mergeRedisConf(st, conf)
+	st.IOThreads, st.IOThreadsDoReads = normalizeRedisIOThreads(st.IOThreads, st.IOThreadsDoReads)
 	if redisPublicBind(st.Bind) && !redisConfHasPassword(conf) {
 		return fmt.Errorf("set a password before binding Redis on a public address")
 	}
@@ -458,16 +477,18 @@ func ApplyRedisConf(conf string) error {
 	}
 	_ = exec.Command("chown", "redis:redis", redisConfPath).Run()
 	save := rpc.RedisSettings{
-		Bind:            st.Bind,
-		Port:            st.Port,
-		ProtectedMode:   st.ProtectedMode,
-		MaxMemory:       st.MaxMemory,
-		MaxMemoryPolicy: st.MaxMemoryPolicy,
-		AppendOnly:      st.AppendOnly,
-		SaveToDisk:      st.SaveToDisk,
-		Timeout:         st.Timeout,
-		Databases:       st.Databases,
-		HasPassword:     redisConfHasPassword(conf),
+		Bind:             st.Bind,
+		Port:             st.Port,
+		ProtectedMode:    st.ProtectedMode,
+		MaxMemory:        st.MaxMemory,
+		MaxMemoryPolicy:  st.MaxMemoryPolicy,
+		AppendOnly:       st.AppendOnly,
+		SaveToDisk:       st.SaveToDisk,
+		Timeout:          st.Timeout,
+		Databases:        st.Databases,
+		IOThreads:        st.IOThreads,
+		IOThreadsDoReads: st.IOThreadsDoReads,
+		HasPassword:      redisConfHasPassword(conf),
 	}
 	if save.Bind == "" {
 		save.Bind = "127.0.0.1"
@@ -482,11 +503,66 @@ func ApplyRedisConf(conf string) error {
 }
 
 func restartRedis() error {
-	out, err := exec.Command("systemctl", "restart", "redis-server").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("restart redis: %s: %w", strings.TrimSpace(string(out)), err)
+	var last error
+	tried := false
+	for _, name := range []string{"redis-server", "valkey-server", "redis", "valkey"} {
+		if exec.Command("systemctl", "cat", name).Run() != nil {
+			continue
+		}
+		tried = true
+		out, err := exec.Command("systemctl", "restart", name).CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		last = fmt.Errorf("restart %s: %s: %w", name, strings.TrimSpace(string(out)), err)
+	}
+	if !tried {
+		return fmt.Errorf("restart redis: redis service was not found")
+	}
+	return last
+}
+
+func startRedisUnit() error {
+	var last error
+	tried := false
+	for _, name := range []string{"redis-server", "valkey-server", "redis", "valkey"} {
+		if exec.Command("systemctl", "cat", name).Run() != nil {
+			continue
+		}
+		tried = true
+		out, err := exec.Command("systemctl", "start", name).CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		last = fmt.Errorf("start %s: %s", name, strings.TrimSpace(string(out)))
+	}
+	if !tried {
+		return fmt.Errorf("redis service was not found")
+	}
+	return last
+}
+
+func StartRedis() error {
+	if redisProcessUp() {
+		return nil
+	}
+	if err := startRedisUnit(); err != nil {
+		return err
+	}
+	if !redisProcessUp() {
+		return fmt.Errorf("Redis is installed but not running")
 	}
 	return nil
+}
+
+func redisProcessUp() bool {
+	for _, name := range []string{"redis-server", "redis", "valkey-server", "valkey"} {
+		if serviceActive(name) {
+			return true
+		}
+	}
+	out, err := redisCLI("PING")
+	return err == nil && strings.Contains(strings.ToUpper(out), "PONG")
 }
 
 func fileOKRedis(path string) bool {

@@ -330,6 +330,13 @@ func renameWPUser(user, root string, id int64, login string) (string, error) {
 	if !found {
 		return "", fmt.Errorf("user %d not found", id)
 	}
+	taken, err := wpLoginTaken(user, root, login, id)
+	if err != nil {
+		return "", err
+	}
+	if taken {
+		return "", fmt.Errorf("username %s is already taken", login)
+	}
 	prefix := strings.TrimSpace(st.Prefix)
 	if prefix == "" {
 		prefix = strings.TrimSpace(mustWP(user, root, "config", "get", "table_prefix", "--type=variable"))
@@ -349,6 +356,7 @@ func renameWPUser(user, root string, id int64, login string) (string, error) {
 		return msg, err
 	}
 	_, _ = wpRun(user, root, "cache", "flush")
+	dropWPUserCache(user, root)
 	return "username is now " + login, nil
 }
 

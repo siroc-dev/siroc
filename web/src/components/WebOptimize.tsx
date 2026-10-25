@@ -110,7 +110,7 @@ export function WebOptimize() {
           </Space>
           <Typography.Text type="secondary">
             Caps Nginx workers to RAM (not CPU count), enables gzip, file cache, and proxy buffers. Apache behind Nginx
-            gets KeepAlive off, a shorter timeout, and MPM event sized to memory. HttpOnly cookies is on or off: on adds the HttpOnly flag to cookies from Nginx and Apache.
+            gets KeepAlive off, a shorter timeout, and MPM event sized to memory. Value shows the current setting. Changing Optimize for RAM fills the preset for that amount. HttpOnly cookies is on or off: on adds the HttpOnly flag to cookies from Nginx and Apache.
           </Typography.Text>
           {cfg.nginxInstalled ? (
             <Table

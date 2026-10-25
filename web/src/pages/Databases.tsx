@@ -55,6 +55,7 @@ export function Databases() {
   const [cfgErr, setCfgErr] = useState("");
   const [redis, setRedis] = useState<RedisStatusData | null>(null);
   const [redisErr, setRedisErr] = useState("");
+  const [redisBusy, setRedisBusy] = useState(false);
   const [ioBusy, setIoBusy] = useState("");
   const [importPct, setImportPct] = useState(0);
   const [importSpeed, setImportSpeed] = useState(0);
@@ -134,6 +135,20 @@ export function Databases() {
       setRedisErr("");
     } catch (err) {
       setRedisErr(err instanceof Error ? err.message : "Failed to load Redis");
+    }
+  }
+
+  async function startRedis() {
+    setRedisBusy(true);
+    try {
+      const st = await api.post<RedisStatusData>("/api/redis/start", {});
+      setRedis(st);
+      setRedisErr("");
+      message.success("Redis started");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed to start Redis");
+    } finally {
+      setRedisBusy(false);
     }
   }
 
@@ -555,6 +570,9 @@ export function Databases() {
                   Live {cfg.settings?.find((s) => s.name === "bind_address")?.live || "—"}
                 </Typography.Text>
               </Space>
+              <Typography.Text type="secondary">
+                Value shows the current setting. Changing Optimize for RAM fills the preset for that amount.
+              </Typography.Text>
             </Space>
           </Card>
           <Card size="small" title="my.cnf settings" extra={cfg.confPath ? <Typography.Text type="secondary">{cfg.confPath}</Typography.Text> : null}>
@@ -597,7 +615,16 @@ export function Databases() {
       ) : !redis.installed ? (
         <Alert type="info" showIcon message={redis.message || "Install Redis from Software first"} />
       ) : !redis.active || !redis.ready ? (
-        <Alert type="warning" showIcon message={redis.message || "Redis is installed but not running"} />
+        <Alert
+          type="warning"
+          showIcon
+          message={redis.message || "Redis is installed but not running"}
+          action={
+            <Button size="small" loading={redisBusy} onClick={() => void startRedis()}>
+              Start
+            </Button>
+          }
+        />
       ) : (
         <>
           <Space wrap>

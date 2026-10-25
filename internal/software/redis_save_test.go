@@ -28,6 +28,21 @@ func TestApplyRedisPersistenceMemoryOnly(t *testing.T) {
 	}
 }
 
+func TestNormalizeRedisIOThreads(t *testing.T) {
+	n, reads := normalizeRedisIOThreads(0, true)
+	if n != 1 || reads {
+		t.Fatalf("one thread cannot read on io threads: %d %v", n, reads)
+	}
+	n, reads = normalizeRedisIOThreads(4, true)
+	if n != 4 || !reads {
+		t.Fatalf("got %d %v", n, reads)
+	}
+	n, _ = normalizeRedisIOThreads(1000, false)
+	if n != 128 {
+		t.Fatal(n)
+	}
+}
+
 func TestApplyRedisPersistenceRestoresSnapshots(t *testing.T) {
 	in := "save \"\"\nappendonly no\n"
 	out := applyRedisPersistence(in, true, false)

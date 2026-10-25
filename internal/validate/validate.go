@@ -576,6 +576,9 @@ func PHPFPM(pm string, maxChildren, startServers, minSpare, maxSpare, maxRequest
 	if maxSpare < minSpare || maxSpare > maxChildren {
 		return fmt.Errorf("max spare servers must be %d-%d", minSpare, maxChildren)
 	}
+	if pm == "dynamic" && (startServers < minSpare || startServers > maxSpare) {
+		return fmt.Errorf("start servers must be between min spare (%d) and max spare (%d)", minSpare, maxSpare)
+	}
 	if maxRequests < 0 || maxRequests > 100000 {
 		return fmt.Errorf("max requests must be 0-100000")
 	}

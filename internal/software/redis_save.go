@@ -116,6 +116,19 @@ func appendDirective(conf, line string) string {
 	return conf + line + "\n"
 }
 
+func normalizeRedisIOThreads(n int, doReads bool) (int, bool) {
+	if n < 1 {
+		n = 1
+	}
+	if n > 128 {
+		n = 128
+	}
+	if n == 1 {
+		doReads = false
+	}
+	return n, doReads
+}
+
 func setRedisDirective(conf, key, val string) string {
 	lines := strings.Split(conf, "\n")
 	found := false

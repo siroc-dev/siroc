@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
@@ -99,42 +100,114 @@ func wpJSON(user, root string, dest any, args ...string) error {
 }
 
 func wpStatus(user, root, domain string) (*rpc.WPStatus, error) {
-	st := &rpc.WPStatus{}
-	st.Name, _ = wpRun(user, root, "option", "get", "blogname")
-	st.URL, _ = wpRun(user, root, "option", "get", "siteurl")
-	st.Home, _ = wpRun(user, root, "option", "get", "home")
-	st.Version, _ = wpRun(user, root, "core", "version")
-	st.Name = strings.TrimSpace(st.Name)
-	st.URL = strings.TrimSpace(st.URL)
-	st.Home = strings.TrimSpace(st.Home)
-	st.Version = strings.TrimSpace(st.Version)
-	st.Prefix = strings.TrimSpace(mustWP(user, root, "db", "prefix"))
-	var users []map[string]any
-	if err := wpJSON(user, root, &users, "user", "list", "--fields=ID,user_login,user_email,display_name,roles", "--format=json"); err == nil {
-		for _, u := range users {
-			st.Users = append(st.Users, rpc.WPUser{
-				ID:    toInt64(u["ID"]),
-				Login: fmt.Sprint(u["user_login"]),
-				Email: fmt.Sprint(u["user_email"]),
-				Name:  fmt.Sprint(u["display_name"]),
-				Roles: fmt.Sprint(u["roles"]),
-			})
-		}
+	now := time.Now()
+	if c, ok := loadWPSiteCache(user, root, now); ok {
+		st := c.status()
+		_ = attachWPUsers(st, user, root, false)
+		fillWPHarden(st, root, domain)
+		return st, nil
 	}
-	var plugs []map[string]any
-	if err := wpJSON(user, root, &plugs, "plugin", "list", "--fields=name,status,version,update,title", "--format=json"); err == nil {
-		for _, p := range plugs {
-			st.Plugins = append(st.Plugins, rpc.WPPlugin{
-				Name:    fmt.Sprint(p["name"]),
-				Status:  fmt.Sprint(p["status"]),
-				Version: fmt.Sprint(p["version"]),
-				Update:  fmt.Sprint(p["update"]),
-				Title:   fmt.Sprint(p["title"]),
-			})
-		}
+	if err := ensureWPCLI(); err != nil {
+		return nil, err
 	}
+	st, plugErr := fetchWPSite(user, root)
+	if plugErr == nil && (st.Version != "" || st.Name != "") {
+		_ = saveWPSiteCache(user, root, wpSiteCacheFile{
+			At:      now.UTC(),
+			Name:    st.Name,
+			URL:     st.URL,
+			Home:    st.Home,
+			Version: st.Version,
+			Prefix:  st.Prefix,
+			Plugins: st.Plugins,
+			WPCmds:  st.WPCmds,
+		})
+		st.CachedAt = now.UTC().Format(time.RFC3339)
+	}
+	_ = attachWPUsers(st, user, root, false)
 	fillWPHarden(st, root, domain)
 	return st, nil
+}
+
+func fetchWPSite(user, root string) (*rpc.WPStatus, error) {
+	var (
+		name, url, home, version, prefix string
+		plugins                          []rpc.WPPlugin
+		cmds                             []rpc.WPCmd
+		plugErr                          error
+		wg                               sync.WaitGroup
+	)
+	wg.Add(7)
+	go func() {
+		defer wg.Done()
+		name, _ = wpRun(user, root, "option", "get", "blogname")
+		name = strings.TrimSpace(name)
+	}()
+	go func() {
+		defer wg.Done()
+		url, _ = wpRun(user, root, "option", "get", "siteurl")
+		url = strings.TrimSpace(url)
+	}()
+	go func() {
+		defer wg.Done()
+		home, _ = wpRun(user, root, "option", "get", "home")
+		home = strings.TrimSpace(home)
+	}()
+	go func() {
+		defer wg.Done()
+		version, _ = wpRun(user, root, "core", "version")
+		version = strings.TrimSpace(version)
+	}()
+	go func() {
+		defer wg.Done()
+		prefix = strings.TrimSpace(mustWP(user, root, "db", "prefix"))
+	}()
+	go func() {
+		defer wg.Done()
+		var rows []map[string]any
+		plugErr = wpJSON(user, root, &rows, "plugin", "list", "--fields=name,status,version,update,title", "--format=json")
+		if plugErr != nil {
+			return
+		}
+		plugins = make([]rpc.WPPlugin, 0, len(rows))
+		for _, p := range rows {
+			plugins = append(plugins, rpc.WPPlugin{
+				Name:    wpField(p["name"]),
+				Status:  wpField(p["status"]),
+				Version: wpField(p["version"]),
+				Update:  wpField(p["update"]),
+				Title:   wpField(p["title"]),
+			})
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		cmds = listWPCLI(user, root)
+	}()
+	wg.Wait()
+	if plugins == nil {
+		plugins = []rpc.WPPlugin{}
+	}
+	if cmds == nil {
+		cmds = []rpc.WPCmd{}
+	}
+	return &rpc.WPStatus{
+		Name:    name,
+		URL:     url,
+		Home:    home,
+		Version: version,
+		Prefix:  prefix,
+		Plugins: plugins,
+		WPCmds:  cmds,
+	}, plugErr
+}
+
+func wpField(v any) string {
+	s := fmt.Sprint(v)
+	if s == "<nil>" {
+		return ""
+	}
+	return s
 }
 
 func wpInstall(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error) {
@@ -210,9 +283,6 @@ func wpInstall(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, erro
 	out.AppRoot = root
 	out.Message = msg
 	wp, _ := wpStatus(req.Username, root, req.Domain)
-	if wp != nil {
-		wp.WPCmds = listWPCLI(req.Username, root)
-	}
 	out.WordPress = wp
 	return out, nil
 }
@@ -220,6 +290,7 @@ func wpInstall(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, erro
 func wpAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error) {
 	root := out.AppRoot
 	user := req.Username
+	bust := false
 	switch req.Action {
 	case "settings":
 		if strings.TrimSpace(req.Name) != "" {
@@ -238,6 +309,7 @@ func wpAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error
 				return nil, err
 			}
 		}
+		bust = true
 	case "plugin-on":
 		plug, err := wpPlugin(req.Plugin)
 		if err != nil {
@@ -246,6 +318,7 @@ func wpAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error
 		if _, err := wpRun(user, root, "plugin", "activate", plug); err != nil {
 			return nil, err
 		}
+		bust = true
 	case "plugin-off":
 		plug, err := wpPlugin(req.Plugin)
 		if err != nil {
@@ -254,6 +327,7 @@ func wpAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error
 		if _, err := wpRun(user, root, "plugin", "deactivate", plug); err != nil {
 			return nil, err
 		}
+		bust = true
 	case "plugin-uninstall":
 		plug, err := wpPlugin(req.Plugin)
 		if err != nil {
@@ -264,6 +338,7 @@ func wpAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error
 			out.Output = msg
 			return nil, err
 		}
+		bust = true
 	case "updates":
 		st, err := wpStatus(user, root, req.Domain)
 		if err != nil {
@@ -295,12 +370,14 @@ func wpAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error
 		if err != nil {
 			return nil, err
 		}
+		bust = true
 	case "update-plugins":
 		msg, err := wpRun(user, root, "plugin", "update", "--all")
 		out.Output = msg
 		if err != nil {
 			return nil, err
 		}
+		bust = true
 	case "login":
 		urls, err := wpLoginAs(user, root, req.Domain, req.UserID)
 		if err != nil {
@@ -328,6 +405,7 @@ func wpAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error
 			}
 			out.Message = "wp-cli exited with an error"
 		}
+		dropWPSiteCache(user, root)
 		st, _ := wpStatus(user, root, req.Domain)
 		out.WordPress = st
 		return out, nil
@@ -343,6 +421,10 @@ func wpAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error
 			out.WordPress = st
 			return out, nil
 		}
+		bust = true
+	case "site-refresh":
+		bust = true
+		out.Message = "Website data refreshed"
 	case "xmlrpc":
 		on := req.XMLRPC != nil && *req.XMLRPC
 		if err := setWPXMLRPC(user, root, req.Domain, on); err != nil {
@@ -373,6 +455,11 @@ func wpAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error
 		} else {
 			out.Message = "PHP is allowed in the uploads folder"
 		}
+	case "users-refresh":
+		if err := refreshWPStaff(user, root); err != nil {
+			return nil, err
+		}
+		out.Message = "User list refreshed"
 	case "rename-user":
 		msg, err := renameWPUser(user, root, req.UserID, req.Login)
 		out.Output = msg
@@ -387,6 +474,9 @@ func wpAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error
 		}
 	default:
 		return nil, fmt.Errorf("unknown wordpress action %q", req.Action)
+	}
+	if bust {
+		dropWPSiteCache(user, root)
 	}
 	st, err := wpStatus(user, root, req.Domain)
 	if err != nil {

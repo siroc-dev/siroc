@@ -82,6 +82,7 @@ func (m *Manager) Config(ramGB int) *rpc.DBConfig {
 		st.TotalRAMGB = 1
 	}
 	st.SuggestedGB = clampInt(st.TotalRAMGB, 1, 128)
+	preset := ramGB > 0
 	if ramGB <= 0 {
 		if n := readSavedRAMGB(st.ConfPath); n > 0 {
 			ramGB = n
@@ -103,19 +104,12 @@ func (m *Manager) Config(ramGB int) *rpc.DBConfig {
 	fileVals := readConfSettings(st.ConfPath)
 	for _, k := range dbKnobs(mariadb) {
 		item := rpc.DBConfigItem{Name: k.Name, Label: k.Label, Recommend: rec[k.Name]}
-		if v := fileVals[k.Name]; v != "" {
-			item.Value = v
-		} else if k.Name == "bind_address" {
-			if lv := live["bind_address"]; lv != "" {
-				item.Value = lv
-			} else {
-				item.Value = "127.0.0.1"
-			}
-		} else if rec[k.Name] != "" {
-			item.Value = rec[k.Name]
-		}
 		if lv := live[k.Name]; lv != "" {
 			item.Live = prettyMySQLValue(k.Name, lv)
+		}
+		item.Value = dbShownValue(item.Live, fileVals[k.Name], rec[k.Name], preset)
+		if item.Value == "" && k.Name == "bind_address" {
+			item.Value = "127.0.0.1"
 		}
 		st.Settings = append(st.Settings, item)
 	}

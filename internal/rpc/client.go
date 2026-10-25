@@ -770,6 +770,10 @@ func (c *Client) RedisStatus() (*RedisStatus, error) {
 	return &out, err
 }
 
+func (c *Client) RedisStart() error {
+	return c.do(http.MethodPost, "/redis/start", nil, nil)
+}
+
 func (c *Client) DatabasesMonitor() (*DatabasesMonitor, error) {
 	var out DatabasesMonitor
 	err := c.do(http.MethodGet, "/databases/monitor", nil, &out)
