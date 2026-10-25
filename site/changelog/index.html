@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.94">0.2.94</a>
           <a href="#v0.2.93">0.2.93</a>
           <a href="#v0.2.92">0.2.92</a>
           <a href="#v0.2.91">0.2.91</a>
@@ -122,6 +123,14 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.94">
+          <h2><a href="#v0.2.94">0.2.94</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>PHP extensions include OPcache, SSH2, and ionCube Loader. OPcache and SSH2 install from apt. SSH2 can also install from PECL. ionCube downloads the official loader for the selected PHP version, writes <code>zend_extension</code> at priority 00 so it loads before OPcache, and enables it for that version. Install the PHP version first, then open PHP and choose the version.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.93">
           <h2><a href="#v0.2.93">0.2.93</a></h2>

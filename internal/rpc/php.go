@@ -102,7 +102,7 @@ func ParsePHPExtJob(version string) (ver, name, source string, err error) {
 		return "", "", "", fmt.Errorf("php-ext job must be phpVer:extension[:apt|pecl]")
 	}
 	switch source {
-	case "apt", "pecl", "auto":
+	case "apt", "pecl", "auto", "loader":
 	default:
 		return "", "", "", fmt.Errorf("php-ext source must be apt, pecl, or auto")
 	}

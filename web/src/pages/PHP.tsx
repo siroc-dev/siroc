@@ -247,7 +247,7 @@ export function PHP() {
           PHP
         </Typography.Title>
         <Typography.Paragraph type="secondary">
-          Per-account PHP-FPM pools, php.ini limits, and extensions (apt + PECL). Set each website PHP version on Websites.
+          Per-account PHP-FPM pools, php.ini limits, and extensions (apt, PECL, and ionCube). Set each website PHP version on Websites.
         </Typography.Paragraph>
       </div>
 
@@ -419,6 +419,11 @@ export function PHP() {
                         {admin && !ext.installed && (ext.source === "apt" || ext.source === "both") ? (
                           <Button size="small" disabled={queued || busy !== ""} onClick={() => installExt(ext.name, "apt")}>
                             {queued ? "Queued" : "apt"}
+                          </Button>
+                        ) : null}
+                        {admin && !ext.installed && ext.source === "loader" ? (
+                          <Button size="small" disabled={queued || busy !== ""} onClick={() => installExt(ext.name, "loader")}>
+                            {queued ? "Queued" : "Install"}
                           </Button>
                         ) : null}
                         {admin && !ext.installed && (ext.source === "pecl" || ext.source === "both") ? (

@@ -21,12 +21,15 @@ type phpExtSpec struct {
 	Pecl     string
 	Deps     []string
 	Zend     bool
+	Loader   bool
 	Provides []string
 }
 
 func phpExtCatalog() []phpExtSpec {
 	return []phpExtSpec{
-		{Name: "opcache", Title: "OPcache", AptPkg: "opcache", Zend: true, Provides: []string{"opcache"}},
+		{Name: "opcache", Title: "OPcache", AptPkg: "opcache", Zend: true, Provides: []string{"opcache", "php_opcache"}},
+		{Name: "ssh2", Title: "SSH2", AptPkg: "ssh2", Pecl: "ssh2", Deps: []string{"libssh2-1-dev"}, Provides: []string{"ssh2", "php_ssh2"}},
+		{Name: "ioncube", Title: "ionCube Loader", Zend: true, Loader: true, Provides: []string{"ioncube", "php_ioncube"}},
 		{Name: "mysql", Title: "MySQL / mysqli", AptPkg: "mysql", Provides: []string{"mysqli", "pdo_mysql", "mysqlnd"}},
 		{Name: "xml", Title: "XML / DOM", AptPkg: "xml", Provides: []string{"xml", "dom", "simplexml", "xmlreader", "xmlwriter"}},
 		{Name: "curl", Title: "cURL", AptPkg: "curl"},
@@ -55,7 +58,6 @@ func phpExtCatalog() []phpExtSpec {
 		{Name: "imagick", Title: "ImageMagick", AptPkg: "imagick", Pecl: "imagick", Deps: []string{"libmagickwand-dev"}},
 		{Name: "xdebug", Title: "Xdebug", AptPkg: "xdebug", Pecl: "xdebug", Zend: true},
 		{Name: "yaml", Title: "YAML", AptPkg: "yaml", Pecl: "yaml", Deps: []string{"libyaml-dev"}},
-		{Name: "ssh2", Title: "SSH2", AptPkg: "ssh2", Pecl: "ssh2", Deps: []string{"libssh2-1-dev"}},
 		{Name: "mongodb", Title: "MongoDB", AptPkg: "mongodb", Pecl: "mongodb", Deps: []string{"pkg-config", "libssl-dev"}},
 		{Name: "igbinary", Title: "igbinary", AptPkg: "igbinary", Pecl: "igbinary"},
 		{Name: "msgpack", Title: "msgpack", AptPkg: "msgpack", Pecl: "msgpack"},
@@ -102,7 +104,9 @@ func (m *Manager) ListPHPExt(version string) rpc.PHPExtListResp {
 	for _, e := range phpExtCatalog() {
 		seen[e.Name] = struct{}{}
 		src := "apt"
-		if e.AptPkg != "" && e.Pecl != "" {
+		if e.Loader {
+			src = "loader"
+		} else if e.AptPkg != "" && e.Pecl != "" {
 			src = "both"
 		} else if e.Pecl != "" && e.AptPkg == "" {
 			src = "pecl"
@@ -115,7 +119,7 @@ func (m *Manager) ListPHPExt(version string) rpc.PHPExtListResp {
 			Pecl:      e.Pecl,
 			Zend:      e.Zend,
 			Installed: phpExtInstalled(version, e),
-			Available: e.Pecl != "" || aptNames["php"+version+"-"+e.AptPkg] || phpExtInstalled(version, e),
+			Available: e.Loader || e.Pecl != "" || aptNames["php"+version+"-"+e.AptPkg] || phpExtInstalled(version, e),
 		}
 		if e.AptPkg != "" && aptNames["php"+version+"-"+e.AptPkg] {
 			info.Available = true
@@ -212,6 +216,14 @@ func (m *Manager) InstallPHPExt(spec string) error {
 		return err
 	}
 	item := lookupPHPExt(name)
+	if item.Loader {
+		if phpExtInstalled(ver, item) {
+			_ = enablePHPExt(ver, item)
+			_ = exec.Command("systemctl", "reload", "php"+ver+"-fpm").Run()
+			return nil
+		}
+		return installIoncube(ver)
+	}
 	if phpExtInstalled(ver, item) {
 		_ = enablePHPExt(ver, item)
 		_ = exec.Command("systemctl", "reload", "php"+ver+"-fpm").Run()
@@ -343,6 +355,70 @@ func installPHPExtPecl(ver string, item phpExtSpec) error {
 	}
 	_ = exec.Command("systemctl", "reload", "php"+ver+"-fpm").Run()
 	return nil
+}
+
+func installIoncube(ver string) error {
+	if !SupportedPHP(ver) {
+		return fmt.Errorf("unsupported PHP version")
+	}
+	archOut, _ := exec.Command("uname", "-m").Output()
+	url, err := ioncubeArchiveURL(strings.TrimSpace(string(archOut)))
+	if err != nil {
+		return err
+	}
+	soName := ioncubeLoaderSO(ver)
+	tmp, err := os.MkdirTemp("", "siroc-ioncube-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	archive := filepath.Join(tmp, "ioncube.tar.gz")
+	dl := exec.Command("curl", "-fL", "--retry", "2", "-o", archive, url)
+	if out, err := combinedTimeout(dl, 3*time.Minute); err != nil {
+		return fmt.Errorf("download ionCube: %s: %w", tail(out), err)
+	}
+	untar := exec.Command("tar", "-xzf", archive, "-C", tmp)
+	if out, err := combinedTimeout(untar, time.Minute); err != nil {
+		return fmt.Errorf("extract ionCube: %s: %w", tail(out), err)
+	}
+	src := filepath.Join(tmp, "ioncube", soName)
+	if _, err := os.Stat(src); err != nil {
+		return fmt.Errorf("ionCube has no loader for PHP %s", ver)
+	}
+	extDir, err := phpExtensionDir(ver)
+	if err != nil {
+		return err
+	}
+	if err := copyFile(src, filepath.Join(extDir, soName)); err != nil {
+		return err
+	}
+	_ = os.Chmod(filepath.Join(extDir, soName), 0644)
+	iniDir := filepath.Join("/etc/php", ver, "mods-available")
+	if err := os.MkdirAll(iniDir, 0755); err != nil {
+		return err
+	}
+	body := "; priority=00\nzend_extension=" + soName + "\n"
+	if err := os.WriteFile(filepath.Join(iniDir, "ioncube.ini"), []byte(body), 0644); err != nil {
+		return err
+	}
+	item := lookupPHPExt("ioncube")
+	if err := enablePHPExt(ver, item); err != nil {
+		return err
+	}
+	_ = exec.Command("systemctl", "reload", "php"+ver+"-fpm").Run()
+	return nil
+}
+
+func phpExtensionDir(ver string) (string, error) {
+	out, err := exec.Command("php-config"+ver, "--extension-dir").Output()
+	dir := strings.TrimSpace(string(out))
+	if err != nil || dir == "" {
+		return "", fmt.Errorf("php-config%s --extension-dir failed", ver)
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 func enablePHPExt(ver string, item phpExtSpec) error {
