@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	cliMarkerBegin = "# BEGIN SIROC-CLI"
-	cliMarkerEnd   = "# END SIROC-CLI"
+	cliMarkerBegin    = "# BEGIN SIROC-CLI"
+	cliMarkerEnd      = "# END SIROC-CLI"
 	cliMarkerBeginOld = "# BEGIN CP-CLI"
 	cliMarkerEndOld   = "# END CP-CLI"
-	profileSnippet = `# BEGIN SIROC-CLI
+	profileSnippet    = `# BEGIN SIROC-CLI
 if [ -f "$HOME/.siroc/cli.env" ]; then
   . "$HOME/.siroc/cli.env"
 fi
@@ -133,9 +133,7 @@ func nodeToolBeside(nodeBin, name string) string {
 func resolveCLIBin(name, version string) (string, error) {
 	switch name {
 	case "php":
-		switch version {
-		case "8.1", "8.2", "8.3", "8.4":
-		default:
+		if !SupportedPHP(version) {
 			return "", fmt.Errorf("unsupported PHP version")
 		}
 		bin := "/usr/bin/php" + version

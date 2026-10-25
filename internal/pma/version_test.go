@@ -12,4 +12,10 @@ func TestPickPHPVersion(t *testing.T) {
 	if got := pickPHPVersion(nil, nil); got != "" {
 		t.Fatalf("empty %q", got)
 	}
+	if got := pickPHPVersion(nil, []string{"7.4", "8.4"}); got != "8.4" {
+		t.Fatalf("prefer newer than 7.4, got %q", got)
+	}
+	if got := pickPHPVersion(nil, []string{"7.4"}); got != "7.4" {
+		t.Fatalf("only 7.4, got %q", got)
+	}
 }

@@ -488,7 +488,7 @@ func DBIdent(name string) error {
 
 func PHPVersion(v string) error {
 	switch v {
-	case "8.1", "8.2", "8.3", "8.4":
+	case "7.4", "8.1", "8.2", "8.3", "8.4":
 		return nil
 	default:
 		return fmt.Errorf("unsupported PHP version")

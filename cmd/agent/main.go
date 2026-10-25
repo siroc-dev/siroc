@@ -130,6 +130,11 @@ func main() {
 	hosting.RepairNginxHTTP2()
 	hosting.RepairAssetLogs()
 	software.EnsureHeaderBuffers()
+	if n, err := software.EnsureAptHolds(); err != nil {
+		log.Printf("apt hold: %v", err)
+	} else if n > 0 {
+		log.Printf("apt hold: %d packages kept off apt upgrade", n)
+	}
 	if repaired, err := dbmgmt.RepairMariaDBConfig(); err != nil {
 		log.Printf("mariadb config: %v", err)
 	} else if repaired {

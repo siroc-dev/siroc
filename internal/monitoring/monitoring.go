@@ -1002,6 +1002,7 @@ var watchServices = []struct{ unit, title string }{
 	{"ssh", "OpenSSH"},
 	{"vsftpd", "FTP"},
 	{"clamav-daemon", "ClamAV"},
+	{"php7.4-fpm", "PHP 7.4 FPM"},
 	{"php8.1-fpm", "PHP 8.1 FPM"},
 	{"php8.2-fpm", "PHP 8.2 FPM"},
 	{"php8.3-fpm", "PHP 8.3 FPM"},

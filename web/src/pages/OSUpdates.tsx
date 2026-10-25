@@ -69,7 +69,7 @@ export function OSUpdates() {
           </Space>
           {st?.message ? <Alert type={st.count ? "info" : st.ok === false ? "warning" : "success"} showIcon message={st.message} /> : null}
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            Update runs <code>apt-get update</code> and refreshes this list. Upgrade runs <code>apt-get upgrade</code> and keeps existing config files. Services that need a restart are restarted. The list is checked every day at 04:15 (server timezone) and is not installed until you choose Upgrade.
+            Update runs <code>apt-get update</code> and refreshes this list. Upgrade runs <code>apt-get upgrade</code> and keeps existing config files. Services that need a restart are restarted. The list is checked every day at 04:15 (server timezone) and is not installed until you choose Upgrade. Packages installed from Software are held, so this upgrade does not change them. Update those from Software.
           </Typography.Paragraph>
           <Space wrap>
             <Button loading={busy === "update"} onClick={() => void run("update")}>
@@ -77,7 +77,7 @@ export function OSUpdates() {
             </Button>
             <Popconfirm
               title="Upgrade the operating system packages?"
-              description="This installs every package in the list. Running services may restart."
+              description="This installs every package in the list. Software installed from the panel is not in the list. Running services may restart."
               okText="Upgrade"
               onConfirm={() => void run("upgrade")}
             >

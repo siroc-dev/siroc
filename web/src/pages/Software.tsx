@@ -110,7 +110,15 @@ export function Software() {
 
   function openInstall(pkg: Pkg, kind: InstallKind) {
     const versions = pkg.versions || [];
-    setModalVer(kind === "update" ? pkg.cliVersion || pkg.installedVersions?.[0] || versions[0] || "" : versions[0] || "");
+    const installed = new Set(pkg.installedVersions || []);
+    let missing = versions[versions.length - 1] || "";
+    for (let i = versions.length - 1; i >= 0; i--) {
+      if (!installed.has(versions[i])) {
+        missing = versions[i];
+        break;
+      }
+    }
+    setModalVer(kind === "update" ? pkg.cliVersion || pkg.installedVersions?.[0] || versions[0] || "" : missing);
     setModal({ pkg, kind });
   }
 
@@ -212,7 +220,9 @@ export function Software() {
         <Typography.Title level={3} style={{ margin: 0 }}>
           Software
         </Typography.Title>
-        <Typography.Paragraph type="secondary">Queue installs and updates. They run one at a time.</Typography.Paragraph>
+        <Typography.Paragraph type="secondary">
+          Queue installs and updates. They run one at a time. A package installed here is held in apt, so operating-system upgrades leave it in place. Update it from this page.
+        </Typography.Paragraph>
       </div>
       <Card
         title="Install queue"
@@ -350,15 +360,16 @@ export function Software() {
                 const pending = isQueued(p.name);
                 return (
                   <Space wrap>
-                    {!p.installed ? (
-                      <Button type="primary" size="small" disabled={pending} onClick={() => openInstall(p, "install")}>
+                    {!p.installed || p.name === "php" ? (
+                      <Button type={p.installed ? "default" : "primary"} size="small" disabled={pending} onClick={() => openInstall(p, "install")}>
                         Install
                       </Button>
-                    ) : (
+                    ) : null}
+                    {p.installed ? (
                       <Button size="small" disabled={pending} onClick={() => openInstall(p, "update")}>
                         Update
                       </Button>
-                    )}
+                    ) : null}
                     {p.installed && p.service ? (
                       <>
                         <Button size="small" onClick={() => svc(p.name, "start")}>

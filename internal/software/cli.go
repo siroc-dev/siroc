@@ -34,7 +34,7 @@ func (m *Manager) SetCLI(name, version string) error {
 
 func phpInstalledVersions() []string {
 	var found []string
-	for _, v := range []string{"8.1", "8.2", "8.3", "8.4"} {
+	for _, v := range PHPVersions() {
 		if _, err := os.Stat("/usr/bin/php" + v); err == nil {
 			found = append(found, v)
 			continue
@@ -118,9 +118,7 @@ func nodeMajorFromBin(bin string) string {
 }
 
 func setPHPCLI(version string) error {
-	switch version {
-	case "8.1", "8.2", "8.3", "8.4":
-	default:
+	if !SupportedPHP(version) {
 		return fmt.Errorf("unsupported PHP version")
 	}
 	bin := "/usr/bin/php" + version

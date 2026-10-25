@@ -1009,7 +1009,7 @@ func dropOldVhosts(username, domain string) {
 
 func dropSitePools(username, domain, keep string) {
 	name := username + "-" + slug(domain) + ".conf"
-	for _, v := range []string{"8.1", "8.2", "8.3", "8.4"} {
+	for _, v := range software.PHPVersions() {
 		if v == keep {
 			continue
 		}

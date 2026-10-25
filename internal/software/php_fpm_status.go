@@ -71,7 +71,7 @@ func PHPFPMStatus() *rpc.PHPFPMStatus {
 
 func phpFPMVersions() []string {
 	var found []string
-	for _, v := range []string{"8.1", "8.2", "8.3", "8.4"} {
+	for _, v := range PHPVersions() {
 		if ok, _ := dpkgVersion("php" + v + "-fpm"); ok {
 			found = append(found, v)
 		}
@@ -275,18 +275,18 @@ func fpmQuery(listen, path string) ([]byte, error) {
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
 	params := map[string]string{
-		"SCRIPT_NAME":        path,
-		"SCRIPT_FILENAME":    path,
-		"QUERY_STRING":       "json&full",
-		"REQUEST_METHOD":     "GET",
-		"REQUEST_URI":        path + "?json&full",
-		"DOCUMENT_URI":       path,
-		"SERVER_SOFTWARE":    "siroc",
-		"SERVER_PROTOCOL":    "HTTP/1.0",
-		"GATEWAY_INTERFACE":  "CGI/1.1",
-		"REMOTE_ADDR":        "127.0.0.1",
-		"SERVER_NAME":        "localhost",
-		"SERVER_PORT":        "80",
+		"SCRIPT_NAME":       path,
+		"SCRIPT_FILENAME":   path,
+		"QUERY_STRING":      "json&full",
+		"REQUEST_METHOD":    "GET",
+		"REQUEST_URI":       path + "?json&full",
+		"DOCUMENT_URI":      path,
+		"SERVER_SOFTWARE":   "siroc",
+		"SERVER_PROTOCOL":   "HTTP/1.0",
+		"GATEWAY_INTERFACE": "CGI/1.1",
+		"REMOTE_ADDR":       "127.0.0.1",
+		"SERVER_NAME":       "localhost",
+		"SERVER_PORT":       "80",
 	}
 	if err := fcgiBegin(conn, 1); err != nil {
 		return nil, err

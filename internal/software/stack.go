@@ -102,6 +102,8 @@ func AptInstall(pkgs ...string) error {
 }
 
 func aptInstall(pkgs ...string) error {
+	releasePanel(pkgs)
+	defer holdRecorded()
 	configurePendingDebs()
 	cmd := aptCmd(append(aptOpts("install"), pkgs...)...)
 	if out, err := combinedTimeout(cmd, 12*time.Minute); err != nil {
@@ -111,10 +113,13 @@ func aptInstall(pkgs ...string) error {
 			return fmt.Errorf("apt-get install: %s: %w", tail(out+"\n"+out2), err)
 		}
 	}
+	protectApt(pkgs...)
 	return nil
 }
 
 func aptRemove(pkgs ...string) {
+	releasePanel(pkgs)
+	defer holdRecorded()
 	cmd := aptCmd(append(aptOpts("remove"), pkgs...)...)
 	_, _ = combinedTimeout(cmd, 4*time.Minute)
 }

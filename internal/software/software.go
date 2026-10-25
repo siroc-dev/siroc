@@ -64,13 +64,17 @@ func catalog() []spec {
 			Title:   "PHP-FPM",
 			Service: "",
 			Versions: func() []string {
-				return []string{"8.1", "8.2", "8.3", "8.4"}
+				return PHPVersions()
 			},
 			InstallPkg: func(v string) string {
 				if v == "" {
 					v = BasePHPVersion
 				}
-				return fmt.Sprintf("php%s-fpm php%s-cli php%s-mysql php%s-xml php%s-curl php%s-mbstring php%s-zip php%s-gd", v, v, v, v, v, v, v, v)
+				pkgs := fmt.Sprintf("php%s-fpm php%s-cli php%s-mysql php%s-xml php%s-curl php%s-mbstring php%s-zip php%s-gd", v, v, v, v, v, v, v, v)
+				if v == "7.4" {
+					pkgs += " php7.4-json"
+				}
+				return pkgs
 			},
 			Installed: func() (bool, string) {
 				found := phpInstalledVersions()
@@ -84,7 +88,9 @@ func catalog() []spec {
 					version = BasePHPVersion
 				}
 				_ = exec.Command("systemctl", "enable", "--now", "php"+version+"-fpm").Run()
-				_ = setPHPCLI(version)
+				if currentPHPCLI() == "" {
+					_ = setPHPCLI(version)
+				}
 				_ = EnsurePHPCLILimits()
 				return enableApachePHP()
 			},
@@ -522,7 +528,7 @@ func PrepareRuntime() {
 
 func (m *Manager) PHPInstalled() []string {
 	var found []string
-	for _, v := range []string{"8.1", "8.2", "8.3", "8.4"} {
+	for _, v := range PHPVersions() {
 		if ok, _ := dpkgVersion("php" + v + "-fpm"); ok {
 			found = append(found, v)
 		}
@@ -675,7 +681,7 @@ func (m *Manager) upgrade(name, version string) error {
 			vers = []string{version}
 		}
 		if len(vers) == 0 {
-			vers = []string{"8.3"}
+			vers = []string{BasePHPVersion}
 		}
 		for _, v := range vers {
 			if err := m.install("php", v); err != nil {
@@ -1009,7 +1015,7 @@ func serviceActive(name string) bool {
 }
 
 func phpAnyActive() bool {
-	for _, v := range []string{"8.1", "8.2", "8.3", "8.4"} {
+	for _, v := range PHPVersions() {
 		if serviceActive("php" + v + "-fpm") {
 			return true
 		}

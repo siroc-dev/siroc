@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
+	"github.com/siroc-dev/siroc/internal/software"
 )
 
 const (
@@ -80,6 +81,9 @@ func Upgrade() (rpc.OSUpdateStatus, error) {
 			st.Message = "Upgrade finished. No packages left to upgrade."
 		} else {
 			st.Message = "Upgrade finished. " + Summarize(st.Count)
+		}
+		if n := software.ManagedAptCount(); n > 0 {
+			st.Message += fmt.Sprintf(" %d packages installed from Software were left unchanged.", n)
 		}
 		return save(st)
 	})

@@ -1,6 +1,6 @@
 package pma
 
-var phpVersions = []string{"8.4", "8.3", "8.2", "8.1"}
+var phpVersions = []string{"8.4", "8.3", "8.2", "8.1", "7.4"}
 
 func pickPHPVersion(active, installed []string) string {
 	has := func(list []string, want string) bool {

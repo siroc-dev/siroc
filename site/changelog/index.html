@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.91">0.2.91</a>
           <a href="#v0.2.90">0.2.90</a>
           <a href="#v0.2.89">0.2.89</a>
           <a href="#v0.2.88">0.2.88</a>
@@ -119,6 +120,15 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.91">
+          <h2><a href="#v0.2.91">0.2.91</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>PHP-FPM can be installed more than once. PHP 7.4 is in the list with 8.1, 8.2, 8.3, and 8.4. The Install button stays after the first version is installed. A new server still starts with 8.4. Installing another version does not change the current <code>php</code> command. phpMyAdmin still prefers 8.x. If apt cannot find <code>php7.4-fpm</code>, that Ubuntu release has no PHP 7.4 build.</li>
+            <li>Packages installed from Software are held in apt. <code>apt upgrade</code>, unattended upgrades, and System tools → OS updates leave them as they are. Update those packages from Software. On startup the agent holds software the panel already installed. OpenSSH and Python are held only after you install or update them from Software, so SSH and the system Python still receive apt security updates until then.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.90">
           <h2><a href="#v0.2.90">0.2.90</a></h2>
