@@ -241,6 +241,9 @@ func Connect(conn rpc.DAConn) (*Client, error) {
 }
 
 func Discover(conn rpc.DAConn) ([]rpc.DASite, error) {
+	if sshMode(conn) {
+		return DiscoverSSH(conn)
+	}
 	c, err := Connect(conn)
 	if err != nil {
 		return nil, err

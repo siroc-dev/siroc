@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -17,6 +18,10 @@ func (s *Server) migrateDiscover(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
+	if len(req.PrivateKey) > 256*1024 {
+		writeErr(w, http.StatusBadRequest, errors.New("private key file is too large"))
+		return
+	}
 	list, err := s.Agent.DADiscover(req)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
@@ -28,6 +33,10 @@ func (s *Server) migrateDiscover(w http.ResponseWriter, r *http.Request) {
 func (s *Server) migrateStart(w http.ResponseWriter, r *http.Request) {
 	var req rpc.DAStartReq
 	if !decode(w, r, &req) {
+		return
+	}
+	if len(req.PrivateKey) > 256*1024 {
+		writeErr(w, http.StatusBadRequest, errors.New("private key file is too large"))
 		return
 	}
 	job, err := s.Agent.DAStart(req)

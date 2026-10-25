@@ -59,9 +59,17 @@ func Ack(req rpc.DAAck) rpc.DAJob {
 }
 
 func (r *Runner) start(req rpc.DAStartReq) (rpc.DAJob, error) {
-	client, err := Connect(req.DAConn)
-	if err != nil {
-		return rpc.DAJob{}, err
+	var apiUser string
+	if sshMode(req.DAConn) {
+		if err := CheckSSH(req.DAConn); err != nil {
+			return rpc.DAJob{}, err
+		}
+	} else {
+		client, err := Connect(req.DAConn)
+		if err != nil {
+			return rpc.DAJob{}, err
+		}
+		apiUser = client.User
 	}
 	if err := validate.PHPVersion(req.PHPVersion); err != nil {
 		return rpc.DAJob{}, err
@@ -85,7 +93,10 @@ func (r *Runner) start(req rpc.DAStartReq) (rpc.DAJob, error) {
 		seen[domain] = true
 		owner := strings.TrimSpace(site.Owner)
 		if owner == "" {
-			owner = client.User
+			if apiUser == "" {
+				return rpc.DAJob{}, fmt.Errorf("%s has no DirectAdmin user", domain)
+			}
+			owner = apiUser
 		}
 		items = append(items, rpc.DAItem{Domain: domain, Owner: owner, Status: "queued", Message: "Waiting"})
 	}
@@ -119,9 +130,15 @@ func (r *Runner) run() {
 			if r.job.Items[i].Status == "queued" {
 				idx = i
 				r.job.Items[i].Status = "running"
-				r.job.Items[i].Step = "backup"
-				r.job.Items[i].Percent = 10
-				r.job.Items[i].Message = "Creating a backup on DirectAdmin"
+				if sshMode(r.conn) {
+					r.job.Items[i].Step = "download"
+					r.job.Items[i].Percent = 10
+					r.job.Items[i].Message = "Copying the website over SSH"
+				} else {
+					r.job.Items[i].Step = "backup"
+					r.job.Items[i].Percent = 10
+					r.job.Items[i].Message = "Creating a backup on DirectAdmin"
+				}
 				break
 			}
 		}
@@ -158,23 +175,35 @@ func (r *Runner) one(conn rpc.DAConn, php string, item *rpc.DAItem) error {
 	if err := validate.LinuxUser(item.Owner); err != nil {
 		return fmt.Errorf("DirectAdmin user %s cannot be created on this server: %w", item.Owner, err)
 	}
-	client, err := Connect(conn)
-	if err != nil {
-		return err
-	}
 	if err := os.MkdirAll("/var/backups/siroc/incoming", 0750); err != nil {
 		return err
 	}
-	progress := func(step string, pct int) {
-		msg := "Creating a backup on DirectAdmin"
-		if step == "download" {
-			msg = "Downloading the backup"
+	var dest string
+	if sshMode(conn) {
+		r.set(item.Domain, "running", "download", "Copying the website over SSH", 20)
+		var err error
+		dest, err = PullSSH(conn, item.Owner, item.Domain, "/var/backups/siroc/incoming", func(pct int) {
+			r.set(item.Domain, "running", "download", "Copying the website over SSH", pct)
+		})
+		if err != nil {
+			return err
 		}
-		r.set(item.Domain, "running", step, msg, pct)
-	}
-	dest, err := client.Pull(item.Owner, item.Domain, "/var/backups/siroc/incoming", progress)
-	if err != nil {
-		return err
+	} else {
+		client, err := Connect(conn)
+		if err != nil {
+			return err
+		}
+		progress := func(step string, pct int) {
+			msg := "Creating a backup on DirectAdmin"
+			if step == "download" {
+				msg = "Downloading the backup"
+			}
+			r.set(item.Domain, "running", step, msg, pct)
+		}
+		dest, err = client.Pull(item.Owner, item.Domain, "/var/backups/siroc/incoming", progress)
+		if err != nil {
+			return err
+		}
 	}
 	defer os.Remove(dest)
 	r.set(item.Domain, "running", "restore", "Restoring files and databases", 75)

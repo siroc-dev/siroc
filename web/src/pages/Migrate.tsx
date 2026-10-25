@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, App, Button, Card, Checkbox, Form, Input, InputNumber, Popconfirm, Progress, Select, Space, Switch, Table, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Checkbox, Form, Input, InputNumber, Popconfirm, Progress, Select, Space, Switch, Table, Tag, Typography, Upload } from "antd";
 import { api } from "@/lib/api";
 
 type Site = { domain: string; owner: string };
@@ -38,6 +38,9 @@ export function Migrate() {
   const [listing, setListing] = useState(false);
   const [starting, setStarting] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
+  const mode = Form.useWatch("mode", form) || "ssh";
+  const [keyText, setKeyText] = useState("");
+  const [keyName, setKeyName] = useState("");
 
   const running = job?.status === "running";
 
@@ -64,10 +67,19 @@ export function Migrate() {
     };
   }, []);
 
-  async function listSites(values: { host: string; port: number; username: string; password: string; insecure: boolean }) {
+  async function listSites(values: { host: string; port: number; username: string; password?: string; insecure?: boolean; mode?: string; keyPassphrase?: string }) {
+    const ssh = (values.mode || "ssh") !== "api";
+    if (ssh && !values.password && !keyText) {
+      message.error("Enter a password or upload a PPK file");
+      return;
+    }
     setListing(true);
     try {
-      const data = await api.post<{ sites: Site[] }>("/api/migrate/directadmin/list", values);
+      const data = await api.post<{ sites: Site[] }>("/api/migrate/directadmin/list", {
+        ...values,
+        privateKey: ssh ? keyText : "",
+        keyPassphrase: ssh && keyText ? values.keyPassphrase || "" : "",
+      });
       const next = data.sites || [];
       setSites(next);
       setPicked(next.map((s) => s.domain));
@@ -92,7 +104,13 @@ export function Migrate() {
     }
     setStarting(true);
     try {
-      const data = await api.post<Job>("/api/migrate/directadmin", { ...values, sites: selected, phpVersion: php });
+      const data = await api.post<Job>("/api/migrate/directadmin", {
+        ...values,
+        privateKey: mode === "ssh" ? keyText : "",
+        keyPassphrase: mode === "ssh" && keyText ? values.keyPassphrase || "" : "",
+        sites: selected,
+        phpVersion: php,
+      });
       setJob(data);
       message.success("Migration started");
     } catch (err) {
@@ -109,29 +127,102 @@ export function Migrate() {
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
       <Card>
         <Typography.Paragraph type="secondary">
-          Connect to DirectAdmin, choose the websites, and leave this running. Files, databases, and the account are imported. Subdomains of a selected website come with it. Mail, DNS, and certificates are not. The DirectAdmin username becomes the account on this server.
+          Copy websites from DirectAdmin over SSH as root, or as a user that can sudo. Log in with a password or a PuTTY PPK file. The DirectAdmin API login still works. Files, databases, and the account are imported. Subdomains of a selected website come with it. Mail, DNS, and certificates are not. The DirectAdmin username becomes the account on this server.
         </Typography.Paragraph>
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ port: 2222, insecure: true }}
+          initialValues={{ mode: "ssh", port: 22, insecure: true }}
           onFinish={listSites}
         >
+          <Form.Item name="mode" label="Connection">
+            <Select
+              options={[
+                { value: "ssh", label: "SSH (root or sudo)" },
+                { value: "api", label: "DirectAdmin API" },
+              ]}
+              onChange={(value) => {
+                form.setFieldValue("port", value === "ssh" ? 22 : 2222);
+                setSites([]);
+                setPicked([]);
+              }}
+            />
+          </Form.Item>
           <Form.Item name="host" label="Host" rules={[{ required: true, message: "Host is required" }]}>
-            <Input placeholder="203.0.113.10 or https://panel.example:2222" autoComplete="off" />
+            <Input placeholder={mode === "ssh" ? "203.0.113.10" : "203.0.113.10 or https://panel.example:2222"} autoComplete="off" />
           </Form.Item>
           <Form.Item name="port" label="Port">
             <InputNumber min={1} max={65535} style={{ width: 160 }} />
           </Form.Item>
           <Form.Item name="username" label="Username" rules={[{ required: true, message: "Username is required" }]}>
-            <Input autoComplete="off" />
+            <Input placeholder={mode === "ssh" ? "root" : ""} autoComplete="off" />
           </Form.Item>
-          <Form.Item name="password" label="Password or login key" rules={[{ required: true, message: "Password is required" }]}>
+          <Form.Item name="password" label={mode === "ssh" ? "Password" : "Password or login key"} rules={mode === "ssh" ? [] : [{ required: true, message: "Password is required" }]}>
             <Input.Password autoComplete="new-password" />
           </Form.Item>
-          <Form.Item name="insecure" label="Allow a self-signed certificate" valuePropName="checked">
-            <Switch />
-          </Form.Item>
+          {mode === "ssh" ? (
+            <>
+              <Form.Item label="Private key">
+                <Space wrap>
+                  <Upload
+                    accept=".ppk,.pem"
+                    maxCount={1}
+                    showUploadList={false}
+                    beforeUpload={(file) => {
+                      if (file.size > 256 * 1024) {
+                        message.error("Key file is too large");
+                        return false;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const text = String(reader.result || "");
+                        if (!text.includes("PuTTY-User-Key-File-") && !text.includes("PRIVATE KEY")) {
+                          message.error("Choose a PuTTY PPK or OpenSSH private key");
+                          setKeyText("");
+                          setKeyName("");
+                          return;
+                        }
+                        setKeyText(text);
+                        setKeyName(file.name);
+                      };
+                      reader.onerror = () => message.error("Could not read the key file");
+                      reader.readAsText(file);
+                      return false;
+                    }}
+                  >
+                    <Button>Upload PPK</Button>
+                  </Upload>
+                  {keyName ? (
+                    <Typography.Text>
+                      {keyName}{" "}
+                      <Button
+                        type="link"
+                        onClick={() => {
+                          setKeyText("");
+                          setKeyName("");
+                          form.setFieldValue("keyPassphrase", "");
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </Typography.Text>
+                  ) : null}
+                </Space>
+              </Form.Item>
+              {keyText ? (
+                <Form.Item name="keyPassphrase" label="Key passphrase">
+                  <Input.Password placeholder="Leave empty if the PPK has no passphrase" autoComplete="new-password" />
+                </Form.Item>
+              ) : null}
+              <Typography.Paragraph type="secondary">
+                Root runs the copy directly. Any other user uses sudo with the password. Leave the password empty when the key logs in as root. The panel accepts the SSH key of the host you enter.
+              </Typography.Paragraph>
+            </>
+          ) : (
+            <Form.Item name="insecure" label="Allow a self-signed certificate" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+          )}
           <Button type="primary" htmlType="submit" loading={listing}>
             List websites
           </Button>
