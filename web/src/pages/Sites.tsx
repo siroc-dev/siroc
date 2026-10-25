@@ -1400,7 +1400,7 @@ export function Sites() {
             </Col>
           </Row>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            HTTPS is turned on with a local certificate. You can switch to Let's Encrypt later.
+            HTTPS is turned on with a local certificate. HTTP stays on HTTP until you turn on Redirect HTTP to HTTPS.
           </Typography.Paragraph>
         </Form>
       </Modal>

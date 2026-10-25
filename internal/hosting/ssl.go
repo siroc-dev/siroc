@@ -82,16 +82,7 @@ func localExists(domain string) bool {
 }
 
 func resolveCerts(domain, prefer string) (kind, cert, key string) {
-	order := []string{"letsencrypt", "custom", "local"}
-	switch prefer {
-	case "custom":
-		order = []string{"custom", "letsencrypt", "local"}
-	case "local":
-		order = []string{"local", "letsencrypt", "custom"}
-	case "letsencrypt":
-		order = []string{"letsencrypt", "custom", "local"}
-	}
-	for _, kind := range order {
+	for _, kind := range certPreferOrder(prefer) {
 		cert, key := certFiles(domain, kind)
 		if fileOK(cert) && fileOK(key) {
 			return kind, cert, key
@@ -102,16 +93,6 @@ func resolveCerts(domain, prefer string) (kind, cert, key string) {
 
 func wantLocalCert(ssl bool, kind string) bool {
 	return ssl && (kind == "" || kind == "local")
-}
-
-func sslRedirect(ssl bool, kind string, force *bool) bool {
-	if !ssl {
-		return false
-	}
-	if force != nil {
-		return *force
-	}
-	return kind == "letsencrypt" || kind == "custom"
 }
 
 func ensureLocalCert(domain string, aliases []string) error {

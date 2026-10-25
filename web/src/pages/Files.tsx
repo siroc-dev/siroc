@@ -39,6 +39,7 @@ import {
   LockOutlined,
   MoreOutlined,
   ReloadOutlined,
+  RestOutlined,
   SearchOutlined,
   ScissorOutlined,
   SnippetsOutlined,
@@ -60,6 +61,7 @@ type Account = { username: string };
 type Entry = { name: string; path: string; isDir: boolean; size: number; mode: string; modTime: string };
 type Listing = { path: string; absPath?: string; root?: boolean; jail?: string; roots?: string[]; entries: Entry[] };
 type Clip = { items: { path: string; name: string; isDir: boolean }[]; op: "copy" | "move" };
+type TrashItem = { id: string; name: string; from: string; isDir: boolean; size: number; deleted: string; expires: string };
 
 const rootShortcuts = ["/", "/etc", "/home", "/opt/siroc", "/var/log", "/etc/nginx", "/etc/php"];
 
@@ -156,6 +158,10 @@ export function Files() {
   const [folderOpen, setFolderOpen] = useState(false);
   const [renameItem, setRenameItem] = useState<Entry | null>(null);
   const [renameName, setRenameName] = useState("");
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
+  const [trashDays, setTrashDays] = useState(15);
+  const [trashBusy, setTrashBusy] = useState(false);
   const [preview, setPreview] = useState<{ name: string; url: string } | null>(null);
   const [newFile, setNewFile] = useState("");
   const [newFolder, setNewFolder] = useState("");
@@ -380,9 +386,79 @@ export function Files() {
       }
       if (clip?.items.some((i) => i.path === path)) setClip(null);
       await load();
+      return true;
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
+      return false;
     }
+  }
+
+  async function loadTrash() {
+    if (!user) return;
+    setTrashBusy(true);
+    try {
+      const data = await api.get<{ items?: TrashItem[]; days?: number }>(`/api/files/trash?user=${encodeURIComponent(user)}`);
+      setTrashItems(data.items || []);
+      setTrashDays(data.days || 15);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setTrashBusy(false);
+    }
+  }
+
+  async function openTrash() {
+    setTrashOpen(true);
+    await loadTrash();
+  }
+
+  async function restoreTrash(item: TrashItem) {
+    setTrashBusy(true);
+    try {
+      const out = await api.post<{ dest?: string }>("/api/files/trash/restore", { user, id: item.id });
+      message.success(out.dest ? `Restored to ${out.dest}` : "Restored");
+      await loadTrash();
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setTrashBusy(false);
+    }
+  }
+
+  function destroyTrash(item: TrashItem) {
+    modal.confirm({
+      title: `Delete ${item.name} forever?`,
+      content: "This removes it from Trash. It cannot be restored.",
+      okText: "Delete forever",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await api.delete(`/api/files/trash?user=${encodeURIComponent(user)}&id=${encodeURIComponent(item.id)}`);
+        await loadTrash();
+      },
+    });
+  }
+
+  function emptyTrash() {
+    modal.confirm({
+      title: "Empty Trash?",
+      content: "Every file in Trash is deleted now and cannot be restored.",
+      okText: "Empty Trash",
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await api.post("/api/files/trash/empty", { user });
+        await loadTrash();
+      },
+    });
+  }
+
+  async function moveToTrash(items: Entry[]) {
+    let n = 0;
+    for (const e of items) {
+      if (await remove(e.path)) n++;
+    }
+    if (n === 1) message.success("Moved to Trash. It is kept for 15 days.");
+    else if (n > 1) message.success(`Moved ${n} items to Trash. They are kept for 15 days.`);
   }
 
   function skipFile(name: string) {
@@ -803,15 +879,12 @@ export function Files() {
 
   function toolbarDelete() {
     if (!needPicked("delete")) return;
-    const names = picked.map((e) => e.name).join(", ");
     modal.confirm({
-      title: picked.length === 1 ? `Delete ${picked[0].name}?` : `Delete ${picked.length} items?`,
-      content: names,
-      okText: "Delete",
+      title: picked.length === 1 ? `Move ${picked[0].name} to Trash?` : `Move ${picked.length} items to Trash?`,
+      content: "Trash keeps them for 15 days. Restore them from Trash before then.",
+      okText: "Move to Trash",
       okButtonProps: { danger: true },
-      onOk: async () => {
-        for (const e of picked) await remove(e.path);
-      },
+      onOk: () => moveToTrash(picked),
     });
   }
 
@@ -848,7 +921,7 @@ export function Files() {
         disabled: !clip || busy || clip.items.some((i) => i.path === pasteDir),
       },
       { type: "divider" },
-      { key: "delete", icon: <DeleteOutlined />, label: items.length > 1 ? `Delete ${items.length} items` : "Delete", danger: true },
+      { key: "delete", icon: <DeleteOutlined />, label: items.length > 1 ? `Move ${items.length} items to Trash` : "Move to Trash", danger: true },
     );
     return out;
   }
@@ -881,13 +954,11 @@ export function Files() {
     if (key === "paste") void pasteInto(one?.isDir ? one.path : listing.path);
     if (key === "delete") {
       modal.confirm({
-        title: items.length === 1 ? `Delete ${items[0].name}?` : `Delete ${items.length} items?`,
-        content: items.map((e) => e.name).join(", "),
-        okText: "Delete",
+        title: items.length === 1 ? `Move ${items[0].name} to Trash?` : `Move ${items.length} items to Trash?`,
+        content: "Trash keeps them for 15 days. Restore them from Trash before then.",
+        okText: "Move to Trash",
         okButtonProps: { danger: true },
-        onOk: async () => {
-          for (const e of items) await remove(e.path);
-        },
+        onOk: () => moveToTrash(items),
       });
     }
   }
@@ -986,6 +1057,9 @@ export function Files() {
             </Tooltip>
             <Button danger icon={<DeleteOutlined />} disabled={!user || busy} onClick={toolbarDelete}>
               Remove
+            </Button>
+            <Button icon={<RestOutlined />} disabled={!user || busy} onClick={() => void openTrash()}>
+              Trash
             </Button>
             <Dropdown
               menu={{
@@ -1290,6 +1364,55 @@ export function Files() {
 
       <Modal title={preview?.name || "Preview"} open={!!preview} onCancel={closePreview} footer={null} width={880} destroyOnHidden>
         {preview ? <img className="fm-preview" src={preview.url} alt={preview.name} /> : null}
+      </Modal>
+
+      <Modal
+        title="Trash"
+        open={trashOpen}
+        onCancel={() => setTrashOpen(false)}
+        footer={null}
+        width={860}
+        destroyOnHidden
+      >
+        <Typography.Paragraph type="secondary">
+          Deleted files stay here for {trashDays} days, then they are removed. Restore puts a file back at its original path. If that name is taken, a new name is used.
+        </Typography.Paragraph>
+        <Space style={{ marginBottom: 12 }}>
+          <Button icon={<ReloadOutlined />} onClick={() => void loadTrash()} disabled={trashBusy}>
+            Refresh
+          </Button>
+          <Button danger disabled={trashBusy || trashItems.length === 0} onClick={emptyTrash}>
+            Empty Trash
+          </Button>
+        </Space>
+        <Table
+          size="small"
+          rowKey="id"
+          loading={trashBusy}
+          pagination={{ pageSize: 8, hideOnSinglePage: true }}
+          dataSource={trashItems}
+          locale={{ emptyText: "Trash is empty" }}
+          columns={[
+            { title: "Name", dataIndex: "name", render: (name: string, item: TrashItem) => (item.isDir ? `${name}/` : name) },
+            { title: "Original path", dataIndex: "from" },
+            { title: "Deleted", dataIndex: "deleted", render: (v: string) => fmtTime(v), width: 170 },
+            { title: "Removed after", dataIndex: "expires", render: (v: string) => fmtTime(v), width: 170 },
+            {
+              title: "",
+              width: 180,
+              render: (_: unknown, item: TrashItem) => (
+                <Space>
+                  <Button size="small" disabled={trashBusy} onClick={() => void restoreTrash(item)}>
+                    Restore
+                  </Button>
+                  <Button size="small" danger disabled={trashBusy} onClick={() => destroyTrash(item)}>
+                    Delete
+                  </Button>
+                </Space>
+              ),
+            },
+          ]}
+        />
       </Modal>
 
       <Modal

@@ -95,8 +95,7 @@ function certTypeLabel(site: SiteSettingsSite) {
 }
 
 function httpsForced(site: SiteSettingsSite) {
-  if (typeof site.options?.forceHttps === "boolean") return site.options.forceHttps;
-  return !!site.ssl && (site.sslKind === "letsencrypt" || site.sslKind === "custom");
+  return site.options?.forceHttps === true;
 }
 
 function expDay(v?: string) {
@@ -915,6 +914,9 @@ export function SiteSettings({
                       <span>Redirect HTTP to HTTPS</span>
                       <Switch checked={httpsForced(site)} loading={busy} onChange={(on) => void saveOpts({ forceHttps: on }, "HTTPS redirect saved")} />
                     </div>
+                  ) : null}
+                  {site.ssl && sslInfo?.ok ? (
+                    <Typography.Paragraph type="secondary">HTTP stays on HTTP until this is on. A new site uses the local certificate.</Typography.Paragraph>
                   ) : null}
                   {certEditors()}
                   <Space wrap>

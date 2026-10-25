@@ -105,6 +105,10 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/files/extract", s.extractFile)
 		r.Post("/api/files/archive", s.archiveFile)
 		r.Delete("/api/files", s.deleteFile)
+		r.Get("/api/files/trash", s.listTrash)
+		r.Post("/api/files/trash/restore", s.restoreTrash)
+		r.Delete("/api/files/trash", s.deleteTrash)
+		r.Post("/api/files/trash/empty", s.emptyTrash)
 		r.Post("/api/files/upload", s.uploadFile)
 		r.Get("/api/files/download", s.downloadFile)
 		r.Get("/api/files/lsp", s.fileLSP)
@@ -1085,6 +1089,69 @@ func (s *Server) deleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Agent.FileDelete(username, r.URL.Query().Get("path"), root, s.fileRoots(username, root)...); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) listTrash(w http.ResponseWriter, r *http.Request) {
+	username, root, ok := s.fileUser(w, r, r.URL.Query().Get("user"))
+	if !ok {
+		return
+	}
+	out, err := s.Agent.FileTrash(username, root, s.fileRoots(username, root)...)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) restoreTrash(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		User string `json:"user"`
+		ID   string `json:"id"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	username, root, ok := s.fileUser(w, r, body.User)
+	if !ok {
+		return
+	}
+	out, err := s.Agent.FileTrashRestore(username, body.ID, root, s.fileRoots(username, root)...)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) deleteTrash(w http.ResponseWriter, r *http.Request) {
+	username, root, ok := s.fileUser(w, r, r.URL.Query().Get("user"))
+	if !ok {
+		return
+	}
+	if err := s.Agent.FileTrashDelete(username, r.URL.Query().Get("id"), root, s.fileRoots(username, root)...); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) emptyTrash(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		User string `json:"user"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	username, root, ok := s.fileUser(w, r, body.User)
+	if !ok {
+		return
+	}
+	if err := s.Agent.FileTrashEmpty(username, root, s.fileRoots(username, root)...); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}

@@ -23,7 +23,7 @@ func resolveRoot(rel string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if blockedRoot(abs) {
+	if blockedRoot(abs) || trashHolds("/", filepath.ToSlash(abs)) {
 		return "", fmt.Errorf("path is not browsable")
 	}
 	return abs, nil
@@ -55,6 +55,9 @@ func (m *Manager) rootList(rel string) (*rpc.FileListResp, error) {
 	if err != nil {
 		return nil, err
 	}
+	if trashHolds("/", filepath.ToSlash(abs)) {
+		return nil, fmt.Errorf("open Trash to manage deleted files")
+	}
 	st, err := os.Stat(abs)
 	if err != nil {
 		return nil, err
@@ -70,6 +73,9 @@ func (m *Manager) rootList(rel string) (*rpc.FileListResp, error) {
 	entries := resp.Entries[:0]
 	for _, e := range resp.Entries {
 		if abs == "/" && skip[e.Name] {
+			continue
+		}
+		if filepath.Clean(abs) == filepath.Dir(RootTrashDir) && e.Name == filepath.Base(RootTrashDir) {
 			continue
 		}
 		entries = append(entries, e)
@@ -110,18 +116,6 @@ func (m *Manager) rootMkdir(rel string) error {
 	}
 	_, err = runHelper(helperReq{Op: "mkdir", Path: abs, Home: "/"})
 	m.ownPath(abs)
-	return err
-}
-
-func (m *Manager) rootDelete(rel string) error {
-	abs, err := resolveRoot(rel)
-	if err != nil {
-		return err
-	}
-	if protectedRoot(abs) {
-		return fmt.Errorf("cannot delete system path %s", abs)
-	}
-	_, err = runHelper(helperReq{Op: "delete", Path: abs, Home: "/"})
 	return err
 }
 

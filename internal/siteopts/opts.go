@@ -25,7 +25,7 @@ type Options struct {
 	// A false pointer turns that off. StaticExt empty means the Plesk extension list.
 	Static    *bool  `json:"static,omitempty"`
 	StaticExt string `json:"staticExt,omitempty"`
-	// ForceHTTPS nil keeps the previous default: redirect when the certificate is Let's Encrypt or custom.
+	// ForceHTTPS nil leaves HTTP in place. Redirect only when this is true.
 	ForceHTTPS *bool `json:"forceHttps,omitempty"`
 	// PHP overrides this site's pool. Empty fields keep the account PHP settings.
 	PHP *PHP `json:"php,omitempty"`

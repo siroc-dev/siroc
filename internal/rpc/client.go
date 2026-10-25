@@ -169,6 +169,27 @@ func (c *Client) FileDelete(username, path string, root bool, roots ...string) e
 	return c.do(http.MethodPost, "/files/delete", fileBody(username, path, root, roots), nil)
 }
 
+func (c *Client) FileTrash(username string, root bool, roots ...string) (*TrashListResp, error) {
+	var out TrashListResp
+	err := c.do(http.MethodPost, "/files/trash", fileBody(username, "", root, roots), &out)
+	return &out, err
+}
+
+func (c *Client) FileTrashRestore(username, id string, root bool, roots ...string) (*FileOpResp, error) {
+	var out FileOpResp
+	req := fileBody(username, id, root, roots)
+	err := c.do(http.MethodPost, "/files/trash/restore", req, &out)
+	return &out, err
+}
+
+func (c *Client) FileTrashDelete(username, id string, root bool, roots ...string) error {
+	return c.do(http.MethodPost, "/files/trash/delete", fileBody(username, id, root, roots), nil)
+}
+
+func (c *Client) FileTrashEmpty(username string, root bool, roots ...string) error {
+	return c.do(http.MethodPost, "/files/trash/empty", fileBody(username, "", root, roots), nil)
+}
+
 func (c *Client) FileRename(username, path, dest string, root bool, roots ...string) error {
 	req := fileBody(username, path, root, roots)
 	req.Dest = dest

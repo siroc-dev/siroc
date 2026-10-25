@@ -102,10 +102,10 @@ func curlFetch(dest, rawURL string) error {
 
 func runSearch(root, home, query string) ([]rpc.FileSearchHit, bool) {
 	bin := "grep"
-	args := []string{"-R", "-n", "-I", "-m", "3", "--exclude-dir=.git", "--exclude-dir=node_modules", "--exclude-dir=vendor", "--exclude-dir=.svn", query, root}
+	args := []string{"-R", "-n", "-I", "-m", "3", "--exclude-dir=.git", "--exclude-dir=node_modules", "--exclude-dir=vendor", "--exclude-dir=.svn", "--exclude-dir=" + TrashDirName, query, root}
 	if _, err := exec.LookPath("rg"); err == nil {
 		bin = "rg"
-		args = []string{"-n", "--hidden", "--no-heading", "-m", "3", "-g", "!.git", "-g", "!node_modules", "-g", "!vendor", query, root}
+		args = []string{"-n", "--hidden", "--no-heading", "-m", "3", "-g", "!.git", "-g", "!node_modules", "-g", "!vendor", "-g", "!" + TrashDirName, query, root}
 	}
 	cmd := exec.Command(bin, args...)
 	out, _ := cmd.CombinedOutput()

@@ -412,10 +412,10 @@ export function PHP() {
                     <FlexRow>
                       <Checkbox disabled={!ext.installed} checked={on} onChange={(e) => toggleExt(ext.name, e.target.checked)}>
                         <Typography.Text strong>{ext.title}</Typography.Text>{" "}
-                        <Typography.Text type="secondary">{ext.name}</Typography.Text>
+                        <Typography.Text type="secondary">{ext.name === "ioncube" ? "php_ioncube" : ext.name}</Typography.Text>
                       </Checkbox>
                       <Space size={4}>
-                        {ext.installed ? <Tag color="success">installed</Tag> : <Tag>{ext.source}</Tag>}
+                        {ext.installed ? <Tag color="success">installed</Tag> : <Tag>{ext.source === "loader" ? "php_ioncube" : ext.source}</Tag>}
                         {admin && !ext.installed && (ext.source === "apt" || ext.source === "both") ? (
                           <Button size="small" disabled={queued || busy !== ""} onClick={() => installExt(ext.name, "apt")}>
                             {queued ? "Queued" : "apt"}

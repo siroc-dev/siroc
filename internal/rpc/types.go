@@ -103,6 +103,21 @@ type FileListResp struct {
 	Entries []FileEntry `json:"entries"`
 }
 
+type TrashItem struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	From    string `json:"from"`
+	IsDir   bool   `json:"isDir"`
+	Size    int64  `json:"size"`
+	Deleted string `json:"deleted"`
+	Expires string `json:"expires"`
+}
+
+type TrashListResp struct {
+	Items []TrashItem `json:"items"`
+	Days  int         `json:"days"`
+}
+
 type FileContentResp struct {
 	Path    string `json:"path"`
 	AbsPath string `json:"absPath,omitempty"`

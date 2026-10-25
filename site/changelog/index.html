@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.95">0.2.95</a>
           <a href="#v0.2.94">0.2.94</a>
           <a href="#v0.2.93">0.2.93</a>
           <a href="#v0.2.92">0.2.92</a>
@@ -123,6 +124,19 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.95">
+          <h2><a href="#v0.2.95">0.2.95</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Deleting a file in the file manager moves it to Trash for 15 days. Restore puts it back at the original path. Delete and Empty Trash remove it immediately. The agent deletes items older than 15 days on startup and every 6 hours. Account trash stays in the home, so it still counts toward disk quota.</li>
+            <li>ionCube Loader is labeled <code>php_ioncube</code> on the PHP page, next to OPcache and SSH2.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Redirect HTTP to HTTPS stays off until that switch is turned on. A new site uses the local certificate, and HTTP keeps working. A site that already uses Let's Encrypt keeps that certificate. After upgrading, use Rebuild configs so existing sites drop a redirect that was turned on automatically.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.94">
           <h2><a href="#v0.2.94">0.2.94</a></h2>

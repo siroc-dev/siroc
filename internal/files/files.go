@@ -115,6 +115,9 @@ func (m *Manager) resolve(username, rel string) (abs, home string, uid, gid int,
 	if !pathAllowed(filepath.ToSlash(home), filepath.ToSlash(check), roots) {
 		return "", "", 0, 0, fmt.Errorf("path is outside the account home")
 	}
+	if trashHolds(filepath.ToSlash(home), filepath.ToSlash(abs)) || trashHolds(filepath.ToSlash(home), filepath.ToSlash(check)) {
+		return "", "", 0, 0, fmt.Errorf("open Trash to manage deleted files")
+	}
 	return abs, home, uid, gid, nil
 }
 
@@ -162,6 +165,9 @@ func (m *Manager) List(username, rel string, root bool) (*rpc.FileListResp, erro
 	abs, home, uid, gid, err := m.resolve(username, rel)
 	if err != nil {
 		return nil, err
+	}
+	if trashHolds(filepath.ToSlash(home), filepath.ToSlash(abs)) {
+		return nil, fmt.Errorf("open Trash to manage deleted files")
 	}
 	resp, err := m.call(uid, gid, helperReq{Op: "list", Path: abs, Home: home})
 	if err != nil {
@@ -220,22 +226,7 @@ func (m *Manager) Mkdir(username, rel string, root bool) error {
 }
 
 func (m *Manager) Delete(username, rel string, root bool) error {
-	if root {
-		return m.rootDelete(rel)
-	}
-	abs, home, uid, gid, err := m.resolve(username, rel)
-	if err != nil {
-		return err
-	}
-	if abs == home {
-		return fmt.Errorf("cannot delete home directory")
-	}
-	_, err = m.call(uid, gid, helperReq{Op: "delete", Path: abs, Home: home})
-	if err != nil && permDenied(err) {
-		m.ownPath(abs)
-		_, err = m.call(uid, gid, helperReq{Op: "delete", Path: abs, Home: home})
-	}
-	return err
+	return m.moveToTrash(username, rel, root)
 }
 
 func (m *Manager) Rename(username, rel, dest string, root bool) error {
@@ -377,7 +368,7 @@ func runHelper(req helperReq) (helperResp, error) {
 		var entries []rpc.FileEntry
 		for _, e := range fis {
 			info, err := e.Info()
-			if err != nil {
+			if err != nil || info.Name() == TrashDirName {
 				continue
 			}
 			full := filepath.Join(req.Path, info.Name())
@@ -440,6 +431,8 @@ func runHelper(req helperReq) (helperResp, error) {
 			return helperResp{}, err
 		}
 		return helperResp{OK: true}, nil
+	case "trash":
+		return helperTrash(req)
 	case "rename":
 		if err := os.MkdirAll(filepath.Dir(req.Dest), 0755); err != nil {
 			return helperResp{}, err

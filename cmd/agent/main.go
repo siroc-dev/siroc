@@ -170,6 +170,7 @@ func main() {
 		log.Printf("supervisor reload: %v", err)
 	}
 	filesMgr := &files.Manager{HomeRoot: cfg.HomeRoot}
+	go files.WatchTrash(cfg.HomeRoot)
 	softMgr := &software.Manager{}
 	hostMgr := &hosting.Manager{HomeRoot: cfg.HomeRoot, NginxSites: cfg.NginxSites, ApacheSites: cfg.ApacheSites}
 	dbMgr := &dbmgmt.Manager{}
@@ -438,6 +439,10 @@ func main() {
 	r.Post("/files/write", fileHandler(filesMgr, "write"))
 	r.Post("/files/mkdir", fileHandler(filesMgr, "mkdir"))
 	r.Post("/files/delete", fileHandler(filesMgr, "delete"))
+	r.Post("/files/trash", fileHandler(filesMgr, "trash"))
+	r.Post("/files/trash/restore", fileHandler(filesMgr, "trash-restore"))
+	r.Post("/files/trash/delete", fileHandler(filesMgr, "trash-delete"))
+	r.Post("/files/trash/empty", fileHandler(filesMgr, "trash-empty"))
 	r.Post("/files/rename", fileHandler(filesMgr, "rename"))
 	r.Post("/files/chmod", fileHandler(filesMgr, "chmod"))
 	r.Post("/files/copy", fileHandler(filesMgr, "copy"))
@@ -1798,6 +1803,18 @@ func fileHandler(m *files.Manager, op string) http.HandlerFunc {
 			out = rpc.OKResp{OK: true}
 		case "delete":
 			err = mgr.Delete(req.Username, req.Path, req.Root)
+			out = rpc.OKResp{OK: true}
+		case "trash":
+			out, err = mgr.ListTrash(req.Username, req.Root)
+		case "trash-restore":
+			dest, e := mgr.RestoreTrash(req.Username, req.Path, req.Root)
+			err = e
+			out = rpc.FileOpResp{OK: err == nil, Dest: dest, Path: dest}
+		case "trash-delete":
+			err = mgr.DeleteTrash(req.Username, req.Path, req.Root)
+			out = rpc.OKResp{OK: true}
+		case "trash-empty":
+			err = mgr.EmptyTrash(req.Username, req.Root)
 			out = rpc.OKResp{OK: true}
 		case "rename":
 			err = mgr.Rename(req.Username, req.Path, req.Dest, req.Root)
