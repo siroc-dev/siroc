@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.93">0.2.93</a>
           <a href="#v0.2.92">0.2.92</a>
           <a href="#v0.2.91">0.2.91</a>
           <a href="#v0.2.90">0.2.90</a>
@@ -121,6 +122,18 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.93">
+          <h2><a href="#v0.2.93">0.2.93</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Updating MySQL or MariaDB dumps every database first. The file is <code>/var/backups/siroc/db-upgrade</code> and ends in <code>.sql.gz</code>. The newest 3 dumps are kept. The database has to be running. If the dump fails, the packages are not changed.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>A MariaDB update no longer disables the service before apt. After the packages change, the datadir stays on the directory that already holds <code>ibdata1</code>, including Ubuntu’s <code>/var/lib/mariadb</code>. AppArmor is reloaded so that path and <code>/siroc</code> can be read. If MariaDB still does not start, the install log includes the error from the journal.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.92">
           <h2><a href="#v0.2.92">0.2.92</a></h2>

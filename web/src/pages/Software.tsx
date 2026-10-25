@@ -416,6 +416,13 @@ export function Software() {
           <Space direction="vertical" style={{ width: "100%", marginTop: 8 }} size="middle">
             {modal.pkg.description ? <Typography.Paragraph type="secondary">{modal.pkg.description}</Typography.Paragraph> : null}
             {modal.pkg.exclusiveOf ? <Alert type="warning" showIcon message={`Conflicts with ${modal.pkg.exclusiveOf}`} /> : null}
+            {modal.kind === "update" && (modal.pkg.name === "mysql" || modal.pkg.name === "mariadb") ? (
+              <Alert
+                type="info"
+                showIcon
+                message="Databases are dumped before the packages change. The file is /var/backups/siroc/db-upgrade. The newest 3 dumps are kept. The database has to be running."
+              />
+            ) : null}
             {(modal.pkg.versions || []).length > 0 ? (
               <div>
                 <Typography.Text type="secondary">Version</Typography.Text>

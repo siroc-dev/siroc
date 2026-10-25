@@ -45,7 +45,7 @@ func Migrate() error {
 	}
 	note(linkBins())
 	note(rewriteUnits())
-	note(allowAppArmor())
+	note(AllowAppArmor())
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", errs[0])
 	}
@@ -306,7 +306,10 @@ func rewriteUnits() error {
 	return nil
 }
 
-func allowAppArmor() error {
+// AllowAppArmor lets MariaDB read data under /siroc. A package upgrade
+// replaces the profile and loads it without those rules, so this reloads
+// the profile even when the local file was already written.
+func AllowAppArmor() error {
 	if _, err := os.Stat("/etc/apparmor.d/local"); err != nil {
 		return nil
 	}
@@ -334,26 +337,39 @@ func allowAppArmor() error {
 		path := "/etc/apparmor.d/local/" + name
 		existing, _ := os.ReadFile(path)
 		missing := MissingAppArmorRules(string(existing))
-		if missing == "" {
+		reload := strings.Contains(string(existing), "/siroc/")
+		if missing != "" {
+			body := missing
+			if !strings.Contains(string(existing), "Added by siroc") {
+				body = "# Added by siroc so data under /siroc stays readable.\n" + missing
+			}
+			f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+			if err != nil {
+				return err
+			}
+			_, err = f.WriteString(body)
+			closeErr := f.Close()
+			if err != nil {
+				return err
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+			reload = true
+		}
+		mainPath := "/etc/apparmor.d/" + name
+		if b, err := os.ReadFile(mainPath); err == nil {
+			if next, ok := WithLocalInclude(string(b), name); ok {
+				if err := os.WriteFile(mainPath, []byte(next), 0644); err != nil {
+					return err
+				}
+				reload = true
+			}
+		}
+		if !reload {
 			continue
 		}
-		body := missing
-		if !strings.Contains(string(existing), "Added by siroc") {
-			body = "# Added by siroc so data under /siroc stays readable.\n" + missing
-		}
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-		if err != nil {
-			return err
-		}
-		_, err = f.WriteString(body)
-		closeErr := f.Close()
-		if err != nil {
-			return err
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		if out, err := exec.Command("apparmor_parser", "-r", "/etc/apparmor.d/"+name).CombinedOutput(); err != nil {
+		if out, err := exec.Command("apparmor_parser", "-r", mainPath).CombinedOutput(); err != nil {
 			log.Printf("siroc layout: apparmor %s: %s", name, strings.TrimSpace(string(out)))
 		}
 	}

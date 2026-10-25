@@ -56,7 +56,21 @@ const AppArmorRules = "# Added by siroc so data under /siroc stays readable.\n" 
 	"/siroc/log/ r,\n/siroc/log/** rw,\n" +
 	"/siroc/cache/ r,\n/siroc/cache/** rw,\n" +
 	"/siroc/db/ r,\n/siroc/db/** rwk,\n" +
-	"/siroc/etc/ r,\n/siroc/etc/** rw,\n"
+	"/siroc/etc/ r,\n/siroc/etc/** rw,\n" +
+	"/var/lib/mariadb/ r,\n/var/lib/mariadb/** rwk,\n"
+
+// WithLocalInclude adds the local snippet include MariaDB and MySQL profiles
+// load. A profile that never mentions local/<name> ignores rules written there.
+func WithLocalInclude(profile, name string) (string, bool) {
+	if name == "" || strings.Contains(name, "/") || strings.Contains(profile, "local/"+name) {
+		return profile, false
+	}
+	i := strings.LastIndex(profile, "}")
+	if i < 0 {
+		return profile, false
+	}
+	return profile[:i] + "  #include <local/" + name + ">\n" + profile[i:], true
+}
 
 // MissingAppArmorRules returns the rule lines that are not in the local profile yet.
 func MissingAppArmorRules(existing string) string {

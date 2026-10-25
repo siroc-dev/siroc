@@ -3,6 +3,8 @@
 package software
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -83,7 +85,49 @@ func writeMySQLKeyring() error {
 	return os.Chmod(dest, 0644)
 }
 
+func ensureMariaDBDataDir() {
+	dir := mysqlLiveDataDir()
+	if dir == "" || dir == "/var/lib/mysql" {
+		return
+	}
+	path := "/etc/mysql/mariadb.conf.d/59-siroc-datadir.cnf"
+	if _, err := os.Stat("/etc/mysql/mariadb.conf.d"); err != nil {
+		path = "/etc/mysql/conf.d/59-siroc-datadir.cnf"
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		noteInstall("datadir: " + err.Error())
+		return
+	}
+	body := "# managed by siroc\n[mysqld]\ndatadir=" + dir + "\n"
+	if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+		noteInstall("datadir: " + err.Error())
+		return
+	}
+	noteInstall("datadir: " + dir)
+}
+
+func mysqlLiveDataDir() string {
+	var found []string
+	for _, dir := range []string{"/var/lib/mariadb", "/var/lib/mysql", "/siroc/db/mysql"} {
+		st, err := os.Stat(filepath.Join(dir, "ibdata1"))
+		if err == nil && !st.IsDir() {
+			found = append(found, dir)
+		}
+	}
+	return pickMySQLDataDir(found)
+}
+
 func retireSQLSource() {
+	source := false
+	for _, engine := range []string{"mysql", "mariadb"} {
+		if ok, _ := sqlSourceInstalled(engine); ok {
+			source = true
+			break
+		}
+	}
+	if !source {
+		return
+	}
 	stopSQLServices()
 	for _, name := range []string{"mysql", "mariadb"} {
 		unit := "/etc/systemd/system/" + name + ".service"
@@ -105,17 +149,199 @@ func retireSQLSource() {
 	_ = exec.Command("systemctl", "daemon-reload").Run()
 }
 
+func backupDatabasesBeforeUpgrade(engine string) error {
+	if !sqlInstalledForBackup() {
+		return nil
+	}
+	if !sqlServiceRunning() {
+		return fmt.Errorf("start the database before updating MySQL or MariaDB so it can be backed up")
+	}
+	dest, err := dumpAllDatabases(engine)
+	if err != nil {
+		return err
+	}
+	noteInstall("database backup: " + dest)
+	return nil
+}
+
+func sqlInstalledForBackup() bool {
+	if ok, _ := dpkgVersion("mariadb-server"); ok {
+		return true
+	}
+	if ok, _ := dpkgVersion("mysql-community-server"); ok {
+		return true
+	}
+	if ok, _ := dpkgVersion("mysql-server"); ok {
+		return true
+	}
+	if ok, _ := sqlSourceInstalled("mariadb"); ok {
+		return true
+	}
+	if ok, _ := sqlSourceInstalled("mysql"); ok {
+		return true
+	}
+	return false
+}
+
+func sqlServiceRunning() bool {
+	for _, name := range []string{"mariadb", "mysql", "mysqld"} {
+		if exec.Command("systemctl", "is-active", "--quiet", name).Run() == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func dumpAllDatabases(engine string) (string, error) {
+	dumpBin := "mysqldump"
+	if _, err := exec.LookPath("mariadb-dump"); err == nil {
+		dumpBin = "mariadb-dump"
+	}
+	ssl, err := sqlClientSSLArgs()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(preUpgradeDumpDir, 0750); err != nil {
+		return "", err
+	}
+	dest := filepath.Join(preUpgradeDumpDir, preUpgradeDumpName(engine, time.Now()))
+	args := append(append([]string{}, ssl...), "--user=root", "--single-transaction", "--routines", "--events", "--triggers", "--all-databases")
+	if err := runSQLDump(dumpBin, dest, args); err != nil {
+		fallback := append(append([]string{}, ssl...), "--user=root", "--single-transaction", "--routines", "--triggers", "--all-databases")
+		if err2 := runSQLDump(dumpBin, dest, fallback); err2 != nil {
+			return "", err
+		}
+	}
+	prunePreUpgradeDumps(3)
+	return dest, nil
+}
+
+func sqlClientSSLArgs() ([]string, error) {
+	bin := sqlClientBin()
+	var last []byte
+	for _, extra := range [][]string{{"--skip-ssl"}, {"--ssl-mode=DISABLED"}, {}} {
+		args := append([]string{"--user=root", "--batch"}, extra...)
+		args = append(args, "-e", "SELECT 1")
+		out, err := exec.Command(bin, args...).CombinedOutput()
+		if err == nil {
+			return extra, nil
+		}
+		last = out
+	}
+	msg := strings.TrimSpace(string(last))
+	if msg == "" {
+		msg = "database root cannot log in"
+	}
+	return nil, fmt.Errorf("backup before update failed: %s", msg)
+}
+
+func runSQLDump(bin, dest string, args []string) error {
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0640)
+	if err != nil {
+		return err
+	}
+	gz := gzip.NewWriter(f)
+	cmd := exec.Command(bin, args...)
+	var stderr bytes.Buffer
+	cmd.Stdout = gz
+	cmd.Stderr = &stderr
+	noteInstall("$ " + strings.Join(cmd.Args, " "))
+	if err := cmd.Start(); err != nil {
+		_ = gz.Close()
+		_ = f.Close()
+		_ = os.Remove(dest)
+		return err
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	var runErr error
+	select {
+	case runErr = <-done:
+	case <-time.After(3 * time.Hour):
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		runErr = fmt.Errorf("timed out after 3h")
+		<-done
+	}
+	closeErr := gz.Close()
+	fileErr := f.Close()
+	if runErr != nil || closeErr != nil || fileErr != nil {
+		_ = os.Remove(dest)
+		msg := strings.TrimSpace(stderr.String())
+		if len(msg) > 500 {
+			msg = msg[len(msg)-500:]
+		}
+		if msg == "" && runErr != nil {
+			msg = runErr.Error()
+		}
+		if msg == "" && closeErr != nil {
+			msg = closeErr.Error()
+		}
+		if msg == "" && fileErr != nil {
+			msg = fileErr.Error()
+		}
+		return fmt.Errorf("backup before update failed: %s", msg)
+	}
+	return nil
+}
+
+func prunePreUpgradeDumps(keep int) {
+	ents, err := os.ReadDir(preUpgradeDumpDir)
+	if err != nil {
+		return
+	}
+	var names []string
+	for _, e := range ents {
+		if !e.IsDir() {
+			names = append(names, e.Name())
+		}
+	}
+	for _, name := range dumpsToRemove(names, keep) {
+		_ = os.Remove(filepath.Join(preUpgradeDumpDir, name))
+	}
+}
+
 func startSQLService(names ...string) error {
 	_ = exec.Command("systemctl", "daemon-reload").Run()
 	var last error
+	failed := ""
 	for _, name := range names {
 		out, err := exec.Command("systemctl", "enable", "--now", name).CombinedOutput()
 		if err == nil {
 			return nil
 		}
+		failed = name
 		last = fmt.Errorf("start %s: %s: %w", name, strings.TrimSpace(string(out)), err)
 	}
+	if last != nil {
+		if detail := sqlJournal(failed); detail != "" {
+			return fmt.Errorf("%w\n%s", last, detail)
+		}
+	}
 	return last
+}
+
+func sqlJournal(unit string) string {
+	if unit == "" {
+		return ""
+	}
+	out, _ := exec.Command("journalctl", "-u", unit, "-n", "80", "--no-pager", "-o", "cat").CombinedOutput()
+	var keep []string
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		low := strings.ToLower(line)
+		if strings.Contains(low, "error") || strings.Contains(low, "fatal") || strings.Contains(low, "denied") || strings.Contains(low, "apparmor") || strings.Contains(low, "abort") || strings.Contains(low, "unknown variable") || strings.Contains(low, "can't") || strings.Contains(low, "cannot") {
+			keep = append(keep, line)
+		}
+	}
+	if len(keep) > 8 {
+		keep = keep[len(keep)-8:]
+	}
+	return strings.Join(keep, "\n")
 }
 
 func randomAptPassword() (string, error) {

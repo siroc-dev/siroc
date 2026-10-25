@@ -44,6 +44,17 @@ func TestMissingAppArmorRules(t *testing.T) {
 	}
 }
 
+func TestWithLocalInclude(t *testing.T) {
+	in := "profile mariadbd /usr/sbin/mariadbd {\n  /var/lib/mysql/** rwk,\n}\n"
+	got, ok := WithLocalInclude(in, "mariadbd")
+	if !ok || !contains(got, "#include <local/mariadbd>\n}") {
+		t.Fatalf("got %v\n%s", ok, got)
+	}
+	if _, ok := WithLocalInclude(got, "mariadbd"); ok {
+		t.Fatal("include already present")
+	}
+}
+
 func contains(s, part string) bool {
 	return len(s) >= len(part) && (s == part || len(part) == 0 || indexOf(s, part) >= 0)
 }

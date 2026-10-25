@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/siroc-dev/siroc/internal/dbmgmt"
+	"github.com/siroc-dev/siroc/internal/layout"
 )
 
 func osRelease() (id, codename string) {
@@ -289,6 +292,9 @@ func installMySQL(version string) error {
 	if err != nil {
 		return err
 	}
+	if err := backupDatabasesBeforeUpgrade("mysql"); err != nil {
+		return err
+	}
 	retireSQLSource()
 	removeRepo("mariadb")
 	id, code := osRelease()
@@ -339,6 +345,9 @@ func installMariaDB(version string) error {
 	if err != nil {
 		return err
 	}
+	if err := backupDatabasesBeforeUpgrade("mariadb"); err != nil {
+		return err
+	}
 	retireSQLSource()
 	removeRepo("mysql")
 	id, code := osRelease()
@@ -357,7 +366,14 @@ func installMariaDB(version string) error {
 	if err := aptInstall("mariadb-server", "mariadb-client"); err != nil {
 		return err
 	}
-	if err := startSQLService("mariadb", "mysql"); err != nil {
+	ensureMariaDBDataDir()
+	if err := layout.AllowAppArmor(); err != nil {
+		noteInstall("apparmor: " + err.Error())
+	}
+	if _, err := dbmgmt.RepairMariaDBConfig(); err != nil {
+		noteInstall("mariadb config: " + err.Error())
+	}
+	if err := startSQLService("mariadb"); err != nil {
 		return err
 	}
 	return ensureSQLLocalRoot("")
