@@ -157,6 +157,12 @@ func formatManaged(pkgs []string) string {
 	return b.String()
 }
 
+// debInstalledStatus is true for a package that is on disk. apt-mark hold
+// changes the selection from "install" to "hold", so both count.
+func debInstalledStatus(status string) bool {
+	return strings.Contains(status, " ok installed")
+}
+
 func normalizePkgs(pkgs []string) []string {
 	seen := map[string]struct{}{}
 	var out []string

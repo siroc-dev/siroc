@@ -933,7 +933,7 @@ func dpkgVersion(pkg string) (bool, string) {
 		return false, ""
 	}
 	parts := strings.SplitN(strings.TrimSpace(string(out)), "|", 2)
-	if len(parts) != 2 || !strings.Contains(parts[0], "install ok installed") {
+	if len(parts) != 2 || !debInstalledStatus(parts[0]) {
 		return false, ""
 	}
 	return true, parts[1]

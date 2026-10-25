@@ -17,7 +17,7 @@ func EnsureAptHolds() (int, error) {
 		return 0, nil
 	}
 	installed := listInstalledDebs()
-	if _, err := os.Stat(AptManagedPath); os.IsNotExist(err) {
+	if len(readManaged()) == 0 {
 		if err := writeManaged(seedManagedPackages(installed)); err != nil {
 			return 0, err
 		}
@@ -167,7 +167,7 @@ func listInstalledDebs() []string {
 	var pkgs []string
 	for _, line := range strings.Split(string(out), "\n") {
 		name, status, ok := strings.Cut(line, "\t")
-		if !ok || !strings.Contains(status, "install ok installed") {
+		if !ok || !debInstalledStatus(status) {
 			continue
 		}
 		name = strings.TrimSpace(name)

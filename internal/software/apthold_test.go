@@ -56,6 +56,17 @@ func TestShouldSeedSkipsSSHAndPython(t *testing.T) {
 	}
 }
 
+func TestDebInstalledStatusAcceptsHold(t *testing.T) {
+	if !debInstalledStatus("hold ok installed") || !debInstalledStatus("install ok installed") {
+		t.Fatal("held and normal packages are installed")
+	}
+	for _, status := range []string{"hold ok not-installed", "deinstall ok config-files", "install ok half-configured", "install ok unpacked"} {
+		if debInstalledStatus(status) {
+			t.Fatal(status)
+		}
+	}
+}
+
 func TestParseManagedIgnoresComment(t *testing.T) {
 	text := "# Installed by Siroc. apt upgrade skips these. Update them from Software.\nnginx\n\nphp8.4-fpm\n"
 	got := parseManaged(text)
