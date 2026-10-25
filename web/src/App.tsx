@@ -15,6 +15,7 @@ import { Software } from "@/pages/Software";
 import { Supervisor } from "@/pages/Supervisor";
 import { Sites } from "@/pages/Sites";
 import { Backup } from "@/pages/Backup";
+import { Migrate } from "@/pages/Migrate";
 import { Tools } from "@/pages/Tools";
 import { OSUpdates } from "@/pages/OSUpdates";
 import { Databases } from "@/pages/Databases";
@@ -162,6 +163,7 @@ export function App() {
         <Route path="/php" element={<PHP />} />
         <Route path="/databases" element={<Databases />} />
         <Route path="/backup" element={<Backup admin={admin} />} />
+        <Route path="/migrate" element={<AdminOnly admin={admin}><Migrate /></AdminOnly>} />
         <Route path="/rclone" element={<Navigate to="/backup?tab=rclone" replace />} />
         <Route path="/tools" element={<AdminOnly admin={admin}><Tools /></AdminOnly>} />
         <Route path="/os" element={<AdminOnly admin={admin}><OSUpdates /></AdminOnly>} />

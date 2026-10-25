@@ -26,6 +26,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/files"
 	"github.com/siroc-dev/siroc/internal/hosting"
 	"github.com/siroc-dev/siroc/internal/layout"
+	"github.com/siroc-dev/siroc/internal/migrate"
 	"github.com/siroc-dev/siroc/internal/monitoring"
 	"github.com/siroc-dev/siroc/internal/osupdate"
 	"github.com/siroc-dev/siroc/internal/pma"
@@ -201,6 +202,9 @@ func main() {
 	}
 	hostMgr.FixAllWebPerms()
 	hostMgr.LockOpenBasedir()
+	if err := migrate.Init(cfg.DataDir); err != nil {
+		log.Printf("migrate: %v", err)
+	}
 
 	r := chi.NewRouter()
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
@@ -1699,6 +1703,43 @@ func main() {
 	})
 	r.Get("/rclone/run", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, rclone.Job())
+	})
+	r.Post("/migrate/directadmin/list", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.DAConn
+		if !decode(w, r, &req) {
+			return
+		}
+		sites, err := migrate.Discover(req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		if sites == nil {
+			sites = []rpc.DASite{}
+		}
+		writeJSON(w, http.StatusOK, rpc.DAList{Sites: sites})
+	})
+	r.Post("/migrate/directadmin", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.DAStartReq
+		if !decode(w, r, &req) {
+			return
+		}
+		job, err := migrate.Start(req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, job)
+	})
+	r.Get("/migrate/directadmin", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, migrate.Job())
+	})
+	r.Post("/migrate/directadmin/ack", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.DAAck
+		if !decode(w, r, &req) {
+			return
+		}
+		writeJSON(w, http.StatusOK, migrate.Ack(req))
 	})
 	r.Post("/backup/run", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.BackupReq

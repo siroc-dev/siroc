@@ -260,6 +260,9 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.requireAdmin)
 		r.Get("/api/os/updates", s.osUpdateStatus)
 		r.Post("/api/os/updates", s.osUpdate)
+		r.Post("/api/migrate/directadmin/list", s.migrateDiscover)
+		r.Post("/api/migrate/directadmin", s.migrateStart)
+		r.Get("/api/migrate/directadmin", s.migrateJob)
 		r.Get("/api/sysops", s.sysopsStatus)
 		r.Post("/api/sysops", s.sysopsApply)
 		r.Get("/api/sysops/disk", s.sysopsDisk)
@@ -301,6 +304,7 @@ func (s *Server) Router() http.Handler {
 
 func (s *Server) ListenAndServe() error {
 	s.StartInstallQueue()
+	go s.runMigrateApply()
 	go s.applyStoredSites()
 	s.prepareFirstRun()
 	go s.enqueueBaseStack()

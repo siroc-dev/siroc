@@ -207,6 +207,9 @@ func restore(req rpc.BackupReq) (*rpc.BackupResp, error) {
 			if req.Username != "" && strings.Contains(err.Error(), "archive is for ") {
 				continue
 			}
+			if len(req.Domains) > 0 && strings.Contains(err.Error(), "none of the selected domains") {
+				continue
+			}
 			return nil, fmt.Errorf("%s: %w", filepath.Base(arc), err)
 		}
 		if one.Manifest != nil {
@@ -216,6 +219,9 @@ func restore(req rpc.BackupReq) (*rpc.BackupResp, error) {
 		created = created || one.CreatedUser
 	}
 	if len(mans) == 0 {
+		if len(req.Domains) > 0 {
+			return nil, fmt.Errorf("backup has none of the selected domains")
+		}
 		if req.Username != "" {
 			return nil, fmt.Errorf("no DirectAdmin account named %s in this backup", req.Username)
 		}
@@ -223,6 +229,10 @@ func restore(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	}
 	msg := "restored " + strings.Join(names, ", ") + " from DirectAdmin. Mail, DNS, and certificates were not imported. Set each new account password under Accounts."
 	return &rpc.BackupResp{OK: true, Path: src, CreatedUser: created, Manifest: mans[0], Manifests: mans, Message: msg}, nil
+}
+
+func RestoreDirectAdminDomains(archive string, domains []string, php string) (*rpc.BackupResp, error) {
+	return restore(rpc.BackupReq{Restore: archive, Domains: domains, PHPVersion: php})
 }
 
 func SaveUpload(name string, r io.Reader) (string, error) {
@@ -287,6 +297,12 @@ func restoreExtracted(tmp, src string, req rpc.BackupReq) (*rpc.BackupResp, erro
 		} else {
 			man = plan.Manifest
 		}
+	}
+	if plan != nil && len(req.Domains) > 0 {
+		if err := plan.selectDomains(req.Domains, req.PHPVersion); err != nil {
+			return nil, err
+		}
+		man = plan.Manifest
 	}
 	username := strings.TrimSpace(man.Username)
 	if username == "" {

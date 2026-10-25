@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -458,6 +459,68 @@ func skipDirectAdminDir(name string) bool {
 func isUserArchiveName(name string) bool {
 	n := strings.ToLower(name)
 	return strings.HasSuffix(n, ".tar.zst") || strings.HasSuffix(n, ".tzst") || strings.HasSuffix(n, ".tar.gz") || strings.HasSuffix(n, ".tgz") || strings.HasSuffix(n, ".tar")
+}
+
+func (p *directAdminPlan) selectDomains(domains []string, php string) error {
+	if p == nil || p.Manifest == nil {
+		return fmt.Errorf("backup has none of the selected domains")
+	}
+	want := map[string]bool{}
+	for _, d := range domains {
+		ascii, err := validate.ASCIIHost(d)
+		if err == nil {
+			want[ascii] = true
+		}
+	}
+	if len(want) == 0 {
+		return fmt.Errorf("no domains selected")
+	}
+	var sites []rpc.BackupSite
+	for _, st := range p.Manifest.Sites {
+		if !want[st.Domain] && !docrootUnder(st.DocRoot, want) {
+			continue
+		}
+		if php != "" {
+			st.PHPVersion = php
+		}
+		st.Enabled = true
+		st.SSL = true
+		st.SSLKind = "local"
+		sites = append(sites, st)
+	}
+	if len(sites) == 0 {
+		return fmt.Errorf("backup has none of the selected domains")
+	}
+	var copies []directAdminCopy
+	for _, c := range p.Copies {
+		domain := strings.TrimPrefix(strings.ReplaceAll(c.Rel, "\\", "/"), "domains/")
+		if i := strings.IndexByte(domain, '/'); i >= 0 {
+			domain = domain[:i]
+		}
+		for _, st := range sites {
+			if strings.Contains(strings.ReplaceAll(st.DocRoot, "\\", "/"), "/domains/"+domain+"/") {
+				copies = append(copies, c)
+				break
+			}
+		}
+	}
+	p.Manifest.Sites = sites
+	p.Copies = copies
+	return nil
+}
+
+func docrootUnder(docroot string, want map[string]bool) bool {
+	docroot = strings.ReplaceAll(docroot, "\\", "/")
+	i := strings.Index(docroot, "/domains/")
+	if i < 0 {
+		return false
+	}
+	rest := docroot[i+len("/domains/"):]
+	parent := rest
+	if j := strings.IndexByte(rest, '/'); j >= 0 {
+		parent = rest[:j]
+	}
+	return parent != "" && want[parent]
 }
 
 func directAdminMessage(username string, sites, dbs, resets int, created bool) string {

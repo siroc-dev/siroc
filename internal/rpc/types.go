@@ -1355,27 +1355,29 @@ type QuotaInfo struct {
 }
 
 type BackupReq struct {
-	Username  string          `json:"username"`
-	Kind      string          `json:"kind"`
-	LocalDir  string          `json:"localDir,omitempty"`
-	Host      string          `json:"host,omitempty"`
-	Port      int             `json:"port,omitempty"`
-	User      string          `json:"user,omitempty"`
-	Password  string          `json:"password,omitempty"`
-	Path      string          `json:"path,omitempty"`
-	Endpoint  string          `json:"endpoint,omitempty"`
-	Region    string          `json:"region,omitempty"`
-	Bucket    string          `json:"bucket,omitempty"`
-	Prefix    string          `json:"prefix,omitempty"`
-	AccessKey string          `json:"accessKey,omitempty"`
-	SecretKey string          `json:"secretKey,omitempty"`
-	UseSSL    bool            `json:"useSSL,omitempty"`
-	IncludeDB bool            `json:"includeDB,omitempty"`
-	Retain    int             `json:"retain,omitempty"`
-	Databases []string        `json:"databases,omitempty"`
-	Restore   string          `json:"restore,omitempty"`
-	Inspect   bool            `json:"inspect,omitempty"`
-	Manifest  *BackupManifest `json:"manifest,omitempty"`
+	Username   string          `json:"username"`
+	Kind       string          `json:"kind"`
+	LocalDir   string          `json:"localDir,omitempty"`
+	Host       string          `json:"host,omitempty"`
+	Port       int             `json:"port,omitempty"`
+	User       string          `json:"user,omitempty"`
+	Password   string          `json:"password,omitempty"`
+	Path       string          `json:"path,omitempty"`
+	Endpoint   string          `json:"endpoint,omitempty"`
+	Region     string          `json:"region,omitempty"`
+	Bucket     string          `json:"bucket,omitempty"`
+	Prefix     string          `json:"prefix,omitempty"`
+	AccessKey  string          `json:"accessKey,omitempty"`
+	SecretKey  string          `json:"secretKey,omitempty"`
+	UseSSL     bool            `json:"useSSL,omitempty"`
+	IncludeDB  bool            `json:"includeDB,omitempty"`
+	Retain     int             `json:"retain,omitempty"`
+	Databases  []string        `json:"databases,omitempty"`
+	Restore    string          `json:"restore,omitempty"`
+	Inspect    bool            `json:"inspect,omitempty"`
+	Manifest   *BackupManifest `json:"manifest,omitempty"`
+	Domains    []string        `json:"domains,omitempty"`
+	PHPVersion string          `json:"phpVersion,omitempty"`
 }
 
 type BackupCronFile struct {
@@ -1918,4 +1920,50 @@ type DBSyncDB struct {
 
 type DBSyncResp struct {
 	Found []DBSyncDB `json:"found"`
+}
+
+type DAConn struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password,omitempty"`
+	Insecure bool   `json:"insecure"`
+}
+
+type DASite struct {
+	Domain string `json:"domain"`
+	Owner  string `json:"owner"`
+}
+
+type DAList struct {
+	Sites []DASite `json:"sites"`
+}
+
+type DAStartReq struct {
+	DAConn
+	Sites      []DASite `json:"sites"`
+	PHPVersion string   `json:"phpVersion"`
+}
+
+type DAItem struct {
+	Domain   string          `json:"domain"`
+	Owner    string          `json:"owner"`
+	Status   string          `json:"status"`
+	Step     string          `json:"step,omitempty"`
+	Percent  int             `json:"percent"`
+	Message  string          `json:"message,omitempty"`
+	Manifest *BackupManifest `json:"manifest,omitempty"`
+}
+
+type DAJob struct {
+	Status     string   `json:"status"`
+	Message    string   `json:"message,omitempty"`
+	PHPVersion string   `json:"phpVersion,omitempty"`
+	Items      []DAItem `json:"items"`
+}
+
+type DAAck struct {
+	Domain  string `json:"domain"`
+	OK      bool   `json:"ok"`
+	Message string `json:"message,omitempty"`
 }

@@ -55,6 +55,27 @@ func TestParseDirectAdminLegacy(t *testing.T) {
 	if len(plan.Copies) != 1 || plan.Copies[0].Rel != "domains/shop.test" {
 		t.Fatalf("copies: %+v", plan.Copies)
 	}
+	if err := plan.selectDomains([]string{"shop.test"}, "8.4"); err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Manifest.Sites) != 2 || plan.Manifest.Sites[0].PHPVersion != "8.4" || plan.Manifest.Sites[0].SSLKind != "local" {
+		t.Fatalf("selected parent: %+v", plan.Manifest.Sites)
+	}
+	if len(plan.Copies) != 1 {
+		t.Fatalf("parent copy: %+v", plan.Copies)
+	}
+	if err := plan.selectDomains([]string{"blog.shop.test"}, "8.1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Manifest.Sites) != 1 || plan.Manifest.Sites[0].Domain != "blog.shop.test" || plan.Manifest.Sites[0].PHPVersion != "8.1" {
+		t.Fatalf("selected subdomain: %+v", plan.Manifest.Sites)
+	}
+	if len(plan.Copies) != 1 || plan.Copies[0].Rel != "domains/shop.test" {
+		t.Fatalf("subdomain still needs the parent tree: %+v", plan.Copies)
+	}
+	if err := plan.selectDomains([]string{"other.test"}, "8.4"); err == nil {
+		t.Fatal("expected a missing domain to fail")
+	}
 }
 
 func TestParseDirectAdminCurrentLayout(t *testing.T) {

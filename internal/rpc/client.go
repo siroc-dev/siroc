@@ -1244,6 +1244,30 @@ func (c *Client) DBSync(accounts []DBSyncAccount) (*DBSyncResp, error) {
 	return &out, err
 }
 
+func (c *Client) DADiscover(req DAConn) (*DAList, error) {
+	var out DAList
+	err := c.do(http.MethodPost, "/migrate/directadmin/list", req, &out)
+	return &out, err
+}
+
+func (c *Client) DAStart(req DAStartReq) (*DAJob, error) {
+	var out DAJob
+	err := c.do(http.MethodPost, "/migrate/directadmin", req, &out)
+	return &out, err
+}
+
+func (c *Client) DAJob() (*DAJob, error) {
+	var out DAJob
+	err := c.do(http.MethodGet, "/migrate/directadmin", nil, &out)
+	return &out, err
+}
+
+func (c *Client) DAAck(req DAAck) (*DAJob, error) {
+	var out DAJob
+	err := c.do(http.MethodPost, "/migrate/directadmin/ack", req, &out)
+	return &out, err
+}
+
 func (c *Client) doBytes(method, path string) ([]byte, error) {
 	req, err := http.NewRequest(method, c.base+path, nil)
 	if err != nil {
