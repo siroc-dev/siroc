@@ -40,6 +40,17 @@ type FPM = {
 
 const timezones = ["UTC", "Asia/Bangkok", "Asia/Tokyo", "Asia/Singapore", "Europe/London", "Europe/Berlin", "America/New_York", "America/Los_Angeles"];
 
+function phpPoolError(s: FPM) {
+  if (s.maxChildren < 1 || s.maxChildren > 256) return "Max children must be 1-256.";
+  if (s.pm !== "dynamic") return "";
+  if (s.minSpare < 1 || s.minSpare > s.maxChildren) return `Min spare must be 1-${s.maxChildren}.`;
+  if (s.maxSpare < s.minSpare || s.maxSpare > s.maxChildren) return `Max spare must be between min spare (${s.minSpare}) and max children (${s.maxChildren}).`;
+  if (s.startServers < s.minSpare || s.startServers > s.maxSpare) {
+    return `Start servers must be between min spare (${s.minSpare}) and max spare (${s.maxSpare}).`;
+  }
+  return "";
+}
+
 function emptyFPM(): FPM {
   return {
     pm: "ondemand",
@@ -202,8 +213,15 @@ export function PHP() {
     });
   }
 
+  const poolError = phpPoolError(settings);
+
   async function save() {
     if (!username) return;
+    const problem = phpPoolError(settings);
+    if (problem) {
+      message.error(problem);
+      return;
+    }
     setBusy("save");
     try {
       await api.put(`/api/accounts/${username}/php`, { ...settings, openBasedir: true });
@@ -299,18 +317,18 @@ export function PHP() {
             <>
               <Col xs={24} md={8}>
                 <Typography.Text type="secondary">Start servers</Typography.Text>
-                <InputNumber style={{ width: "100%", marginTop: 4 }} min={settings.minSpare} max={settings.maxSpare} value={settings.startServers} onChange={(v) => patch("startServers", Number(v || 1))} />
+                <InputNumber style={{ width: "100%", marginTop: 4 }} min={1} max={settings.maxChildren} value={settings.startServers} onChange={(v) => patch("startServers", Number(v || 1))} />
               </Col>
               <Col xs={24} md={8}>
                 <Typography.Text type="secondary">Min spare</Typography.Text>
-                <InputNumber style={{ width: "100%", marginTop: 4 }} min={1} max={settings.maxSpare} value={settings.minSpare} onChange={(v) => patch("minSpare", Number(v || 1))} />
+                <InputNumber style={{ width: "100%", marginTop: 4 }} min={1} max={settings.maxChildren} value={settings.minSpare} onChange={(v) => patch("minSpare", Number(v || 1))} />
               </Col>
               <Col xs={24} md={8}>
                 <Typography.Text type="secondary">Max spare</Typography.Text>
-                <InputNumber style={{ width: "100%", marginTop: 4 }} min={Math.max(settings.minSpare, settings.startServers)} max={settings.maxChildren} value={settings.maxSpare} onChange={(v) => patch("maxSpare", Number(v || 1))} />
+                <InputNumber style={{ width: "100%", marginTop: 4 }} min={1} max={settings.maxChildren} value={settings.maxSpare} onChange={(v) => patch("maxSpare", Number(v || 1))} />
               </Col>
               <Col span={24}>
-                <Typography.Text type="secondary">Start servers must be between min spare and max spare.</Typography.Text>
+                <Typography.Text type={poolError ? "danger" : "secondary"}>{poolError || "Start servers must be between min spare and max spare."}</Typography.Text>
               </Col>
             </>
           ) : null}

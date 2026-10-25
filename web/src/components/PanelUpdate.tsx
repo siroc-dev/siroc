@@ -26,11 +26,11 @@ function sleep(ms: number) {
 
 async function refreshAfterUpdate(previous: string) {
   let sawDown = false;
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 90; i++) {
     await sleep(2000);
     try {
-      const me = await api.get<{ version?: string }>("/api/me");
-      if (shouldReloadForVersion(previous, me.version || "", sawDown)) {
+      const me = await api.get<{ version?: string; agentOk?: boolean }>("/api/me");
+      if (shouldReloadForVersion(previous, me.version || "", sawDown, !!me.agentOk)) {
         window.location.reload();
         return;
       }
@@ -76,7 +76,7 @@ export function PanelUpdate() {
       const data = await api.post<UpdateStatus>("/api/panel/update", { action });
       setSt(data);
       if (data.restarting) {
-        message.success("Update applied. This page will refresh when the panel is back.");
+        message.success("Update applied. This page will refresh when the panel and agent are back.");
         await refreshAfterUpdate(st?.version || data.version || "");
       } else {
         message.success(data.message || "Done");

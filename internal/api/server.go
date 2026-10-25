@@ -428,6 +428,10 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
+	agentOK := false
+	if health, err := s.Agent.Health(); err == nil && health != nil && health.OK {
+		agentOK = true
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"username":     u.Username,
 		"role":         u.Role,
@@ -435,6 +439,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		"admin":        isAdmin(u),
 		"version":      version.Current(),
 		"timezone":     serverTimezone(),
+		"agentOk":      agentOK,
 	})
 }
 

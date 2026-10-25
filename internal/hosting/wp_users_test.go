@@ -9,8 +9,11 @@ import (
 )
 
 func TestWPStaffRole(t *testing.T) {
-	if !wpStaffRole("administrator") || !wpStaffRole("editor") || !wpStaffRole("author, editor") {
+	if !wpStaffRole("administrator") || !wpStaffRole("editor") || !wpStaffRole("author, editor") || !wpStaffRole("[administrator]") {
 		t.Fatal("admin and editor should be included")
+	}
+	if wpRoleText([]any{"administrator", "editor"}) != "administrator,editor" {
+		t.Fatal("role list should stay readable")
 	}
 	if wpStaffRole("subscriber") || wpStaffRole("customer") || wpStaffRole("author") || wpStaffRole("contributor") || wpStaffRole("") {
 		t.Fatal("regular roles should be excluded")

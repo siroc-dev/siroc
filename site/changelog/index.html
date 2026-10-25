@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.2.97">0.2.97</a>
           <a href="#v0.2.96">0.2.96</a>
           <a href="#v0.2.95">0.2.95</a>
           <a href="#v0.2.94">0.2.94</a>
@@ -125,6 +126,19 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.2.97">
+          <h2><a href="#v0.2.97">0.2.97</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>After an update, the page waits until the agent answers before it refreshes. A missing agent socket no longer reloads the panel into an error.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>PHP-FPM pool numbers can be edited freely. Save checks them first and refuses a dynamic pool whose start servers are outside min spare and max spare.</li>
+            <li>WordPress users lists both administrator and editor accounts. The previous query kept only the last role, so a site with no editor showed an empty list.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.2.96">
           <h2><a href="#v0.2.96">0.2.96</a></h2>

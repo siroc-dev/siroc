@@ -64,24 +64,27 @@ func refreshWPStaff(user, root string) error {
 }
 
 func fetchWPStaff(user, root string) ([]rpc.WPUser, error) {
-	var rows []map[string]any
-	if err := wpJSON(user, root, &rows,
-		"user", "list",
-		"--role=administrator", "--role=editor",
-		"--fields=ID,user_login,user_email,display_name,roles",
-		"--format=json",
-	); err != nil {
-		return nil, err
+	rows, err := wpStaffRows(user, root, "--role__in=administrator,editor")
+	if err != nil {
+		admins, aerr := wpStaffRows(user, root, "--role=administrator")
+		editors, eerr := wpStaffRows(user, root, "--role=editor")
+		if aerr != nil && eerr != nil {
+			return nil, err
+		}
+		rows = append(admins, editors...)
 	}
 	out := make([]rpc.WPUser, 0, len(rows))
+	seen := map[int64]struct{}{}
 	for _, u := range rows {
-		roles := fmt.Sprint(u["roles"])
-		if roles == "<nil>" {
-			roles = ""
-		}
+		roles := wpRoleText(u["roles"])
 		if !wpStaffRole(roles) {
 			continue
 		}
+		id := toInt64(u["ID"])
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
 		login := fmt.Sprint(u["user_login"])
 		email := fmt.Sprint(u["user_email"])
 		name := fmt.Sprint(u["display_name"])
@@ -95,7 +98,7 @@ func fetchWPStaff(user, root string) ([]rpc.WPUser, error) {
 			name = ""
 		}
 		out = append(out, rpc.WPUser{
-			ID:    toInt64(u["ID"]),
+			ID:    id,
 			Login: login,
 			Email: email,
 			Name:  name,
@@ -103,4 +106,14 @@ func fetchWPStaff(user, root string) ([]rpc.WPUser, error) {
 		})
 	}
 	return out, nil
+}
+
+func wpStaffRows(user, root, roleArg string) ([]map[string]any, error) {
+	var rows []map[string]any
+	err := wpJSON(user, root, &rows,
+		"user", "list", roleArg,
+		"--fields=ID,user_login,user_email,display_name,roles",
+		"--format=json",
+	)
+	return rows, err
 }

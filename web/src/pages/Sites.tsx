@@ -261,7 +261,7 @@ function randomWPPrefix() {
 }
 
 function wpStaffUsers(users?: WPUser[]) {
-  return (users || []).filter((u) => /(^|[,\s])(administrator|editor)([,\s]|$)/i.test(u.roles || ""));
+  return (users || []).filter((u) => /\b(administrator|editor)\b/i.test(u.roles || ""));
 }
 
 function wpUsersUpdated(at?: string) {

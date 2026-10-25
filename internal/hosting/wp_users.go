@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,7 @@ type wpUserCacheFile struct {
 }
 
 func wpStaffRole(roles string) bool {
+	roles = strings.NewReplacer("[", " ", "]", " ", "\"", " ", "'", " ").Replace(roles)
 	for _, role := range strings.FieldsFunc(roles, func(r rune) bool {
 		return r == ',' || r == ';' || r == '|' || r == ' '
 	}) {
@@ -32,6 +34,28 @@ func wpStaffRole(roles string) bool {
 		}
 	}
 	return false
+}
+
+func wpRoleText(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case []any:
+		parts := make([]string, 0, len(t))
+		for _, item := range t {
+			s := strings.TrimSpace(fmt.Sprint(item))
+			if s != "" && s != "<nil>" {
+				parts = append(parts, s)
+			}
+		}
+		return strings.Join(parts, ",")
+	default:
+		s := fmt.Sprint(v)
+		if s == "<nil>" {
+			return ""
+		}
+		return s
+	}
 }
 
 func wpUserCacheFresh(at, now time.Time) bool {

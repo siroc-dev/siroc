@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { BootSkeleton } from "@/components/PageSkeleton";
 import { api } from "@/lib/api";
 import { setPanelTimezone } from "@/lib/panelTime";
+import { shouldReloadForVersion } from "@/lib/panelRefresh";
 import { Layout } from "@/components/Layout";
 import { AuthForm } from "@/pages/AuthForm";
 import { SetupLocked } from "@/pages/SetupLocked";
@@ -84,11 +85,11 @@ export function App() {
     let stop = false;
     const timer = window.setInterval(() => {
       api
-        .get<{ version?: string; timezone?: string }>("/api/me")
+        .get<{ version?: string; timezone?: string; agentOk?: boolean }>("/api/me")
         .then((me) => {
           if (stop) return;
           if (me.timezone) setPanelTimezone(me.timezone);
-          if (me.version && me.version !== version) window.location.reload();
+          if (shouldReloadForVersion(version, me.version || "", false, !!me.agentOk)) window.location.reload();
         })
         .catch(() => undefined);
     }, 10000);
