@@ -4,7 +4,10 @@ import { BrowserRouter } from "react-router-dom";
 import { App as AntdApp } from "antd";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { App } from "./App";
+import { installChunkReload } from "@/lib/chunkReload";
 import "./index.css";
+
+installChunkReload();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

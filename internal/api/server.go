@@ -2859,25 +2859,54 @@ func writeErr(w http.ResponseWriter, status int, err error) {
 }
 
 func fileServer(r chi.Router, _ string, root fs.FS) {
-	r.Get("/*", func(w http.ResponseWriter, req *http.Request) {
+	serve := func(w http.ResponseWriter, req *http.Request) {
 		p := strings.TrimPrefix(req.URL.Path, "/")
 		if p == "" {
 			p = "index.html"
 		}
-		f, err := root.Open(p)
-		if err == nil {
-			defer f.Close()
-			if stat, err := f.Stat(); err == nil && !stat.IsDir() {
-				if p == "index.html" {
-					w.Header().Set("Cache-Control", "no-store")
-				}
-				http.ServeFileFS(w, req, root, p)
-				return
-			}
+		if serveWebFile(w, req, root, p) {
+			return
+		}
+		if webAssetPath(p) {
+			http.NotFound(w, req)
+			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		http.ServeFileFS(w, req, root, "index.html")
-	})
+	}
+	r.Get("/*", serve)
+	r.Head("/*", serve)
+}
+
+func serveWebFile(w http.ResponseWriter, req *http.Request, root fs.FS, p string) bool {
+	f, err := root.Open(p)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	stat, err := f.Stat()
+	if err != nil || stat.IsDir() {
+		return false
+	}
+	if p == "index.html" {
+		w.Header().Set("Cache-Control", "no-store")
+	} else if strings.HasPrefix(p, "assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	}
+	http.ServeFileFS(w, req, root, p)
+	return true
+}
+
+func webAssetPath(p string) bool {
+	if strings.HasPrefix(p, "assets/") {
+		return true
+	}
+	switch strings.ToLower(path.Ext(p)) {
+	case ".js", ".mjs", ".css", ".map", ".woff", ".woff2", ".ttf", ".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico":
+		return true
+	default:
+		return false
+	}
 }
 
 func ensureTLS(certFile, keyFile string) error {
