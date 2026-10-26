@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, App, Button, Card, Checkbox, Form, Input, InputNumber, Popconfirm, Progress, Select, Space, Switch, Table, Tag, Typography, Upload } from "antd";
+import { Alert, App, Button, Card, Checkbox, Form, Input, InputNumber, Modal, Progress, Select, Space, Switch, Table, Tag, Typography, Upload } from "antd";
 import { api } from "@/lib/api";
+import { formatBytes } from "@/lib/usage";
 
 type Site = { domain: string; owner: string };
+type SizeRow = { domain: string; owner: string; webBytes: number; dbBytes: number };
+type SizeList = { sites?: SizeRow[]; webBytes?: number; dbBytes?: number };
 type Item = {
   domain: string;
   owner: string;
@@ -47,7 +50,9 @@ export function Migrate() {
   const [sites, setSites] = useState<Site[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
   const [listing, setListing] = useState(false);
+  const [measuring, setMeasuring] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [sizes, setSizes] = useState<SizeList | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const mode = Form.useWatch("mode", form) || "ssh";
   const [keyText, setKeyText] = useState("");
@@ -145,9 +150,43 @@ export function Migrate() {
     }
   }
 
+  function selectedSites() {
+    return sites.filter((s) => picked.includes(s.domain));
+  }
+
+  async function measure() {
+    const values = form.getFieldsValue();
+    const selected = selectedSites();
+    if (selected.length === 0) {
+      message.error("Select at least one website");
+      return;
+    }
+    if (!php) {
+      message.error("Choose a PHP version");
+      return;
+    }
+    if ((values.mode || "ssh") === "api") {
+      message.error("Connect with SSH to measure the website and database size");
+      return;
+    }
+    setMeasuring(true);
+    try {
+      const data = await api.post<SizeList>("/api/migrate/directadmin/size", {
+        ...connection(values),
+        sites: selected,
+      });
+      setSizes(data);
+      await refreshSaved();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setMeasuring(false);
+    }
+  }
+
   async function start() {
     const values = form.getFieldsValue();
-    const selected = sites.filter((s) => picked.includes(s.domain));
+    const selected = selectedSites();
     if (selected.length === 0) {
       message.error("Select at least one website");
       return;
@@ -164,6 +203,7 @@ export function Migrate() {
         phpVersion: php,
       });
       setJob(data);
+      setSizes(null);
       await refreshSaved();
       message.success("Migration started");
     } catch (err) {
@@ -301,17 +341,9 @@ export function Migrate() {
               options={phpList.map((v) => ({ value: v, label: "PHP " + v }))}
               onChange={setPhp}
             />
-            <Popconfirm
-              title={`Migrate ${picked.length} website${picked.length === 1 ? "" : "s"}?`}
-              description="This runs in the background."
-              okText="Migrate"
-              disabled={picked.length === 0 || running}
-              onConfirm={start}
-            >
-              <Button type="primary" loading={starting} disabled={picked.length === 0 || running}>
-                Migrate selected
-              </Button>
-            </Popconfirm>
+            <Button type="primary" loading={measuring || starting} disabled={picked.length === 0 || running} onClick={() => void measure()}>
+              Migrate selected
+            </Button>
           </Space>
           <Table
             size="small"
@@ -329,6 +361,36 @@ export function Migrate() {
           />
         </Card>
       ) : null}
+
+      <Modal
+        title="Confirm size before migrating"
+        open={!!sizes}
+        onCancel={() => setSizes(null)}
+        onOk={() => void start()}
+        confirmLoading={starting}
+        okText="Migrate"
+        destroyOnHidden
+      >
+        <Typography.Paragraph type="secondary">
+          These file and database sizes will be copied. Mail, DNS, and certificates are not.
+        </Typography.Paragraph>
+        <Table
+          size="small"
+          pagination={false}
+          rowKey="domain"
+          dataSource={sizes?.sites || []}
+          columns={[
+            { title: "Website", dataIndex: "domain" },
+            { title: "Files", width: 120, render: (_, row) => formatBytes(row.webBytes || 0) },
+            { title: "Databases", width: 140, render: (_, row) => (row.dbBytes < 0 ? "Unknown" : formatBytes(row.dbBytes || 0)) },
+          ]}
+        />
+        <Typography.Paragraph style={{ marginTop: 12, marginBottom: 0 }}>
+          Total files {formatBytes(sizes?.webBytes || 0)}
+          {" · "}
+          Total databases {(sizes?.dbBytes ?? 0) < 0 ? "Unknown" : formatBytes(sizes?.dbBytes || 0)}
+        </Typography.Paragraph>
+      </Modal>
 
       {job && job.items && job.items.length > 0 ? (
         <Card title="Progress">

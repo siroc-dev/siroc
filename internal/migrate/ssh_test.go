@@ -3,6 +3,8 @@ package migrate
 import (
 	"strings"
 	"testing"
+
+	"github.com/siroc-dev/siroc/internal/rpc"
 )
 
 func TestParseSSHHost(t *testing.T) {
@@ -58,6 +60,31 @@ func TestParseReady(t *testing.T) {
 func TestShellQuote(t *testing.T) {
 	if shellQuote("a'b") != `'a'\''b'` {
 		t.Fatal(shellQuote("a'b"))
+	}
+}
+
+func TestParseSiteSizes(t *testing.T) {
+	text := "alice\tshop.test\t1048576\t4096\nalice\tblog.test\t2048\t4096\n"
+	got, err := ParseSiteSizes(text, []rpc.DASite{
+		{Owner: "alice", Domain: "shop.test"},
+		{Owner: "alice", Domain: "blog.test"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.WebBytes != 1048576+2048 || got.DBBytes != 4096 {
+		t.Fatalf("totals web=%d db=%d", got.WebBytes, got.DBBytes)
+	}
+	if got.Sites[1].DBBytes != 4096 {
+		t.Fatalf("row %#v", got.Sites[1])
+	}
+	unknown := "bob\tone.test\t10\t-1\n"
+	got, err = ParseSiteSizes(unknown, []rpc.DASite{{Owner: "bob", Domain: "one.test"}})
+	if err != nil || got.DBBytes != -1 || got.WebBytes != 10 {
+		t.Fatalf("unknown %#v %v", got, err)
+	}
+	if _, err := ParseSiteSizes("nope\n", []rpc.DASite{{Owner: "a", Domain: "b"}}); err == nil {
+		t.Fatal("expected a measure error")
 	}
 }
 

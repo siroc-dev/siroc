@@ -905,7 +905,8 @@ func configureApacheBackend(string) error {
 		return err
 	}
 	_ = exec.Command("a2dissite", "000-default").Run()
-	_ = exec.Command("a2enmod", "proxy", "proxy_fcgi", "rewrite", "headers", "setenvif", "status").Run()
+	_ = exec.Command("a2enmod", "proxy", "proxy_fcgi", "rewrite", "headers", "setenvif", "status", "remoteip").Run()
+	EnsureApacheRemoteIP()
 	_, _ = enableApacheStatus()
 	conf := `<VirtualHost 127.0.0.1:8080>
     ServerName _default_

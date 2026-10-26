@@ -131,6 +131,7 @@ func main() {
 	hosting.RepairNginxHTTP2()
 	hosting.RepairAssetLogs()
 	software.EnsureHeaderBuffers()
+	software.EnsureApacheRemoteIP()
 	if n, err := software.EnsureAptHolds(); err != nil {
 		log.Printf("apt hold: %v", err)
 	} else if n > 0 {
@@ -1718,6 +1719,18 @@ func main() {
 			sites = []rpc.DASite{}
 		}
 		writeJSON(w, http.StatusOK, rpc.DAList{Sites: sites})
+	})
+	r.Post("/migrate/directadmin/size", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.DASizeReq
+		if !decode(w, r, &req) {
+			return
+		}
+		list, err := migrate.Measure(req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, list)
 	})
 	r.Post("/migrate/directadmin", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.DAStartReq

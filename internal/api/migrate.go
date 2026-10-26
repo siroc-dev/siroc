@@ -37,6 +37,27 @@ func (s *Server) migrateDiscover(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, list)
 }
 
+func (s *Server) migrateSize(w http.ResponseWriter, r *http.Request) {
+	var req rpc.DASizeReq
+	if !decode(w, r, &req) {
+		return
+	}
+	if len(req.PrivateKey) > 256*1024 {
+		writeErr(w, http.StatusBadRequest, errors.New("private key file is too large"))
+		return
+	}
+	if err := s.fillSavedMachine(&req.DAConn); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	list, err := s.Agent.DASize(req)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
 func (s *Server) migrateStart(w http.ResponseWriter, r *http.Request) {
 	var req rpc.DAStartReq
 	if !decode(w, r, &req) {

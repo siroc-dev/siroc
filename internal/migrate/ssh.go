@@ -224,6 +224,116 @@ func DiscoverSSH(conn rpc.DAConn) ([]rpc.DASite, error) {
 	return ParseSSHSites(out.String())
 }
 
+func Measure(req rpc.DASizeReq) (rpc.DASizeList, error) {
+	if !sshMode(req.DAConn) {
+		return rpc.DASizeList{}, fmt.Errorf("connect with SSH to measure the website and database size")
+	}
+	return MeasureSSH(req.DAConn, req.Sites)
+}
+
+func MeasureSSH(conn rpc.DAConn, sites []rpc.DASite) (rpc.DASizeList, error) {
+	picked, args, err := sizeArgs(sites)
+	if err != nil {
+		return rpc.DASizeList{}, err
+	}
+	c, err := DialSSH(conn)
+	if err != nil {
+		return rpc.DASizeList{}, err
+	}
+	defer c.Close()
+	if err := c.prepare(); err != nil {
+		return rpc.DASizeList{}, err
+	}
+	var out bytes.Buffer
+	if err := c.bash(5*time.Minute, sizeSitesScript, args, &out); err != nil {
+		return rpc.DASizeList{}, err
+	}
+	return ParseSiteSizes(out.String(), picked)
+}
+
+func sizeArgs(sites []rpc.DASite) ([]rpc.DASite, []string, error) {
+	if len(sites) == 0 {
+		return nil, nil, fmt.Errorf("select at least one website")
+	}
+	if len(sites) > 100 {
+		return nil, nil, fmt.Errorf("select at most 100 websites")
+	}
+	seen := map[string]bool{}
+	var picked []rpc.DASite
+	var args []string
+	for _, site := range sites {
+		owner := strings.ToLower(strings.TrimSpace(site.Owner))
+		if owner == "" || strings.ContainsAny(owner, " \t/\\.") || strings.ContainsAny(owner, "\"'`$") {
+			return nil, nil, fmt.Errorf("%s has no DirectAdmin user", site.Domain)
+		}
+		domain, err := validate.ASCIIHost(site.Domain)
+		if err != nil {
+			return nil, nil, err
+		}
+		key := owner + "\n" + domain
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		picked = append(picked, rpc.DASite{Domain: domain, Owner: owner})
+		args = append(args, owner, domain)
+	}
+	if len(picked) == 0 {
+		return nil, nil, fmt.Errorf("select at least one website")
+	}
+	return picked, args, nil
+}
+
+func ParseSiteSizes(text string, want []rpc.DASite) (rpc.DASizeList, error) {
+	found := map[string]rpc.DASiteSize{}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(strings.TrimRight(line, "\r"))
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) != 4 {
+			continue
+		}
+		web, errWeb := strconv.ParseInt(parts[2], 10, 64)
+		db, errDB := strconv.ParseInt(parts[3], 10, 64)
+		if errWeb != nil || web < 0 || errDB != nil || db < -1 {
+			continue
+		}
+		owner := strings.ToLower(strings.TrimSpace(parts[0]))
+		domain := strings.ToLower(strings.TrimSpace(parts[1]))
+		found[owner+"\n"+domain] = rpc.DASiteSize{Domain: domain, Owner: owner, WebBytes: web, DBBytes: db}
+	}
+	if len(found) == 0 {
+		return rpc.DASizeList{}, fmt.Errorf("could not measure the website size")
+	}
+	rows := make([]rpc.DASiteSize, 0, len(want))
+	for _, site := range want {
+		row, ok := found[site.Owner+"\n"+site.Domain]
+		if !ok {
+			return rpc.DASizeList{}, fmt.Errorf("could not measure %s", site.Domain)
+		}
+		rows = append(rows, row)
+	}
+	var web int64
+	dbByOwner := map[string]int64{}
+	for _, row := range rows {
+		web += row.WebBytes
+		if _, ok := dbByOwner[row.Owner]; !ok {
+			dbByOwner[row.Owner] = row.DBBytes
+		}
+	}
+	db := int64(0)
+	for _, n := range dbByOwner {
+		if n < 0 {
+			db = -1
+			break
+		}
+		db += n
+	}
+	return rpc.DASizeList{Sites: rows, WebBytes: web, DBBytes: db}, nil
+}
+
 func PullSSH(conn rpc.DAConn, owner, domain, destDir string, progress func(string, int)) (string, error) {
 	owner = strings.TrimSpace(owner)
 	domain = strings.TrimSpace(domain)
@@ -543,6 +653,147 @@ for dir in "$data"/*; do
       printf '%s\t%s\n' "$user" "$base"
     done
   fi
+done
+`
+
+const sizeSitesScript = `
+set -eu
+if [ $# -lt 2 ]; then
+  echo "select at least one website" >&2
+  exit 1
+fi
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+mysql_user=""
+mysql_pass=""
+mconf=/usr/local/directadmin/conf/mysql.conf
+if [ -f "$mconf" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}
+    case "$line" in
+      ""|\#*) continue ;;
+    esac
+    key=${line%%=*}
+    val=${line#*=}
+    key=$(printf '%s' "$key" | tr 'A-Z' 'a-z')
+    case "$key" in
+      user) [ -z "$mysql_user" ] && mysql_user=$val ;;
+      passwd|password) [ -z "$mysql_pass" ] && mysql_pass=$val ;;
+    esac
+  done < "$mconf"
+fi
+cnf=""
+if [ -n "$mysql_user" ]; then
+  cnf="$work/client.cnf"
+  umask 077
+  {
+    echo '[client]'
+    printf 'user=%s\n' "$mysql_user"
+    printf 'password=%s\n' "$mysql_pass"
+  } > "$cnf"
+fi
+sqlbin=$(command -v mysql || true)
+if [ -z "$sqlbin" ]; then
+  sqlbin=$(command -v mariadb || true)
+fi
+sizes=$work/schema-sizes
+: > "$sizes"
+if [ -n "$sqlbin" ]; then
+  if [ -n "$cnf" ]; then
+    "$sqlbin" --defaults-extra-file="$cnf" -N -B -e "SELECT table_schema, IFNULL(SUM(DATA_LENGTH)+SUM(INDEX_LENGTH),0) FROM information_schema.TABLES GROUP BY table_schema" > "$sizes" 2>/dev/null || true
+  else
+    "$sqlbin" -N -B -e "SELECT table_schema, IFNULL(SUM(DATA_LENGTH)+SUM(INDEX_LENGTH),0) FROM information_schema.TABLES GROUP BY table_schema" > "$sizes" 2>/dev/null || true
+  fi
+fi
+add_name() {
+  n=$(printf '%s' "$1" | tr -d '\r')
+  out=$2
+  case "$n" in
+    ""|*[!A-Za-z0-9_]*) return 0 ;;
+    information_schema|performance_schema|mysql|sys) return 0 ;;
+  esac
+  grep -qxF -- "$n" "$out" 2>/dev/null || printf '%s\n' "$n" >> "$out"
+}
+db_for() {
+  owner=$1
+  cache=$work/db-$owner
+  if [ -f "$cache" ]; then
+    cat "$cache"
+    return 0
+  fi
+  names=$work/names-$owner
+  : > "$names"
+  conf=/usr/local/directadmin/data/users/$owner/mysql.conf
+  if [ -f "$conf" ]; then
+    tr '&' '\n' < "$conf" > "$work/oneconf"
+    while IFS= read -r line || [ -n "$line" ]; do
+      line=${line%$'\r'}
+      key=${line%%=*}
+      val=${line#*=}
+      key=$(printf '%s' "$key" | tr 'A-Z' 'a-z' | tr -d '[:space:]')
+      case "$key" in
+        user|dbuser|db|database|name) add_name "$val" "$names" ;;
+      esac
+    done < "$work/oneconf"
+  fi
+  list=/usr/local/directadmin/data/users/$owner/mysql.list
+  if [ -f "$list" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line=${line%$'\r'}
+      line=${line%%[[:space:]]*}
+      add_name "$line" "$names"
+    done < "$list"
+  fi
+  if [ -n "$sqlbin" ]; then
+    show=$work/show-$owner
+    if [ -n "$cnf" ]; then
+      "$sqlbin" --defaults-extra-file="$cnf" -N -B -e 'SHOW DATABASES' > "$show" 2>/dev/null || true
+    else
+      "$sqlbin" -N -B -e 'SHOW DATABASES' > "$show" 2>/dev/null || true
+    fi
+    if [ -f "$show" ]; then
+      while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+          "${owner}_"*) add_name "$line" "$names" ;;
+        esac
+      done < "$show"
+    fi
+  fi
+  if [ ! -s "$sizes" ]; then
+    printf '%s\n' '-1' > "$cache"
+  elif [ ! -s "$names" ]; then
+    echo 0 > "$cache"
+  else
+    sum=0
+    while IFS= read -r n || [ -n "$n" ]; do
+      [ -n "$n" ] || continue
+      got=$(awk -v n="$n" '$1==n {print $2; found=1; exit} END{if (!found) print ""}' "$sizes")
+      case "$got" in
+        ""|*[!0-9]*) ;;
+        *) sum=$((sum + got)) ;;
+      esac
+    done < "$names"
+    printf '%s\n' "$sum" > "$cache"
+  fi
+  cat "$cache"
+}
+while [ $# -ge 2 ]; do
+  owner=$1
+  domain=$2
+  shift 2
+  dir=/home/$owner/domains/$domain
+  web=0
+  if [ -d "$dir" ]; then
+    web=$(du -sb --exclude=stats --exclude=logs --exclude=awstats "$dir" 2>/dev/null | awk 'NR==1 {print $1}') || web=0
+  fi
+  case "$web" in
+    ""|*[!0-9]*) web=0 ;;
+  esac
+  db=$(db_for "$owner")
+  case "$db" in
+    ""|*[!0-9-]*) db=-1 ;;
+  esac
+  printf '%s\t%s\t%s\t%s\n' "$owner" "$domain" "$web" "$db"
 done
 `
 

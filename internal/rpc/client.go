@@ -1244,6 +1244,12 @@ func (c *Client) DBSync(accounts []DBSyncAccount) (*DBSyncResp, error) {
 	return &out, err
 }
 
+func (c *Client) DASize(req DASizeReq) (*DASizeList, error) {
+	var out DASizeList
+	err := c.do(http.MethodPost, "/migrate/directadmin/size", req, &out)
+	return &out, err
+}
+
 func (c *Client) DADiscover(req DAConn) (*DAList, error) {
 	var out DAList
 	err := c.do(http.MethodPost, "/migrate/directadmin/list", req, &out)

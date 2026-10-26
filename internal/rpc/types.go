@@ -1952,6 +1952,24 @@ type DAStartReq struct {
 	PHPVersion string   `json:"phpVersion"`
 }
 
+type DASizeReq struct {
+	DAConn
+	Sites []DASite `json:"sites"`
+}
+
+type DASiteSize struct {
+	Domain   string `json:"domain"`
+	Owner    string `json:"owner"`
+	WebBytes int64  `json:"webBytes"`
+	DBBytes  int64  `json:"dbBytes"`
+}
+
+type DASizeList struct {
+	Sites    []DASiteSize `json:"sites"`
+	WebBytes int64        `json:"webBytes"`
+	DBBytes  int64        `json:"dbBytes"`
+}
+
 type DAItem struct {
 	Domain   string          `json:"domain"`
 	Owner    string          `json:"owner"`

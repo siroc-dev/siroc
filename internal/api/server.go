@@ -261,6 +261,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/os/updates", s.osUpdateStatus)
 		r.Post("/api/os/updates", s.osUpdate)
 		r.Post("/api/migrate/directadmin/list", s.migrateDiscover)
+		r.Post("/api/migrate/directadmin/size", s.migrateSize)
 		r.Post("/api/migrate/directadmin", s.migrateStart)
 		r.Get("/api/migrate/directadmin/machine", s.migrateMachine)
 		r.Get("/api/migrate/directadmin", s.migrateJob)
