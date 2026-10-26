@@ -1753,6 +1753,37 @@ type SupervisorProgramReq struct {
 	Numprocs    int    `json:"numprocs"`
 }
 
+type RAIDStatus struct {
+	Installed bool        `json:"installed"`
+	Arrays    []RAIDArray `json:"arrays,omitempty"`
+	Disks     []RAIDDisk  `json:"disks,omitempty"`
+	Message   string      `json:"message,omitempty"`
+}
+
+type RAIDArray struct {
+	Device  string   `json:"device"`
+	Level   string   `json:"level"`
+	State   string   `json:"state,omitempty"`
+	Size    int64    `json:"size,omitempty"`
+	Devices []string `json:"devices,omitempty"`
+}
+
+type RAIDDisk struct {
+	Path       string `json:"path"`
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Size       int64  `json:"size,omitempty"`
+	Model      string `json:"model,omitempty"`
+	Transport  string `json:"transport,omitempty"`
+	SystemDisk bool   `json:"systemDisk,omitempty"`
+}
+
+type RAIDCreateReq struct {
+	Level   string   `json:"level"`
+	Devices []string `json:"devices"`
+	Name    string   `json:"name,omitempty"`
+}
+
 type DiskAnalysis struct {
 	Filesystems []MountInfo `json:"filesystems"`
 	Trees       []DiskNode  `json:"trees,omitempty"`

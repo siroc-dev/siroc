@@ -1595,6 +1595,34 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"text": text})
 	})
+	r.Get("/sysops/raid", func(w http.ResponseWriter, _ *http.Request) {
+		out, err := sysops.ListRAID()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/sysops/raid/install", func(w http.ResponseWriter, _ *http.Request) {
+		out, err := sysops.InstallRAID()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
+	r.Post("/sysops/raid", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.RAIDCreateReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := sysops.CreateRAID(req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Get("/sysops/disk", func(w http.ResponseWriter, _ *http.Request) {
 		out, err := sysops.Disk()
 		if err != nil {

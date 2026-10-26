@@ -9,6 +9,7 @@ import { Fail2banBans, type Fail2banBan } from "@/components/Fail2banBans";
 import { HostsEditor } from "@/components/HostsEditor";
 import { ServiceStatus } from "@/components/ServiceStatus";
 import { NFSManager } from "@/components/NFSManager";
+import { RAIDManager } from "@/components/RAIDManager";
 import { OptionList, type CheckOption } from "@/components/OptionChecks";
 
 type Status = {
@@ -273,6 +274,7 @@ export function Tools() {
             label: "Disk",
             children: (
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                <RAIDManager />
                 <Card title="Mounts">
                   <Table
                     size="small"

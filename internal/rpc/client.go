@@ -1015,6 +1015,24 @@ func (c *Client) SupervisorLog(name string) (string, error) {
 	return out.Text, err
 }
 
+func (c *Client) RAID() (*RAIDStatus, error) {
+	var out RAIDStatus
+	err := c.do(http.MethodGet, "/sysops/raid", nil, &out)
+	return &out, err
+}
+
+func (c *Client) RAIDInstall() (*RAIDStatus, error) {
+	var out RAIDStatus
+	err := c.do(http.MethodPost, "/sysops/raid/install", map[string]bool{"install": true}, &out)
+	return &out, err
+}
+
+func (c *Client) RAIDCreate(in RAIDCreateReq) (*RAIDStatus, error) {
+	var out RAIDStatus
+	err := c.do(http.MethodPost, "/sysops/raid", in, &out)
+	return &out, err
+}
+
 func (c *Client) Disk() (*DiskAnalysis, error) {
 	var out DiskAnalysis
 	err := c.do(http.MethodGet, "/sysops/disk", nil, &out)
