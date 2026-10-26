@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,7 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/siroc-dev/siroc/internal/diskspace"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/users"
 	"github.com/siroc-dev/siroc/internal/validate"
@@ -151,7 +151,8 @@ func pruneDir(dir, username string, keep int) {
 func inspect(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	src := strings.TrimSpace(req.Restore)
 	if !RestorePathOK(src, req.Username) {
-		return nil, fmt.Errorf("restore path is not allowed")
+		log.Printf("restore: path not allowed: %s", src)
+		return nil, fmt.Errorf("restore path is not allowed: %s", src)
 	}
 	if man, err := readManifest(src); err == nil {
 		return &rpc.BackupResp{OK: true, Path: src, Manifest: man, Message: "archive for " + man.Username}, nil
@@ -172,7 +173,8 @@ func inspect(req rpc.BackupReq) (*rpc.BackupResp, error) {
 func restore(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	src := strings.TrimSpace(req.Restore)
 	if !RestorePathOK(src, req.Username) {
-		return nil, fmt.Errorf("restore path is not allowed")
+		log.Printf("restore: path not allowed: %s", src)
+		return nil, fmt.Errorf("restore path is not allowed: %s", src)
 	}
 	tmp, err := extractToTemp(src)
 	if err != nil {
@@ -425,11 +427,10 @@ func safeHomeDest(home, rel string) (string, error) {
 }
 
 func extractToTemp(src string) (string, error) {
-	base, err := diskspace.WritableTmp()
-	if err != nil {
+	if err := os.MkdirAll("/home/tmp", 0750); err != nil {
 		return "", err
 	}
-	tmp := filepath.Join(base, fmt.Sprintf("restore-%d", time.Now().UnixNano()))
+	tmp := filepath.Join("/home/tmp", fmt.Sprintf("restore-%d", time.Now().UnixNano()))
 	if err := extractArchive(src, tmp); err != nil {
 		os.RemoveAll(tmp)
 		return "", err

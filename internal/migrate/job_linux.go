@@ -5,6 +5,7 @@ package migrate
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/siroc-dev/siroc/internal/backup"
-	"github.com/siroc-dev/siroc/internal/diskspace"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/validate"
 )
@@ -158,6 +158,7 @@ func (r *Runner) run() {
 		err := r.one(conn, php, &item)
 		r.mu.Lock()
 		if err != nil {
+			log.Printf("migrate: %s failed: %v", item.Domain, err)
 			r.job.Items[idx].Status = "failed"
 			r.job.Items[idx].Message = err.Error()
 			r.job.Items[idx].Manifest = nil
@@ -176,10 +177,11 @@ func (r *Runner) one(conn rpc.DAConn, php string, item *rpc.DAItem) error {
 	if err := validate.LinuxUser(item.Owner); err != nil {
 		return fmt.Errorf("DirectAdmin user %s cannot be created on this server: %w", item.Owner, err)
 	}
-	dir, err := diskspace.WritableTmp()
-	if err != nil {
+	dir := "/home/tmp"
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return err
 	}
+	log.Printf("migrate: %s downloading to %s", item.Domain, dir)
 	var dest string
 	if sshMode(conn) {
 		r.set(item.Domain, "running", "download", "Packing the website into a tar file", 20)
@@ -208,9 +210,11 @@ func (r *Runner) one(conn rpc.DAConn, php string, item *rpc.DAItem) error {
 		}
 	}
 	defer os.Remove(dest)
+	log.Printf("migrate: restoring %s from %s", item.Domain, dest)
 	r.set(item.Domain, "running", "restore", "Restoring files and databases", 75)
 	resp, err := backup.RestoreDirectAdminDomains(dest, []string{item.Domain}, php)
 	if err != nil {
+		log.Printf("migrate: restore %s failed: %v", item.Domain, err)
 		return err
 	}
 	if resp == nil || resp.Manifest == nil {
