@@ -410,7 +410,7 @@ func runHelper(req helperReq) (helperResp, error) {
 			entries = append(entries, rpc.FileEntry{
 				Name:    info.Name(),
 				Path:    displayPath(req.Home, filepath.ToSlash(full)),
-				IsDir:   info.IsDir(),
+				IsDir:   followsDir(full, info),
 				Size:    info.Size(),
 				Mode:    fmt.Sprintf("%04o", info.Mode().Perm()),
 				ModTime: info.ModTime().UTC().Format(time.RFC3339),
@@ -433,7 +433,8 @@ func runHelper(req helperReq) (helperResp, error) {
 				continue
 			}
 			full := filepath.Join(req.Path, name)
-			if skipDirSize(full) || !e.IsDir() {
+			info, err := e.Info()
+			if err != nil || skipDirSize(full) || !followsDir(full, info) {
 				continue
 			}
 			n, err := dirBytes(full)

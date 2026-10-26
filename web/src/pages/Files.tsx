@@ -342,7 +342,12 @@ export function Files() {
       setContent(data.content);
       setLspOn(false);
     } catch (err) {
-      message.error(err instanceof Error ? err.message : "Cannot open");
+      const msg = err instanceof Error ? err.message : "Cannot open";
+      if (msg === "path is a directory") {
+        await load(e.path);
+        return;
+      }
+      message.error(msg);
     }
   }
 
