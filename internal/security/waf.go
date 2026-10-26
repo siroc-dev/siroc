@@ -20,18 +20,6 @@ const (
 	wafRulesFile  = "/etc/modsecurity/cp-rules.conf"
 )
 
-type wafState struct {
-	Mode              string   `json:"mode"`
-	Paranoia          int      `json:"paranoia"`
-	InboundThreshold  int      `json:"inboundThreshold"`
-	OutboundThreshold int      `json:"outboundThreshold"`
-	Audit             string   `json:"audit"`
-	Packs             []string `json:"packs"`
-	DisabledIDs       []int    `json:"disabledIds"`
-	UploadScan        bool     `json:"uploadScan"`
-	SEORelaxed        int      `json:"seoRelaxed,omitempty"`
-}
-
 type wafPackSpec struct {
 	ID          string
 	Title       string
@@ -73,14 +61,15 @@ func defaultWAFState() wafState {
 }
 
 func loadWAFState() wafState {
-	st := defaultWAFState()
 	b, err := os.ReadFile(wafStateFile)
-	if err == nil {
-		_ = json.Unmarshal(b, &st)
+	if err != nil {
+		return defaultWAFState()
 	}
+	var st wafState
+	_ = json.Unmarshal(b, &st)
 	if st.Mode == "" {
-		if b, err := os.ReadFile(wafEngineFile); err == nil {
-			s := string(b)
+		if eng, err := os.ReadFile(wafEngineFile); err == nil {
+			s := string(eng)
 			switch {
 			case strings.Contains(s, "SecRuleEngine On"):
 				st.Mode = "On"
@@ -91,29 +80,7 @@ func loadWAFState() wafState {
 			}
 		}
 	}
-	if st.Paranoia < 1 || st.Paranoia > 4 {
-		st.Paranoia = 1
-	}
-	if st.InboundThreshold < 1 {
-		st.InboundThreshold = 5
-	}
-	if st.OutboundThreshold < 1 {
-		st.OutboundThreshold = 4
-	}
-	switch st.Audit {
-	case "On", "Off", "RelevantOnly":
-	default:
-		st.Audit = "RelevantOnly"
-	}
-	if st.SEORelaxed < wafDefaultsVersion {
-		st.DisabledIDs = mergeWAFRuleIDs(st.DisabledIDs, defaultSEOWAFRules())
-		st.Packs = dropWAFPacks(st.Packs, defaultOffWAFPacks()...)
-		st.SEORelaxed = wafDefaultsVersion
-	}
-	if st.DisabledIDs == nil {
-		st.DisabledIDs = []int{}
-	}
-	return st
+	return applyWAFStateDefaults(st)
 }
 
 func (m *Manager) WAFStatus() (*rpc.WAFStatus, error) {

@@ -34,3 +34,28 @@ func TestDefaultWAFPacksSkipScanner(t *testing.T) {
 		t.Fatal("drop")
 	}
 }
+
+func TestApplyWAFStateDefaultsTurnsOffExistingPacks(t *testing.T) {
+	st := applyWAFStateDefaults(wafState{
+		Mode:       "On",
+		Packs:      []string{"scanner", "session", "xss", "sqli", "rce"},
+		SEORelaxed: 2,
+	})
+	for _, id := range st.Packs {
+		if id == "scanner" || id == "session" || id == "reputation" || id == "dos" {
+			t.Fatalf("pack %s still on", id)
+		}
+	}
+	if st.SEORelaxed != wafDefaultsVersion {
+		t.Fatalf("seoRelaxed %d", st.SEORelaxed)
+	}
+	found := false
+	for _, id := range st.DisabledIDs {
+		if id == 932110 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("windows rule ids not merged")
+	}
+}

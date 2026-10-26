@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.3.9">0.3.9</a>
           <a href="#v0.3.8">0.3.8</a>
           <a href="#v0.3.7">0.3.7</a>
           <a href="#v0.3.6">0.3.6</a>
@@ -138,6 +139,14 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.3.9">
+          <h2><a href="#v0.3.9">0.3.9</a></h2>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>An existing WAF config now turns off scanner, session fixation, IP reputation, and GeoIP/DoS packs on agent start. 0.3.8 left those packs on because it treated the saved file as already migrated.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.3.8">
           <h2><a href="#v0.3.8">0.3.8</a></h2>

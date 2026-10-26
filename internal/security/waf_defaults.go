@@ -2,7 +2,19 @@ package security
 
 import "sort"
 
-const wafDefaultsVersion = 2
+const wafDefaultsVersion = 3
+
+type wafState struct {
+	Mode              string   `json:"mode"`
+	Paranoia          int      `json:"paranoia"`
+	InboundThreshold  int      `json:"inboundThreshold"`
+	OutboundThreshold int      `json:"outboundThreshold"`
+	Audit             string   `json:"audit"`
+	Packs             []string `json:"packs"`
+	DisabledIDs       []int    `json:"disabledIds"`
+	UploadScan        bool     `json:"uploadScan"`
+	SEORelaxed        int      `json:"seoRelaxed,omitempty"`
+}
 
 func defaultOffWAFPacks() []string {
 	return []string{"scanner", "session", "reputation", "dos"}
@@ -42,6 +54,38 @@ func mergeWAFRuleIDs(cur, extra []int) []int {
 		out = []int{}
 	}
 	return out
+}
+
+func applyWAFStateDefaults(st wafState) wafState {
+	if st.Mode == "" {
+		st.Mode = "DetectionOnly"
+	}
+	if st.Paranoia < 1 || st.Paranoia > 4 {
+		st.Paranoia = 1
+	}
+	if st.InboundThreshold < 1 {
+		st.InboundThreshold = 5
+	}
+	if st.OutboundThreshold < 1 {
+		st.OutboundThreshold = 4
+	}
+	switch st.Audit {
+	case "On", "Off", "RelevantOnly":
+	default:
+		st.Audit = "RelevantOnly"
+	}
+	if st.Packs == nil {
+		st.Packs = defaultWAFPacks()
+	}
+	if st.SEORelaxed < wafDefaultsVersion {
+		st.DisabledIDs = mergeWAFRuleIDs(st.DisabledIDs, defaultSEOWAFRules())
+		st.Packs = dropWAFPacks(st.Packs, defaultOffWAFPacks()...)
+		st.SEORelaxed = wafDefaultsVersion
+	}
+	if st.DisabledIDs == nil {
+		st.DisabledIDs = []int{}
+	}
+	return st
 }
 
 func dropWAFPack(packs []string, id string) []string {
