@@ -20,3 +20,16 @@ func TestIoncubeArchiveURL(t *testing.T) {
 		t.Fatal("expected unsupported arch")
 	}
 }
+
+func TestParseExtensionDir(t *testing.T) {
+	if parseExtensionDir([]byte("/usr/lib/php/20230831\n")) != "/usr/lib/php/20230831" {
+		t.Fatal("plain")
+	}
+	got := parseExtensionDir([]byte("Notice: something\n/usr/lib/php/20210902"))
+	if got != "/usr/lib/php/20210902" {
+		t.Fatal(got)
+	}
+	if parseExtensionDir([]byte("extension_dir => /usr/lib/php/20230831 => /usr/lib/php/20230831")) != "" {
+		t.Fatal("php -i line")
+	}
+}

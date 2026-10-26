@@ -1,6 +1,20 @@
 package software
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
+
+func parseExtensionDir(out []byte) string {
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		dir := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(dir, "/") && !strings.ContainsAny(dir, " \t") {
+			return dir
+		}
+	}
+	return ""
+}
 
 func ioncubeLoaderSO(version string) string {
 	return "ioncube_loader_lin_" + version + ".so"

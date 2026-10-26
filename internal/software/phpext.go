@@ -410,13 +410,35 @@ func installIoncube(ver string) error {
 }
 
 func phpExtensionDir(ver string) (string, error) {
-	out, err := exec.Command("php-config"+ver, "--extension-dir").Output()
-	dir := strings.TrimSpace(string(out))
+	dir, err := lookupPHPExtensionDir(ver)
+	if err != nil {
+		_ = ensureRepos("php")
+		_ = aptInstall("php" + ver + "-cli")
+		dir, err = lookupPHPExtensionDir(ver)
+	}
 	if err != nil || dir == "" {
-		return "", fmt.Errorf("php-config%s --extension-dir failed", ver)
+		return "", fmt.Errorf("could not find the PHP %s extension directory", ver)
 	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
+	}
+	return dir, nil
+}
+
+func lookupPHPExtensionDir(ver string) (string, error) {
+	if out, err := exec.Command("php-config"+ver, "--extension-dir").Output(); err == nil {
+		if dir := parseExtensionDir(out); dir != "" {
+			return dir, nil
+		}
+	}
+	php := "/usr/bin/php" + ver
+	out, err := exec.Command(php, "-n", "-r", "echo ini_get('extension_dir');").Output()
+	if err != nil {
+		return "", fmt.Errorf("php%s could not report extension_dir", ver)
+	}
+	dir := parseExtensionDir(out)
+	if dir == "" {
+		return "", fmt.Errorf("php%s extension_dir is empty", ver)
 	}
 	return dir, nil
 }
