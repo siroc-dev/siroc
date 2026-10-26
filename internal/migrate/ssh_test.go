@@ -1,6 +1,9 @@
 package migrate
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseSSHHost(t *testing.T) {
 	host, port, err := ParseSSHHost("203.0.113.10", 0)
@@ -30,6 +33,25 @@ func TestParseSSHSites(t *testing.T) {
 	}
 	if _, err := ParseSSHSites("not a domain\n"); err == nil {
 		t.Fatal("expected no websites")
+	}
+}
+
+func TestParseReady(t *testing.T) {
+	n, path, err := parseReady("ready 4096 /mnt/data/siroc-tmp/siroc-migrate-shop.example-20261026-000000.tar.gz\n")
+	if err != nil || n != 4096 || !strings.Contains(path, "/mnt/data/siroc-tmp/") {
+		t.Fatalf("%d %s %v", n, path, err)
+	}
+	if _, _, err := parseReady("ready 4096\n"); err == nil {
+		t.Fatal("missing path")
+	}
+	if _, _, err := parseReady("ready 0 /siroc-tmp/siroc-migrate-a.tar.gz\n"); err == nil {
+		t.Fatal("empty archive")
+	}
+	if _, _, err := parseReady("ready 10 /tmp/siroc-migrate-a.tar.gz\n"); err == nil {
+		t.Fatal("path outside siroc-tmp")
+	}
+	if _, _, err := parseReady("ready 10 /mnt/data/siroc-tmp/../etc/siroc-migrate-a.tar.gz\n"); err == nil {
+		t.Fatal("path escape")
 	}
 }
 

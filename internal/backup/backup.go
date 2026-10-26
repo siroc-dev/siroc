@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/siroc-dev/siroc/internal/diskspace"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/users"
 	"github.com/siroc-dev/siroc/internal/validate"
@@ -424,7 +425,11 @@ func safeHomeDest(home, rel string) (string, error) {
 }
 
 func extractToTemp(src string) (string, error) {
-	tmp := filepath.Join("/var/backups/siroc", ".restore", fmt.Sprintf("%d", time.Now().UnixNano()))
+	base, err := diskspace.WritableTmp()
+	if err != nil {
+		return "", err
+	}
+	tmp := filepath.Join(base, fmt.Sprintf("restore-%d", time.Now().UnixNano()))
 	if err := extractArchive(src, tmp); err != nil {
 		os.RemoveAll(tmp)
 		return "", err

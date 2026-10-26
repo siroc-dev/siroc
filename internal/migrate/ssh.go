@@ -165,7 +165,19 @@ func DialSSH(conn rpc.DAConn) (*sshConn, error) {
 	if err != nil {
 		return nil, sshDialError(err)
 	}
+	go keepSSHAlive(cli)
 	return &sshConn{cli: cli, pass: conn.Password}, nil
+}
+
+func keepSSHAlive(cli *ssh.Client) {
+	tick := time.NewTicker(20 * time.Second)
+	defer tick.Stop()
+	for range tick.C {
+		_, _, err := cli.SendRequest("keepalive@openssh.com", true, nil)
+		if err != nil {
+			return
+		}
+	}
 }
 
 func sshDialError(err error) error {
@@ -212,7 +224,7 @@ func DiscoverSSH(conn rpc.DAConn) ([]rpc.DASite, error) {
 	return ParseSSHSites(out.String())
 }
 
-func PullSSH(conn rpc.DAConn, owner, domain, destDir string, progress func(int)) (string, error) {
+func PullSSH(conn rpc.DAConn, owner, domain, destDir string, progress func(string, int)) (string, error) {
 	owner = strings.TrimSpace(owner)
 	domain = strings.TrimSpace(domain)
 	if owner == "" || domain == "" || strings.Contains(owner, "/") || strings.Contains(domain, "/") {
@@ -226,26 +238,37 @@ func PullSSH(conn rpc.DAConn, owner, domain, destDir string, progress func(int))
 	if err := c.prepare(); err != nil {
 		return "", err
 	}
-	var sizeOut bytes.Buffer
-	_ = c.exec(30*time.Second, "du -sb "+shellQuote("/home/"+owner+"/domains/"+domain), nil, &sizeOut)
-	total := parseDu(sizeOut.String())
+	if progress != nil {
+		progress("Packing the website into a tar file", 20)
+	}
+	var packed bytes.Buffer
+	if err := c.bash(45*time.Minute, copySiteScript, []string{owner, domain}, &packed); err != nil {
+		return "", err
+	}
+	total, remote, err := parseReady(packed.String())
+	if err != nil {
+		return "", err
+	}
+	defer c.removeRemote(remote)
 	if err := os.MkdirAll(destDir, 0750); err != nil {
 		return "", err
 	}
-	safe := strings.Map(func(ch rune) rune {
-		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' {
-			return ch
-		}
-		return '_'
-	}, strings.ToLower(domain))
-	dest := filepath.Join(destDir, "da-"+safe+"-"+time.Now().UTC().Format("20060102-150405")+".tar.gz")
+	dest := filepath.Join(destDir, "da-"+tarBase(remote))
 	f, err := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0640)
 	if err != nil {
 		return "", err
 	}
+	if progress != nil {
+		progress("Downloading the tar file", 40)
+	}
 	sniff := &sniffWriter{w: &limitWriter{w: f, max: maxArchiveBytes}}
-	count := &countWriter{w: sniff, total: total, progress: progress}
-	err = c.bash(45*time.Minute, copySiteScript, []string{owner, domain}, count)
+	count := &countWriter{w: sniff, total: total, progress: func(pct int) {
+		if progress != nil {
+			progress("Downloading the tar file", pct)
+		}
+	}}
+	cmd, stdin := c.sudoCmd("cat " + shellQuote(remote))
+	err = c.exec(45*time.Minute, cmd, stdin, count)
 	closeErr := f.Close()
 	if err != nil || sniff.bad || !sniff.checked || count.n == 0 {
 		_ = os.Remove(dest)
@@ -259,9 +282,80 @@ func PullSSH(conn rpc.DAConn, owner, domain, destDir string, progress func(int))
 		return "", closeErr
 	}
 	if progress != nil {
-		progress(70)
+		progress("Downloading the tar file", 70)
 	}
 	return dest, nil
+}
+
+func tarBase(path string) string {
+	if i := strings.LastIndex(path, "/"); i >= 0 {
+		return path[i+1:]
+	}
+	return path
+}
+
+func parseReady(text string) (int64, string, error) {
+	var size int64
+	var path string
+	found := false
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "ready ") {
+			continue
+		}
+		rest := strings.TrimSpace(strings.TrimPrefix(line, "ready "))
+		nText, file, ok := strings.Cut(rest, " ")
+		if !ok {
+			return 0, "", fmt.Errorf("SSH did not return the website archive")
+		}
+		n, err := strconv.ParseInt(nText, 10, 64)
+		if err != nil || n <= 0 || n > maxArchiveBytes || !validRemoteTar(file) {
+			return 0, "", fmt.Errorf("SSH did not return the website archive")
+		}
+		size = n
+		path = file
+		found = true
+	}
+	if !found {
+		return 0, "", fmt.Errorf("SSH did not return the website archive")
+	}
+	return size, path, nil
+}
+
+func validRemoteTar(path string) bool {
+	if len(path) > 400 || !strings.HasPrefix(path, "/") || strings.Contains(path, "..") || strings.ContainsAny(path, " \t\r\n'\"\\$;|&`") {
+		return false
+	}
+	slash := strings.LastIndex(path, "/")
+	dir := path[:slash]
+	base := path[slash+1:]
+	if dir != "/siroc-tmp" && !strings.HasSuffix(dir, "/siroc-tmp") {
+		return false
+	}
+	if !strings.HasPrefix(base, "siroc-migrate-") || !strings.HasSuffix(base, ".tar.gz") {
+		return false
+	}
+	for _, r := range base {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '.' && r != '_' && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func (c *sshConn) sudoCmd(cmd string) (string, io.Reader) {
+	if c.useSudoPass {
+		return "sudo -S -p '' " + cmd, strings.NewReader(c.pass + "\n")
+	}
+	if c.useSudo {
+		return "sudo -n " + cmd, nil
+	}
+	return cmd, nil
+}
+
+func (c *sshConn) removeRemote(path string) {
+	cmd, stdin := c.sudoCmd("rm -f " + shellQuote(path))
+	_ = c.exec(20*time.Second, cmd, stdin, nil)
 }
 
 func (c *sshConn) prepare() error {
@@ -352,18 +446,6 @@ func clipSecret(msg, secret string) string {
 	return strings.TrimSpace(msg)
 }
 
-func parseDu(s string) int64 {
-	fields := strings.Fields(s)
-	if len(fields) == 0 {
-		return 0
-	}
-	n, err := strconv.ParseInt(fields[0], 10, 64)
-	if err != nil || n < 0 {
-		return 0
-	}
-	return n
-}
-
 type sniffWriter struct {
 	w       io.Writer
 	buf     []byte
@@ -422,7 +504,7 @@ func (c *countWriter) Write(p []byte) (int, error) {
 	n, err := c.w.Write(p)
 	c.n += int64(n)
 	if c.progress != nil && c.total > 0 {
-		pct := 20 + int(c.n*50/c.total)
+		pct := 40 + int(c.n*30/c.total)
 		if pct > 70 {
 			pct = 70
 		}
@@ -479,8 +561,38 @@ if [ ! -d "$home" ]; then
   echo "website files were not found" >&2
   exit 1
 fi
-stage=$(mktemp -d /tmp/siroc-migrate.XXXXXX)
-trap 'rm -rf "$stage"' EXIT
+pick_root() {
+  where=$(df -PT -B1 --output=avail,fstype,target 2>/dev/null | awk '
+    NR==1 { next }
+    {
+      avail=$1+0; type=$2; target=$3
+      for (i=4; i<=NF; i++) target=target " " $i
+      if (type ~ /^(tmpfs|devtmpfs|squashfs|overlay|aufs|ramfs|proc|sysfs|cgroup|cgroup2|autofs|devpts|securityfs|pstore|bpf|tracefs|debugfs|fusectl|configfs|nsfs|efivarfs)$/) next
+      if (target !~ /^\// || target ~ /[[:space:]]|\.\./) next
+      if (avail > best) { best=avail; where=target }
+    }
+    END { printf "%s", where }
+  ')
+  if [ -z "$where" ]; then
+    where=/var/tmp
+  fi
+  printf '%s' "$where"
+}
+root=$(pick_root)
+case "$root" in
+  /) workdir=/siroc-tmp ;;
+  /*) workdir="${root%/}/siroc-tmp" ;;
+  *) workdir=/var/tmp/siroc-tmp ;;
+esac
+mkdir -p "$workdir" 2>/dev/null || {
+  workdir=/var/tmp/siroc-tmp
+  mkdir -p "$workdir"
+}
+stage=$(mktemp -d "$workdir/stage.XXXXXX")
+stamp=$(date -u +%Y%m%d-%H%M%S)
+archive="$workdir/siroc-migrate-${domain}-${stamp}.tar.gz"
+keep=0
+trap 'rm -rf "$stage"; if [ "$keep" != 1 ]; then rm -f "$archive"; fi' EXIT
 mkdir -p "$stage/domains" "$stage/mysql"
 printf 'username=%s\ndomain=%s\n' "$owner" "$domain" > "$stage/user.conf"
 ln -s "$home" "$stage/domains/$domain"
@@ -582,11 +694,20 @@ if [ -f "$list" ]; then
 fi
 rm -f "$stage/client.cnf" "$stage/dblist"
 set +e
-tar -C "$stage" -chzf - --exclude=stats --exclude=logs --exclude=awstats .
+tar -C "$stage" -chzf "$archive" --exclude=stats --exclude=logs --exclude=awstats .
 code=$?
 set -e
 if [ "$code" -gt 1 ]; then
   echo "could not pack the website" >&2
   exit "$code"
 fi
+if command -v gzip >/dev/null 2>&1; then
+  gzip -t "$archive"
+fi
+size=$(wc -c < "$archive" | tr -d '[:space:]')
+case "$size" in
+  ""|*[!0-9]*) echo "could not pack the website" >&2; exit 1 ;;
+esac
+keep=1
+printf 'ready %s %s\n' "$size" "$archive"
 `

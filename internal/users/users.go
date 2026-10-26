@@ -32,7 +32,14 @@ func (m *Manager) Create(username, password string) (*rpc.UserResp, error) {
 		return nil, fmt.Errorf("user already exists")
 	}
 	home := filepath.Join(m.HomeRoot, username)
-	cmd := exec.Command("useradd", "-m", "-d", home, "-s", "/bin/bash", username)
+	args := []string{"-m", "-d", home, "-s", "/bin/bash"}
+	if g, err := user.LookupGroup(username); err == nil {
+		if n, conv := strconv.Atoi(g.Gid); conv == nil && n > 0 {
+			args = append(args, "-g", g.Gid)
+		}
+	}
+	args = append(args, username)
+	cmd := exec.Command("useradd", args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("useradd: %s: %w", strings.TrimSpace(string(out)), err)
 	}
@@ -96,6 +103,13 @@ func (m *Manager) Ensure(username string, uid, gid int, password string) (*rpc.U
 	}
 	if err := ensureGroup(username, gid); err != nil {
 		return nil, err
+	}
+	if gid <= 0 {
+		if g, err := user.LookupGroup(username); err == nil {
+			if n, conv := strconv.Atoi(g.Gid); conv == nil && n > 0 {
+				gid = n
+			}
+		}
 	}
 	args := EnsureUseraddArgs(username, home, uid, gid, homeExists)
 	if out, err := exec.Command("useradd", args...).CombinedOutput(); err != nil {

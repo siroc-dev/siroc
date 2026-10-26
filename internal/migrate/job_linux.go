@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/siroc-dev/siroc/internal/backup"
+	"github.com/siroc-dev/siroc/internal/diskspace"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/validate"
 )
@@ -133,7 +134,7 @@ func (r *Runner) run() {
 				if sshMode(r.conn) {
 					r.job.Items[i].Step = "download"
 					r.job.Items[i].Percent = 10
-					r.job.Items[i].Message = "Copying the website over SSH"
+					r.job.Items[i].Message = "Packing the website into a tar file"
 				} else {
 					r.job.Items[i].Step = "backup"
 					r.job.Items[i].Percent = 10
@@ -175,15 +176,16 @@ func (r *Runner) one(conn rpc.DAConn, php string, item *rpc.DAItem) error {
 	if err := validate.LinuxUser(item.Owner); err != nil {
 		return fmt.Errorf("DirectAdmin user %s cannot be created on this server: %w", item.Owner, err)
 	}
-	if err := os.MkdirAll("/var/backups/siroc/incoming", 0750); err != nil {
+	dir, err := diskspace.WritableTmp()
+	if err != nil {
 		return err
 	}
 	var dest string
 	if sshMode(conn) {
-		r.set(item.Domain, "running", "download", "Copying the website over SSH", 20)
+		r.set(item.Domain, "running", "download", "Packing the website into a tar file", 20)
 		var err error
-		dest, err = PullSSH(conn, item.Owner, item.Domain, "/var/backups/siroc/incoming", func(pct int) {
-			r.set(item.Domain, "running", "download", "Copying the website over SSH", pct)
+		dest, err = PullSSH(conn, item.Owner, item.Domain, dir, func(msg string, pct int) {
+			r.set(item.Domain, "running", "download", msg, pct)
 		})
 		if err != nil {
 			return err
@@ -200,7 +202,7 @@ func (r *Runner) one(conn rpc.DAConn, php string, item *rpc.DAItem) error {
 			}
 			r.set(item.Domain, "running", step, msg, pct)
 		}
-		dest, err = client.Pull(item.Owner, item.Domain, "/var/backups/siroc/incoming", progress)
+		dest, err = client.Pull(item.Owner, item.Domain, dir, progress)
 		if err != nil {
 			return err
 		}
