@@ -1392,6 +1392,13 @@ func (s *Server) applyBackupManifest(man *rpc.BackupManifest) error {
 		if man.Account.PHPFpmJSON != "" {
 			_ = s.Store.UpdateAccountPHP(username, man.Account.PHPFpmJSON)
 		}
+	} else if man.Account.FTP || len(man.FTP) > 0 {
+		ssh := false
+		if cur, err := s.Store.GetAccountByName(username); err == nil {
+			ssh = cur.SSHEnabled
+		}
+		_ = s.Agent.UserAccess(username, ssh, true)
+		_ = s.Store.UpdateAccountAccess(username, ssh, true)
 	}
 	for _, d := range man.Databases {
 		if _, err := s.Store.GetDatabaseByName(d.DBName); err == nil {

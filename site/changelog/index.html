@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.3.2">0.3.2</a>
           <a href="#v0.3.1">0.3.1</a>
           <a href="#v0.3.0">0.3.0</a>
           <a href="#v0.2.100">0.2.100</a>
@@ -131,6 +132,17 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.3.2">
+          <h2><a href="#v0.3.2">0.3.2</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>A DirectAdmin migration brings the website's databases and FTP users. FTP passwords are reset because DirectAdmin only stores a hash. Open FTP to see the new passwords.</li>
+            <li>The migrate connection is saved on this server: host, port, username, and private key. Leave a secret blank to keep the saved one.</li>
+            <li>Changing a website's primary domain also renames its folder and moves the files with it.</li>
+            <li>When a website has more than one domain, Let's Encrypt lets you choose which names go on the certificate. The primary name stays included, up to 100 names.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.3.1">
           <h2><a href="#v0.3.1">0.3.1</a></h2>

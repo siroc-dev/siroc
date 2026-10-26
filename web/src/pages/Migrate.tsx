@@ -12,6 +12,17 @@ type Item = {
   message?: string;
 };
 type Job = { status: string; message?: string; phpVersion?: string; items: Item[] };
+type SavedMachine = {
+  mode?: string;
+  host?: string;
+  port?: number;
+  username?: string;
+  insecure?: boolean;
+  keyName?: string;
+  hasPassword?: boolean;
+  hasKey?: boolean;
+  hasPassphrase?: boolean;
+};
 
 const statusText: Record<string, string> = {
   queued: "Queued",
@@ -41,6 +52,8 @@ export function Migrate() {
   const mode = Form.useWatch("mode", form) || "ssh";
   const [keyText, setKeyText] = useState("");
   const [keyName, setKeyName] = useState("");
+  const [keyRemoved, setKeyRemoved] = useState(false);
+  const [saved, setSaved] = useState<SavedMachine | null>(null);
 
   const running = job?.status === "running";
 
@@ -51,6 +64,21 @@ export function Migrate() {
       setPhp(newestPHP(versions));
     }).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    api.get<SavedMachine>("/api/migrate/directadmin/machine").then((data) => {
+      if (!data) return;
+      setSaved(data);
+      form.setFieldsValue({
+        mode: data.mode || "ssh",
+        host: data.host || "",
+        port: data.port || (data.mode === "api" ? 2222 : 22),
+        username: data.username || "",
+        insecure: data.insecure !== false,
+      });
+      if (data.keyName) setKeyName(data.keyName);
+    }).catch(() => undefined);
+  }, [form]);
 
   useEffect(() => {
     let stop = false;
@@ -67,22 +95,48 @@ export function Migrate() {
     };
   }, []);
 
+  function connection(values: { host: string; port: number; username: string; password?: string; insecure?: boolean; mode?: string; keyPassphrase?: string }) {
+    const ssh = (values.mode || "ssh") !== "api";
+    const useSavedKey = ssh && !keyText && !keyRemoved && !!saved?.hasKey;
+    return {
+      ...values,
+      keyName: ssh ? keyName : "",
+      privateKey: ssh && keyText ? keyText : "",
+      keyPassphrase: ssh ? values.keyPassphrase || "" : "",
+      useSavedKey,
+      useSavedPassword: !values.password && !!saved?.hasPassword,
+      useSavedPassphrase: ssh && !values.keyPassphrase && !!saved?.hasPassphrase && !keyText && useSavedKey,
+    };
+  }
+
+  async function refreshSaved() {
+    const data = await api.get<SavedMachine>("/api/migrate/directadmin/machine");
+    setSaved(data);
+    setKeyName(data?.keyName || "");
+    setKeyText("");
+    setKeyRemoved(false);
+    form.setFieldValue("password", "");
+    form.setFieldValue("keyPassphrase", "");
+  }
+
   async function listSites(values: { host: string; port: number; username: string; password?: string; insecure?: boolean; mode?: string; keyPassphrase?: string }) {
     const ssh = (values.mode || "ssh") !== "api";
-    if (ssh && !values.password && !keyText) {
+    const body = connection(values);
+    if (ssh && !values.password && !keyText && !body.useSavedKey && !body.useSavedPassword) {
       message.error("Enter a password or upload a PPK file");
+      return;
+    }
+    if (!ssh && !values.password && !body.useSavedPassword) {
+      message.error("Password is required");
       return;
     }
     setListing(true);
     try {
-      const data = await api.post<{ sites: Site[] }>("/api/migrate/directadmin/list", {
-        ...values,
-        privateKey: ssh ? keyText : "",
-        keyPassphrase: ssh && keyText ? values.keyPassphrase || "" : "",
-      });
+      const data = await api.post<{ sites: Site[] }>("/api/migrate/directadmin/list", body);
       const next = data.sites || [];
       setSites(next);
       setPicked(next.map((s) => s.domain));
+      await refreshSaved();
       message.success(next.length === 1 ? "1 website" : `${next.length} websites`);
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -105,13 +159,12 @@ export function Migrate() {
     setStarting(true);
     try {
       const data = await api.post<Job>("/api/migrate/directadmin", {
-        ...values,
-        privateKey: mode === "ssh" ? keyText : "",
-        keyPassphrase: mode === "ssh" && keyText ? values.keyPassphrase || "" : "",
+        ...connection(values),
         sites: selected,
         phpVersion: php,
       });
       setJob(data);
+      await refreshSaved();
       message.success("Migration started");
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -127,7 +180,7 @@ export function Migrate() {
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
       <Card>
         <Typography.Paragraph type="secondary">
-          Copy websites from DirectAdmin over SSH as root, or as a user that can sudo. Log in with a password or a PuTTY PPK file. The DirectAdmin API login still works. Files, databases, and the account are imported. Subdomains of a selected website come with it. Mail, DNS, and certificates are not. The DirectAdmin username becomes the account on this server.
+          Copy websites from DirectAdmin over SSH as root, or as a user that can sudo. Log in with a password or a PuTTY PPK file. The host, username, and private key are saved on this server. The DirectAdmin API login still works. Files, databases, and the account are imported. Subdomains of a selected website come with it. Mail, DNS, and certificates are not. The DirectAdmin username becomes the account on this server.
         </Typography.Paragraph>
         <Form
           form={form}
@@ -157,8 +210,8 @@ export function Migrate() {
           <Form.Item name="username" label="Username" rules={[{ required: true, message: "Username is required" }]}>
             <Input placeholder={mode === "ssh" ? "root" : ""} autoComplete="off" />
           </Form.Item>
-          <Form.Item name="password" label={mode === "ssh" ? "Password" : "Password or login key"} rules={mode === "ssh" ? [] : [{ required: true, message: "Password is required" }]}>
-            <Input.Password autoComplete="new-password" />
+          <Form.Item name="password" label={mode === "ssh" ? "Password" : "Password or login key"} rules={mode === "ssh" || saved?.hasPassword ? [] : [{ required: true, message: "Password is required" }]}>
+            <Input.Password autoComplete="new-password" placeholder={saved?.hasPassword ? "Saved — leave blank to keep it" : ""} />
           </Form.Item>
           {mode === "ssh" ? (
             <>
@@ -184,6 +237,7 @@ export function Migrate() {
                         }
                         setKeyText(text);
                         setKeyName(file.name);
+                        setKeyRemoved(false);
                       };
                       reader.onerror = () => message.error("Could not read the key file");
                       reader.readAsText(file);
@@ -200,6 +254,7 @@ export function Migrate() {
                         onClick={() => {
                           setKeyText("");
                           setKeyName("");
+                          setKeyRemoved(true);
                           form.setFieldValue("keyPassphrase", "");
                         }}
                       >
@@ -209,9 +264,9 @@ export function Migrate() {
                   ) : null}
                 </Space>
               </Form.Item>
-              {keyText ? (
+              {keyName ? (
                 <Form.Item name="keyPassphrase" label="Key passphrase">
-                  <Input.Password placeholder="Leave empty if the PPK has no passphrase" autoComplete="new-password" />
+                  <Input.Password placeholder={saved?.hasPassphrase ? "Saved — leave blank to keep it" : "Leave empty if the PPK has no passphrase"} autoComplete="new-password" />
                 </Form.Item>
               ) : null}
               <Typography.Paragraph type="secondary">

@@ -606,6 +606,9 @@ done
 if [ -f "$data/$domain.conf" ]; then
   cp -a "$data/$domain.conf" "$stage/domains/$domain.conf"
 fi
+if [ -f "/usr/local/directadmin/data/users/$owner/ftp.passwd" ]; then
+  cp -a "/usr/local/directadmin/data/users/$owner/ftp.passwd" "$stage/ftp.passwd"
+fi
 mysql_user=""
 mysql_pass=""
 mconf=/usr/local/directadmin/conf/mysql.conf
@@ -638,39 +641,40 @@ dumpbin=$(command -v mysqldump || true)
 if [ -z "$dumpbin" ]; then
   dumpbin=$(command -v mariadb-dump || true)
 fi
-list=/usr/local/directadmin/data/users/$owner/mysql.conf
+mkdir -p "$stage/dbpass"
+names="$stage/dblist"
+: > "$names"
+remember_db() {
+  name=$1
+  pass=$2
+  case "$name" in
+    ""|*[!A-Za-z0-9_]*) return 0 ;;
+    information_schema|performance_schema|mysql|sys) return 0 ;;
+  esac
+  if grep -qxF -- "$name" "$names" 2>/dev/null; then
+    return 0
+  fi
+  printf '%s\n' "$name" >> "$names"
+  printf '%s' "$pass" > "$stage/dbpass/$name"
+}
 db_user=""
 db_pass=""
 db_name=""
-flush_db() {
+finish_rec() {
   name=$db_name
   [ -n "$name" ] || name=$db_user
-  pass_now=$db_pass
+  remember_db "$name" "$db_pass"
   db_user=""
   db_pass=""
   db_name=""
-  case "$name" in
-    ""|*[!A-Za-z0-9_]*) return 0 ;;
-  esac
-  if [ -z "$dumpbin" ]; then
-    echo "mysqldump is not installed on the DirectAdmin server" >&2
-    exit 1
-  fi
-  out="$stage/mysql/$name.sql"
-  if [ -n "$cnf" ]; then
-    "$dumpbin" --defaults-extra-file="$cnf" --single-transaction --skip-lock-tables --no-tablespaces --result-file="$out" "$name" \
-      || "$dumpbin" --defaults-extra-file="$cnf" --single-transaction --skip-lock-tables --result-file="$out" "$name"
-  else
-    "$dumpbin" --single-transaction --skip-lock-tables --no-tablespaces --result-file="$out" "$name" \
-      || "$dumpbin" --single-transaction --skip-lock-tables --result-file="$out" "$name"
-  fi
-  {
-    printf 'user=%s\n' "$name"
-    printf 'passwd=%s\n' "$pass_now"
-  } > "$stage/mysql/$name.conf"
 }
-if [ -f "$list" ]; then
-  tr '&' '\n' < "$list" > "$stage/dblist"
+take_conf() {
+  file=$1
+  [ -f "$file" ] || return 0
+  tr '&' '\n' < "$file" > "$stage/oneconf"
+  db_user=""
+  db_pass=""
+  db_name=""
   while IFS= read -r line || [ -n "$line" ]; do
     line=${line%$'\r'}
     case "$line" in
@@ -678,21 +682,96 @@ if [ -f "$list" ]; then
     esac
     key=${line%%=*}
     val=${line#*=}
-    key=$(printf '%s' "$key" | tr 'A-Z' 'a-z')
+    key=$(printf '%s' "$key" | tr 'A-Z' 'a-z' | tr -d '[:space:]')
     case "$key" in
       user|dbuser)
         if [ -n "$db_user$db_name" ]; then
-          flush_db
+          finish_rec
         fi
         db_user=$val
         ;;
-      db) db_name=$val ;;
+      db|database|name) db_name=$val ;;
       passwd|password|pass) db_pass=$val ;;
     esac
-  done < "$stage/dblist"
-  flush_db
+  done < "$stage/oneconf"
+  finish_rec
+}
+take_conf "/usr/local/directadmin/data/users/$owner/mysql.conf"
+if [ -f "/usr/local/directadmin/data/users/$owner/mysql.list" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}
+    line=${line%%[[:space:]]*}
+    remember_db "$line" ""
+  done < "/usr/local/directadmin/data/users/$owner/mysql.list"
 fi
-rm -f "$stage/client.cnf" "$stage/dblist"
+mdir="/usr/local/directadmin/data/users/$owner/mysql"
+if [ -d "$mdir" ]; then
+  for file in "$mdir"/*.conf; do
+    [ -f "$file" ] || continue
+    take_conf "$file"
+  done
+fi
+sqlbin=$(command -v mysql || true)
+if [ -z "$sqlbin" ]; then
+  sqlbin=$(command -v mariadb || true)
+fi
+if [ -n "$sqlbin" ]; then
+  if [ -n "$cnf" ]; then
+    "$sqlbin" --defaults-extra-file="$cnf" -N -B -e 'SHOW DATABASES' > "$stage/showdb" 2>/dev/null || true
+  else
+    "$sqlbin" -N -B -e 'SHOW DATABASES' > "$stage/showdb" 2>/dev/null || true
+  fi
+  if [ -f "$stage/showdb" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in
+        "${owner}_"*) remember_db "$line" "" ;;
+      esac
+    done < "$stage/showdb"
+  fi
+fi
+if [ -s "$names" ]; then
+  if [ -z "$dumpbin" ]; then
+    echo "mysqldump is not installed on the DirectAdmin server" >&2
+    exit 1
+  fi
+  while IFS= read -r name || [ -n "$name" ]; do
+    [ -n "$name" ] || continue
+    out="$stage/mysql/$name.sql"
+    errf="$stage/dberr"
+    ok=0
+    if [ -n "$cnf" ]; then
+      if "$dumpbin" --defaults-extra-file="$cnf" --single-transaction --skip-lock-tables --no-tablespaces --result-file="$out" "$name" 2>"$errf"; then
+        ok=1
+      elif grep -qi 'unknown database' "$errf"; then
+        rm -f "$out"
+        continue
+      elif "$dumpbin" --defaults-extra-file="$cnf" --single-transaction --skip-lock-tables --result-file="$out" "$name" 2>"$errf"; then
+        ok=1
+      fi
+    else
+      if "$dumpbin" --single-transaction --skip-lock-tables --no-tablespaces --result-file="$out" "$name" 2>"$errf"; then
+        ok=1
+      elif grep -qi 'unknown database' "$errf"; then
+        rm -f "$out"
+        continue
+      elif "$dumpbin" --single-transaction --skip-lock-tables --result-file="$out" "$name" 2>"$errf"; then
+        ok=1
+      fi
+    fi
+    if [ "$ok" != 1 ] || [ ! -s "$out" ]; then
+      echo "could not dump database $name" >&2
+      cat "$errf" >&2 || true
+      exit 1
+    fi
+    pass=$(cat "$stage/dbpass/$name" 2>/dev/null || true)
+    {
+      printf 'user=%s\n' "$name"
+      printf 'passwd=%s\n' "$pass"
+    } > "$stage/mysql/$name.conf"
+  done < "$names"
+fi
+echo "packed databases: $(grep -c . "$names" 2>/dev/null || echo 0)" >&2
+rm -rf "$stage/client.cnf" "$stage/dblist" "$stage/oneconf" "$stage/showdb" "$stage/dbpass" "$stage/dberr"
 set +e
 tar -C "$stage" -chzf "$archive" --exclude=stats --exclude=logs --exclude=awstats .
 code=$?

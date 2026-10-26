@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, App, Button, Col, Descriptions, Input, InputNumber, Popconfirm, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, App, Button, Checkbox, Col, Descriptions, Input, InputNumber, Modal, Popconfirm, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/lib/nginxRewrites";
 import { ProxySettings, type ProxySettingsValue } from "@/components/ProxySettings";
 import { cacheDir, cacheFromSaved, cachePayload, cacheSizeBytes, cacheSizeToken, NginxCacheForm, type NginxCacheValue } from "@/components/NginxCache";
@@ -96,6 +96,17 @@ function certTypeLabel(site: SiteSettingsSite) {
 
 function httpsForced(site: SiteSettingsSite) {
   return site.options?.forceHttps === true;
+}
+
+const leNameLimit = 100;
+
+function leChoices(site: SiteSettingsSite) {
+  const rows = [{ name: site.domain, label: site.displayName || site.domain, primary: true }];
+  (site.aliases || []).forEach((name, i) => {
+    if (!name || name.startsWith("*.")) return;
+    rows.push({ name, label: site.displayAliases?.[i] || name, primary: false });
+  });
+  return rows;
 }
 
 function expDay(v?: string) {
@@ -244,6 +255,7 @@ export function SiteSettings({
   onSSH,
   onLaravel,
   onSection,
+  onRename,
 }: {
   site: SiteSettingsSite;
   section: SiteSection;
@@ -252,7 +264,7 @@ export function SiteSettings({
   publicName: boolean;
   onClose: () => void;
   onPatch: (body: Record<string, unknown>, ok: string) => Promise<{ aliases?: string[]; skipped?: string[] } | void>;
-  onIssueSSL: () => void;
+  onIssueSSL: (domains?: string[]) => void;
   sslLog?: string;
   onLocalSSL: () => void;
   onDisableSSL: () => void;
@@ -262,12 +274,15 @@ export function SiteSettings({
   onSSH: () => void;
   onLaravel: () => void;
   onSection?: (section: SiteSection) => void;
+  onRename?: (domain: string) => Promise<void>;
 }) {
   const [tab, setTab] = useState<SiteSection>(section);
   const [draft, setDraft] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [domainPage, setDomainPage] = useState(1);
   const [domainPageSize, setDomainPageSize] = useState(20);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameTo, setRenameTo] = useState("");
   const [docRoot, setDocRoot] = useState("");
   const [rewrite, setRewrite] = useState("");
   const [php, setPhp] = useState("");
@@ -290,6 +305,7 @@ export function SiteSettings({
   const [certPEM, setCertPEM] = useState("");
   const [keyPEM, setKeyPEM] = useState("");
   const [sslTab, setSslTab] = useState<"current" | "le" | "holder">("current");
+  const [lePick, setLePick] = useState<string[]>([]);
   const [kind, setKind] = useState("php");
   const [proxyPass, setProxyPass] = useState("");
   const [appCmd, setAppCmd] = useState("");
@@ -453,6 +469,7 @@ export function SiteSettings({
     setRedirects(o.redirects || []);
     setDraft("");
     setPicked([]);
+    setLePick(leChoices(site).slice(0, leNameLimit).map((row) => row.name));
   }, [site]);
 
   const when = addedAt(site.createdAt);
@@ -466,6 +483,20 @@ export function SiteSettings({
     ],
     [site.domain, site.displayName, site.aliases, site.displayAliases, site.aliasAdded, site.createdAt],
   );
+
+  async function savePrimary() {
+    const next = renameTo.trim();
+    if (!next || !onRename) {
+      message.error("Domain required");
+      return;
+    }
+    try {
+      await onRename(next);
+      setRenameOpen(false);
+    } catch {
+      // The page shows the error and leaves this dialog open.
+    }
+  }
 
   async function addDomains() {
     const lines = draft
@@ -681,7 +712,7 @@ export function SiteSettings({
           {tab === "domain" ? (
             <>
               <Typography.Paragraph type="secondary">
-                One domain per line, up to 500 aliases. Duplicate names are skipped. The site listens on ports 80 and 443. A Let's Encrypt certificate covers the primary name and the first 99 aliases. A wildcard looks like *.example.com. Rename the site to change the primary name.
+                One domain per line, up to 500 aliases. Duplicate names are skipped. The site listens on ports 80 and 443. Let's Encrypt can include up to 100 of these names, and you choose them when there is more than one. A wildcard looks like *.example.com. Change the primary name to rename the website folder as well.
               </Typography.Paragraph>
               <Input.TextArea rows={3} value={draft} placeholder={"www.example.com\n*.example.com"} onChange={(e) => setDraft(e.target.value)} />
               <Space wrap style={{ marginTop: 12, marginBottom: 16 }}>
@@ -740,7 +771,20 @@ export function SiteSettings({
                     title: "",
                     width: 120,
                     render: (_, row) =>
-                      row.primary ? null : (
+                      row.primary ? (
+                        onRename ? (
+                          <Button
+                            type="link"
+                            size="small"
+                            onClick={() => {
+                              setRenameTo(site.displayName || site.domain);
+                              setRenameOpen(true);
+                            }}
+                          >
+                            Change
+                          </Button>
+                        ) : null
+                      ) : (
                         <Button
                           type="link"
                           size="small"
@@ -753,6 +797,20 @@ export function SiteSettings({
                   },
                 ]}
               />
+              <Modal
+                title={`Change ${label}`}
+                open={renameOpen}
+                onCancel={() => setRenameOpen(false)}
+                confirmLoading={busy}
+                destroyOnHidden
+                okText="Rename"
+                onOk={() => void savePrimary()}
+              >
+                <Typography.Paragraph type="secondary">
+                  Renames the folder domains/{site.domain} to the new domain and moves the website files with it. Let's Encrypt must be issued again.
+                </Typography.Paragraph>
+                <Input aria-label="New domain" value={renameTo} placeholder="site.test" onChange={(e) => setRenameTo(e.target.value)} onPressEnter={() => void savePrimary()} />
+              </Modal>
             </>
           ) : null}
 
@@ -945,10 +1003,44 @@ export function SiteSettings({
                       description="Let's Encrypt will refuse this name. Use local HTTPS, paste a certificate, or set a custom ACME server."
                     />
                   ) : (
-                    <Typography.Paragraph type="secondary">Issue a certificate for this site. A renewal uses the same button.</Typography.Paragraph>
+                    <Typography.Paragraph type="secondary">
+                      {leChoices(site).length > 1
+                        ? "Choose the names for this certificate. The primary name stays included. A certificate can hold 100 names, and wildcards are left out."
+                        : "Issue a certificate for this site. A renewal uses the same button."}
+                    </Typography.Paragraph>
                   )}
+                  {leChoices(site).length > 1 ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 240, overflow: "auto", marginBottom: 12 }}>
+                      {leChoices(site).map((row) => (
+                        <Checkbox
+                          key={row.name}
+                          checked={lePick.includes(row.name)}
+                          disabled={row.primary}
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            setLePick((cur) => {
+                              const rest = cur.filter((name) => name !== site.domain && name !== row.name);
+                              if (on && rest.length + 1 >= leNameLimit) {
+                                message.error("A certificate can include 100 names");
+                                return cur;
+                              }
+                              return on ? [site.domain, ...rest, row.name] : [site.domain, ...rest];
+                            });
+                          }}
+                        >
+                          {row.label}
+                          {row.primary ? <Tag style={{ marginLeft: 8 }}>Primary</Tag> : null}
+                          {row.label !== row.name ? <span className="site-list-puny"> {row.name}</span> : null}
+                        </Checkbox>
+                      ))}
+                    </div>
+                  ) : null}
                   <Space wrap>
-                    <Button type="primary" loading={busy} onClick={onIssueSSL}>
+                    <Button
+                      type="primary"
+                      loading={busy}
+                      onClick={() => onIssueSSL(leChoices(site).length > 1 ? lePick : undefined)}
+                    >
                       {site.sslKind === "letsencrypt" ? "Renew Let's Encrypt" : "Issue Let's Encrypt"}
                     </Button>
                     {site.sslKind !== "local" || !site.ssl ? (

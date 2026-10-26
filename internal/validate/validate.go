@@ -197,6 +197,63 @@ func CertbotNames(primary string, aliases []string) []string {
 	return out
 }
 
+// CertbotSelection keeps the names the user chose for one certificate.
+// An empty selection uses CertbotNames. The primary name is required.
+// Wildcards and names that are not on the website are rejected.
+func CertbotSelection(primary string, aliases, selected []string) ([]string, error) {
+	primary, err := ASCIIHost(primary)
+	if err != nil {
+		return nil, err
+	}
+	if len(selected) == 0 {
+		return CertbotNames(primary, aliases), nil
+	}
+	allowed := map[string]struct{}{primary: {}}
+	for _, raw := range aliases {
+		n, err := ASCIIAlias(raw)
+		if err != nil || strings.HasPrefix(n, "*.") || n == primary {
+			continue
+		}
+		allowed[n] = struct{}{}
+	}
+	seen := map[string]struct{}{}
+	var extra []string
+	includePrimary := false
+	for _, raw := range selected {
+		raw = strings.ToLower(strings.TrimSpace(raw))
+		if raw == "" {
+			continue
+		}
+		if strings.HasPrefix(raw, "*.") {
+			return nil, fmt.Errorf("Let's Encrypt cannot include the wildcard %s on this certificate", raw)
+		}
+		n, err := ASCIIHost(raw)
+		if err != nil {
+			return nil, fmt.Errorf("%s is not a valid domain", strings.TrimSpace(raw))
+		}
+		if _, ok := allowed[n]; !ok {
+			return nil, fmt.Errorf("%s is not on this website", n)
+		}
+		if _, ok := seen[n]; ok {
+			continue
+		}
+		seen[n] = struct{}{}
+		if n == primary {
+			includePrimary = true
+			continue
+		}
+		extra = append(extra, n)
+	}
+	if !includePrimary {
+		return nil, fmt.Errorf("the certificate must include %s", primary)
+	}
+	names := append([]string{primary}, extra...)
+	if len(names) > MaxCertbotNames {
+		return nil, fmt.Errorf("a certificate can include %d names", MaxCertbotNames)
+	}
+	return names, nil
+}
+
 func DomainAliases(primary string, aliases []string) ([]string, error) {
 	var err error
 	primary, err = ASCIIHost(primary)

@@ -1923,14 +1923,18 @@ type DBSyncResp struct {
 }
 
 type DAConn struct {
-	Host          string `json:"host"`
-	Port          int    `json:"port"`
-	Username      string `json:"username"`
-	Password      string `json:"password,omitempty"`
-	Insecure      bool   `json:"insecure"`
-	Mode          string `json:"mode,omitempty"`
-	PrivateKey    string `json:"privateKey,omitempty"`
-	KeyPassphrase string `json:"keyPassphrase,omitempty"`
+	Host               string `json:"host"`
+	Port               int    `json:"port"`
+	Username           string `json:"username"`
+	Password           string `json:"password,omitempty"`
+	Insecure           bool   `json:"insecure"`
+	Mode               string `json:"mode,omitempty"`
+	PrivateKey         string `json:"privateKey,omitempty"`
+	KeyPassphrase      string `json:"keyPassphrase,omitempty"`
+	KeyName            string `json:"keyName,omitempty"`
+	UseSavedPassword   bool   `json:"useSavedPassword,omitempty"`
+	UseSavedKey        bool   `json:"useSavedKey,omitempty"`
+	UseSavedPassphrase bool   `json:"useSavedPassphrase,omitempty"`
 }
 
 type DASite struct {

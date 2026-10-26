@@ -139,6 +139,65 @@ describe("SiteSettings", () => {
     expect(screen.getByText(/X-Cache-Status/)).toBeTruthy();
   });
 
+  it("changes the primary domain and renames its folder", async () => {
+    const onRename = vi.fn(async () => undefined);
+    render(
+      <AntdApp>
+        <SiteSettings
+          site={site}
+          section="domain"
+          busy={false}
+          phpVersions={[{ value: "8.3", label: "PHP 8.3" }]}
+          publicName
+          onClose={() => undefined}
+          onPatch={async () => undefined}
+          onIssueSSL={() => undefined}
+          onLocalSSL={() => undefined}
+          onDisableSSL={() => undefined}
+          onGit={() => undefined}
+          onLogs={() => undefined}
+          onSSH={() => undefined}
+          onLaravel={() => undefined}
+          onRename={onRename}
+        />
+      </AntdApp>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    expect(await screen.findByText(/Renames the folder domains\/test.com/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("New domain"), { target: { value: "new.test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    expect(onRename).toHaveBeenCalledWith("new.test");
+  });
+
+  it("lets Let's Encrypt include a chosen subset when the site has several names", () => {
+    const onIssueSSL = vi.fn();
+    render(
+      <AntdApp>
+        <SiteSettings
+          site={{ ...site, aliases: ["www.test.com", "shop.test.com"] }}
+          section="ssl"
+          busy={false}
+          phpVersions={[{ value: "8.3", label: "PHP 8.3" }]}
+          publicName
+          onClose={() => undefined}
+          onPatch={async () => undefined}
+          onIssueSSL={onIssueSSL}
+          onLocalSSL={() => undefined}
+          onDisableSSL={() => undefined}
+          onGit={() => undefined}
+          onLogs={() => undefined}
+          onSSH={() => undefined}
+          onLaravel={() => undefined}
+        />
+      </AntdApp>,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Let's Encrypt" }));
+    expect(screen.getByRole("checkbox", { name: /Primary/ })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("checkbox", { name: "shop.test.com" }));
+    fireEvent.click(screen.getByRole("button", { name: "Issue Let's Encrypt" }));
+    expect(onIssueSSL).toHaveBeenCalledWith(["test.com", "www.test.com"]);
+  });
+
   it("shows composer packages and the composer.json directory", async () => {
     renderSettings("composer");
     expect(screen.getByText("composer.json directory")).toBeTruthy();

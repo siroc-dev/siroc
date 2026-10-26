@@ -3,6 +3,7 @@ package backup
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -106,6 +107,54 @@ func TestParseDirectAdminCurrentLayout(t *testing.T) {
 	}
 	if plan.Manifest.Databases[0].Password != "secret12" || plan.ResetDBPasswords != 0 {
 		t.Fatalf("kept password: %+v", plan.Manifest.Databases[0])
+	}
+	if plan.Manifest.Account.FTP || len(plan.Manifest.FTP) != 0 {
+		t.Fatalf("ftp: %+v", plan.Manifest.FTP)
+	}
+}
+
+func TestParseDirectAdminFTP(t *testing.T) {
+	root := t.TempDir()
+	base := filepath.Join(root, "alice")
+	write := func(rel, body string) {
+		t.Helper()
+		path := filepath.Join(base, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("user.conf", "username=alice\ndomain=shop.test\n")
+	write("domains/shop.test/public_html/index.html", "ok")
+	write("ftp.passwd", ""+
+		"# ftp\n"+
+		"alice:$1$hash:1001:1001::/home/alice:/bin/false\n"+
+		"alice_files:$1$hash:1001:1001::/home/alice/domains/shop.test/public_html:/bin/false\n"+
+		"shop:$1$hash:1001:1001::/home/alice/domains/shop.test:/bin/false\n"+
+		"a:$1$hash:1001:1001::/home/alice:/bin/false\n")
+
+	plan, err := ParseDirectAdmin(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Manifest.Account.FTP {
+		t.Fatal("account ftp should be on")
+	}
+	if len(plan.Manifest.FTP) != 2 {
+		t.Fatalf("ftp users: %+v", plan.Manifest.FTP)
+	}
+	if plan.Manifest.FTP[0].Login != "alice_files" || plan.Manifest.FTP[0].Home != "/home/alice/domains/shop.test/public_html" {
+		t.Fatalf("files: %+v", plan.Manifest.FTP[0])
+	}
+	if plan.Manifest.FTP[1].Login != "alice_shop" || plan.Manifest.FTP[1].Home != "/home/alice/domains/shop.test" {
+		t.Fatalf("shop: %+v", plan.Manifest.FTP[1])
+	}
+	for _, row := range plan.Manifest.FTP {
+		if row.Password == "" || strings.Contains(row.Password, "$1$") {
+			t.Fatalf("password: %+v", row)
+		}
 	}
 }
 

@@ -60,3 +60,18 @@ func TestShellQuote(t *testing.T) {
 		t.Fatal(shellQuote("a'b"))
 	}
 }
+
+func TestCopyScriptIncludesDatabasesAndFTP(t *testing.T) {
+	for _, needle := range []string{
+		"ftp.passwd",
+		"mysql.conf",
+		"mysql.list",
+		"SHOW DATABASES",
+		"could not dump database",
+		"unknown database",
+	} {
+		if !strings.Contains(copySiteScript, needle) {
+			t.Fatalf("copy script missing %s", needle)
+		}
+	}
+}

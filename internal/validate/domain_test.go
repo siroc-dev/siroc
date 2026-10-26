@@ -98,6 +98,19 @@ func TestCertbotNames(t *testing.T) {
 			t.Fatalf("wildcard included: %s", n)
 		}
 	}
+	picked, err := CertbotSelection("example.com", []string{"www.example.com", "shop.example.com", "*.example.com"}, []string{"example.com", "shop.example.com"})
+	if err != nil || len(picked) != 2 || picked[0] != "example.com" || picked[1] != "shop.example.com" {
+		t.Fatalf("picked %#v %v", picked, err)
+	}
+	if _, err := CertbotSelection("example.com", []string{"www.example.com"}, []string{"www.example.com"}); err == nil {
+		t.Fatal("primary was optional")
+	}
+	if _, err := CertbotSelection("example.com", []string{"www.example.com"}, []string{"example.com", "other.test"}); err == nil {
+		t.Fatal("foreign name accepted")
+	}
+	if _, err := CertbotSelection("example.com", []string{"*.example.com"}, []string{"example.com", "*.example.com"}); err == nil {
+		t.Fatal("wildcard accepted")
+	}
 }
 
 func TestSiteConfigText(t *testing.T) {

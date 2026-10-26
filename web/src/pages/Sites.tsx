@@ -653,13 +653,14 @@ export function Sites() {
     }
   }
 
-  async function issueSSL() {
+  async function issueSSL(domains?: string[]) {
     const current = routeSite();
     if (!current) return;
     setBusy(true);
     setSslLog("");
     try {
-      const st = await api.post<Site & { log?: string }>(`/api/sites/${current.id}/ssl`, {});
+      const body = domains && domains.length ? { domains } : {};
+      const st = await api.post<Site & { log?: string }>(`/api/sites/${current.id}/ssl`, body);
       setSslLog(st.log || "");
       message.success(`Let's Encrypt issued for ${siteLabel(current)}`);
       await load();
@@ -1437,6 +1438,19 @@ export function Sites() {
           onLogs={() => setLogSite(openSite)}
           onSSH={() => nav(`/terminal?user=${encodeURIComponent(openSite.username)}`)}
           onLaravel={() => void openApp(openSite, "laravel")}
+          onRename={async (domain) => {
+            setBusy(true);
+            try {
+              await api.post(`/api/sites/${openSite.id}/rename`, { domain });
+              message.success(`${siteLabel(openSite)} renamed to ${domain}`);
+              await load();
+            } catch (err) {
+              message.error(err instanceof Error ? err.message : "Failed");
+              throw err;
+            } finally {
+              setBusy(false);
+            }
+          }}
         />
       ) : settingsOn ? (
         <Button onClick={() => nav("/sites")}>Back</Button>
@@ -1457,7 +1471,7 @@ export function Sites() {
             label="New domain"
             extra={
               renameSite
-                ? `Moves domains/${renameSite.domain} if present. Let's Encrypt must be issued again after rename.`
+                ? `Renames the folder domains/${renameSite.domain} to the new domain and moves the website files with it. Let's Encrypt must be issued again.`
                 : undefined
             }
             rules={[{ required: true, message: "Domain required" }]}

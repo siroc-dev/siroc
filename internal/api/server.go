@@ -262,6 +262,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/os/updates", s.osUpdate)
 		r.Post("/api/migrate/directadmin/list", s.migrateDiscover)
 		r.Post("/api/migrate/directadmin", s.migrateStart)
+		r.Get("/api/migrate/directadmin/machine", s.migrateMachine)
 		r.Get("/api/migrate/directadmin", s.migrateJob)
 		r.Get("/api/sysops", s.sysopsStatus)
 		r.Post("/api/sysops", s.sysopsApply)
@@ -1934,7 +1935,8 @@ func (s *Server) issueSiteSSL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Email string `json:"email"`
+		Email   string   `json:"email"`
+		Domains []string `json:"domains"`
 	}
 	if r.ContentLength != 0 && !decode(w, r, &body) {
 		return
@@ -1943,12 +1945,21 @@ func (s *Server) issueSiteSSL(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	certAliases := st.Aliases
+	if len(body.Domains) > 0 {
+		names, err := validate.CertbotSelection(st.Domain, st.Aliases, body.Domains)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		certAliases = names[1:]
+	}
 	req := s.siteWriteReq(*st, st.PHPVersion, st.Enabled, st.Aliases, false, "", st.Rewrite)
 	if err := s.Agent.SiteWrite(req); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	out, err := s.Agent.SiteSSL(s.siteSSLReq(st.Username, st.Domain, st.Aliases, body.Email))
+	out, err := s.Agent.SiteSSL(s.siteSSLReq(st.Username, st.Domain, certAliases, body.Email))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -2377,13 +2388,79 @@ func (s *Server) siteForDelete(w http.ResponseWriter, r *http.Request, id int64)
 }
 
 func replaceSiteDomainPath(home, oldDomain, newDomain, doc string) string {
+	doc = strings.TrimSpace(doc)
+	if doc == "" || oldDomain == "" || oldDomain == newDomain {
+		return doc
+	}
 	oldBase := filepath.Join(home, "domains", oldDomain)
 	newBase := filepath.Join(home, "domains", newDomain)
 	clean := filepath.Clean(doc)
 	if clean == oldBase || strings.HasPrefix(clean, oldBase+string(os.PathSeparator)) {
 		return newBase + strings.TrimPrefix(clean, oldBase)
 	}
+	slash := strings.ReplaceAll(doc, "\\", "/")
+	relOld := "domains/" + oldDomain
+	relNew := "domains/" + newDomain
+	if slash == relOld || strings.HasPrefix(slash, relOld+"/") {
+		return relNew + strings.TrimPrefix(slash, relOld)
+	}
 	return doc
+}
+
+func replaceSiteOptionPaths(home, oldDomain, newDomain string, opt siteopts.Options) (siteopts.Options, bool) {
+	changed := false
+	if next := replaceSiteDomainPath(home, oldDomain, newDomain, opt.ComposerRoot); next != opt.ComposerRoot {
+		opt.ComposerRoot = next
+		changed = true
+	}
+	if opt.Cache != nil {
+		if next := replaceSiteDomainPath(home, oldDomain, newDomain, opt.Cache.Path); next != opt.Cache.Path {
+			opt.Cache.Path = next
+			changed = true
+		}
+	}
+	return opt, changed
+}
+
+func (s *Server) retargetDomainDir(home, oldDomain, newDomain string, st *store.Site) error {
+	doc := replaceSiteDomainPath(home, oldDomain, newDomain, st.DocRoot)
+	opt, optChanged := replaceSiteOptionPaths(home, oldDomain, newDomain, st.Options)
+	var git *store.SiteGit
+	if row, err := s.Store.GetSiteGit(st.ID); err == nil {
+		if next := replaceSiteDomainPath(home, oldDomain, newDomain, row.Path); next != row.Path {
+			row.Path = next
+			git = row
+		}
+	}
+	docChanged := doc != st.DocRoot
+	if !docChanged && !optChanged && git == nil {
+		return nil
+	}
+	st.DocRoot = doc
+	st.Options = opt
+	if err := s.Agent.SiteWrite(s.siteWriteReq(*st, st.PHPVersion, st.Enabled, st.Aliases, st.SSL, st.SSLKind, st.Rewrite)); err != nil {
+		return fmt.Errorf("update %s after the folder rename: %w", st.Domain, err)
+	}
+	if docChanged {
+		if err := s.Store.UpdateSite(st.ID, st.PHPVersion, doc, st.Enabled, st.Aliases, st.SSL, st.SSLExpiry, st.SSLKind, st.Rewrite); err != nil {
+			return err
+		}
+	}
+	if optChanged {
+		raw, err := siteopts.Marshal(opt)
+		if err != nil {
+			return err
+		}
+		if err := s.Store.UpdateSiteOptions(st.ID, raw); err != nil {
+			return err
+		}
+	}
+	if git != nil {
+		if err := s.Store.UpsertSiteGit(git); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) renameSite(w http.ResponseWriter, r *http.Request) {
@@ -2451,6 +2528,20 @@ func (s *Server) renameSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.UpdateSiteApp(st.ID, st.Kind, st.ProxyPass, st.AppPort, st.AppCmd)
+	sites, err := s.Store.ListSites()
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("website renamed, but the folder paths were not updated: %w", err))
+		return
+	}
+	for i := range sites {
+		if sites[i].Username != st.Username {
+			continue
+		}
+		if err := s.retargetDomainDir(home, st.Domain, newDomain, &sites[i]); err != nil {
+			writeErr(w, http.StatusBadRequest, fmt.Errorf("website renamed, but %w", err))
+			return
+		}
+	}
 	if current, err := s.Store.Setting("default_site"); err == nil && current == st.Domain {
 		if err := s.Agent.SetDefaultSite(newDomain); err != nil {
 			writeErr(w, http.StatusBadRequest, fmt.Errorf("website renamed, but the default website was not moved: %w", err))

@@ -390,6 +390,7 @@ func (c *Client) startBackup(domain string) error {
 	form.Set("option0", "domain")
 	form.Set("option1", "subdomain")
 	form.Set("option2", "database")
+	form.Set("option3", "ftp")
 	form.Set("where", "local")
 	var last error
 	for _, action := range []string{"backup", "create"} {

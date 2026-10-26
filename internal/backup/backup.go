@@ -275,7 +275,7 @@ func describeExtract(tmp string) (*rpc.BackupResp, error) {
 		return &rpc.BackupResp{OK: true, Manifest: man, Message: "archive for " + man.Username}, nil
 	}
 	if plan, err := ParseDirectAdmin(tmp); err == nil {
-		return &rpc.BackupResp{OK: true, Manifest: plan.Manifest, Message: directAdminMessage(plan.Manifest.Username, len(plan.Manifest.Sites), len(plan.Manifest.Databases), plan.ResetDBPasswords, false)}, nil
+		return &rpc.BackupResp{OK: true, Manifest: plan.Manifest, Message: directAdminMessage(plan.Manifest.Username, len(plan.Manifest.Sites), len(plan.Manifest.Databases), len(plan.Manifest.FTP), plan.ResetDBPasswords, false)}, nil
 	}
 	nested := NestedUserArchives(tmp)
 	if len(nested) == 0 {
@@ -363,7 +363,7 @@ func restoreExtracted(tmp, src string, req rpc.BackupReq) (*rpc.BackupResp, erro
 		msg = "created user " + username + " and restored from " + filepath.Base(src)
 	}
 	if plan != nil {
-		msg = directAdminMessage(username, len(man.Sites), len(man.Databases), plan.ResetDBPasswords, created)
+		msg = directAdminMessage(username, len(man.Sites), len(man.Databases), len(man.FTP), plan.ResetDBPasswords, created)
 	}
 	return &rpc.BackupResp{OK: true, Path: src, CreatedUser: created, Manifest: man, Manifests: []*rpc.BackupManifest{man}, Message: msg}, nil
 }

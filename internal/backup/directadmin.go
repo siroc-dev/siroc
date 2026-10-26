@@ -83,6 +83,7 @@ func ParseDirectAdmin(root string) (*directAdminPlan, error) {
 		return sites[i].Domain < sites[j].Domain
 	})
 	dbs, dumps, resets := directAdminDatabases(base)
+	ftps, ftpOn := directAdminFTP(base, username)
 	return &directAdminPlan{
 		Manifest: &rpc.BackupManifest{
 			Version:  1,
@@ -91,10 +92,12 @@ func ParseDirectAdmin(root string) (*directAdminPlan, error) {
 				Username:     username,
 				KeepPassword: true,
 				SkipFlags:    true,
+				FTP:          ftpOn,
 				WAFEnabled:   true,
 			},
 			Sites:     sites,
 			Databases: dbs,
+			FTP:       ftps,
 		},
 		Copies:           copies,
 		Dumps:            dumps,
@@ -523,15 +526,110 @@ func docrootUnder(docroot string, want map[string]bool) bool {
 	return parent != "" && want[parent]
 }
 
-func directAdminMessage(username string, sites, dbs, resets int, created bool) string {
+func directAdminFTP(base, owner string) ([]rpc.BackupFTP, bool) {
+	if strings.TrimSpace(owner) == "" {
+		return nil, false
+	}
+	var b []byte
+	var err error
+	for _, rel := range []string{"ftp.passwd", filepath.Join("backup", "ftp.passwd")} {
+		b, err = os.ReadFile(filepath.Join(base, rel))
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return nil, false
+	}
+	var out []rpc.BackupFTP
+	seen := map[string]bool{}
+	main := false
+	for _, line := range strings.Split(string(b), "\n") {
+		login, home := parseFTPLine(line)
+		if login == "" {
+			continue
+		}
+		if strings.EqualFold(login, owner) {
+			main = true
+			continue
+		}
+		full, ok := panelFTPLogin(owner, login)
+		if !ok || seen[full] {
+			continue
+		}
+		pw, err := secret.RandomPassword(16)
+		if err != nil {
+			continue
+		}
+		seen[full] = true
+		out = append(out, rpc.BackupFTP{Login: full, Home: home, Password: pw})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Login < out[j].Login })
+	return out, main || len(out) > 0
+}
+
+func parseFTPLine(line string) (login, home string) {
+	line = strings.TrimSpace(strings.TrimRight(line, "\r"))
+	if line == "" || strings.HasPrefix(line, "#") {
+		return "", ""
+	}
+	parts := strings.Split(line, ":")
+	if len(parts) < 2 {
+		return "", ""
+	}
+	login = strings.ToLower(strings.TrimSpace(parts[0]))
+	if len(parts) >= 7 && strings.HasPrefix(strings.TrimSpace(parts[5]), "/") {
+		return login, strings.TrimSpace(parts[5])
+	}
+	for _, part := range parts[1:] {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "/") && !ftpShell(part) {
+			home = part
+		}
+	}
+	return login, home
+}
+
+func ftpShell(path string) bool {
+	switch path {
+	case "/bin/false", "/bin/nologin", "/sbin/nologin", "/usr/sbin/nologin", "/bin/bash", "/bin/sh":
+		return true
+	default:
+		return false
+	}
+}
+
+func panelFTPLogin(owner, login string) (string, bool) {
+	owner = strings.ToLower(strings.TrimSpace(owner))
+	login = strings.ToLower(strings.TrimSpace(login))
+	if owner == "" || login == "" || login == owner {
+		return "", false
+	}
+	suffix := login
+	if strings.HasPrefix(login, owner+"_") {
+		suffix = strings.TrimPrefix(login, owner+"_")
+	} else if strings.HasPrefix(login, owner) {
+		suffix = strings.TrimPrefix(strings.TrimPrefix(login, owner), "_")
+	}
+	full, err := validate.FTPLogin(owner, suffix)
+	if err != nil || full != owner+"_"+suffix {
+		return "", false
+	}
+	return full, true
+}
+
+func directAdminMessage(username string, sites, dbs, ftps, resets int, created bool) string {
 	msg := "restored " + username + " from DirectAdmin"
-	msg += " (" + itoa(sites) + " sites, " + itoa(dbs) + " databases)"
+	msg += " (" + itoa(sites) + " sites, " + itoa(dbs) + " databases, " + itoa(ftps) + " ftp users)"
 	if created {
 		msg = "created user " + username + " and " + msg
 	}
 	msg += ". Mail, DNS, and certificates were not imported."
 	if resets > 0 {
 		msg += " Reset " + itoa(resets) + " database passwords because the backup had none usable."
+	}
+	if ftps > 0 {
+		msg += " FTP login passwords were reset because DirectAdmin only stores a hash. Open FTP to see the new passwords."
 	}
 	msg += " Set the account password under Accounts if this user is new to the panel."
 	return msg
