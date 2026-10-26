@@ -29,6 +29,7 @@ type wafState struct {
 	Packs             []string `json:"packs"`
 	DisabledIDs       []int    `json:"disabledIds"`
 	UploadScan        bool     `json:"uploadScan"`
+	SEORelaxed        int      `json:"seoRelaxed,omitempty"`
 }
 
 type wafPackSpec struct {
@@ -40,16 +41,18 @@ type wafPackSpec struct {
 
 func wafPackCatalog() []wafPackSpec {
 	return []wafPackSpec{
-		{ID: "scanner", Title: "Scanner detection", Description: "Block vulnerability scanners and bots", Prefixes: []string{"REQUEST-913"}},
+		{ID: "scanner", Title: "Scanner detection", Description: "Block vulnerability scanners such as nikto and sqlmap (CRS 913). Off by default so SEO crawlers are not blocked.", Prefixes: []string{"REQUEST-913"}},
+		{ID: "reputation", Title: "IP reputation", Description: "IP reputation lookups (CRS 910). Off by default.", Prefixes: []string{"REQUEST-910"}},
+		{ID: "dos", Title: "DoS / GeoIP", Description: "DoS tracking and GeoIP (CRS 912). Off by default; needs extra data files.", Prefixes: []string{"REQUEST-912"}},
 		{ID: "protocol", Title: "Protocol enforcement", Description: "HTTP method, protocol, and multipart checks", Prefixes: []string{"REQUEST-911", "REQUEST-920", "REQUEST-921", "REQUEST-922"}},
 		{ID: "lfi", Title: "Local file inclusion", Description: "Path traversal and LFI", Prefixes: []string{"REQUEST-930"}},
 		{ID: "rfi", Title: "Remote file inclusion", Description: "Remote file include attacks", Prefixes: []string{"REQUEST-931"}},
-		{ID: "rce", Title: "Remote code execution", Description: "OS command and code injection", Prefixes: []string{"REQUEST-932"}},
+		{ID: "rce", Title: "Remote code execution", Description: "Unix command and code injection. Windows CMD/PowerShell rules are off by default.", Prefixes: []string{"REQUEST-932"}},
 		{ID: "php", Title: "PHP attacks", Description: "PHP-specific exploits", Prefixes: []string{"REQUEST-933"}},
 		{ID: "generic", Title: "Generic application attacks", Description: "Generic web application attacks", Prefixes: []string{"REQUEST-934"}},
 		{ID: "xss", Title: "Cross-site scripting", Description: "XSS in requests", Prefixes: []string{"REQUEST-941"}},
 		{ID: "sqli", Title: "SQL injection", Description: "SQLi in requests", Prefixes: []string{"REQUEST-942"}},
-		{ID: "session", Title: "Session fixation", Description: "Session fixation attempts", Prefixes: []string{"REQUEST-943"}},
+		{ID: "session", Title: "Session fixation", Description: "Session fixation attempts (CRS 943). Off by default.", Prefixes: []string{"REQUEST-943"}},
 		{ID: "java", Title: "Java attacks", Description: "Java / Jakarta exploits", Prefixes: []string{"REQUEST-944"}},
 		{ID: "nodejs", Title: "Node.js attacks", Description: "Node.js application attacks", Prefixes: []string{"REQUEST-934-APPLICATION-ATTACK-NODEJS", "REQUEST-948"}},
 		{ID: "leakage", Title: "Data leakage", Description: "SQL / PHP / IIS information leaks in responses", Prefixes: []string{"RESPONSE-950", "RESPONSE-951", "RESPONSE-953", "RESPONSE-954"}},
@@ -63,7 +66,9 @@ func defaultWAFState() wafState {
 		InboundThreshold:  5,
 		OutboundThreshold: 4,
 		Audit:             "RelevantOnly",
-		Packs:             []string{"scanner", "protocol", "lfi", "rfi", "rce", "php", "generic", "xss", "sqli", "session", "leakage"},
+		Packs:             defaultWAFPacks(),
+		DisabledIDs:       defaultSEOWAFRules(),
+		SEORelaxed:        wafDefaultsVersion,
 	}
 }
 
@@ -99,6 +104,14 @@ func loadWAFState() wafState {
 	case "On", "Off", "RelevantOnly":
 	default:
 		st.Audit = "RelevantOnly"
+	}
+	if st.SEORelaxed < wafDefaultsVersion {
+		st.DisabledIDs = mergeWAFRuleIDs(st.DisabledIDs, defaultSEOWAFRules())
+		st.Packs = dropWAFPacks(st.Packs, defaultOffWAFPacks()...)
+		st.SEORelaxed = wafDefaultsVersion
+	}
+	if st.DisabledIDs == nil {
+		st.DisabledIDs = []int{}
 	}
 	return st
 }

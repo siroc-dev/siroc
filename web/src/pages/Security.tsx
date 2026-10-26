@@ -533,10 +533,12 @@ function WAFCard({
 
   function profile(name: "monitor" | "balanced" | "strict" | "maximum") {
     const all = (waf?.packs || []).filter((p) => p.available !== false).map((p) => p.id);
+    const skip = new Set(["scanner", "session", "reputation", "dos"]);
+    const hosting = all.filter((id) => !skip.has(id));
     const next = {
-      monitor: { mode: "DetectionOnly", paranoia: 1, inboundThreshold: 5, outboundThreshold: 4, packs: all },
-      balanced: { mode: "On", paranoia: 1, inboundThreshold: 5, outboundThreshold: 4, packs: all },
-      strict: { mode: "On", paranoia: 2, inboundThreshold: 5, outboundThreshold: 4, packs: all },
+      monitor: { mode: "DetectionOnly", paranoia: 1, inboundThreshold: 5, outboundThreshold: 4, packs: hosting },
+      balanced: { mode: "On", paranoia: 1, inboundThreshold: 5, outboundThreshold: 4, packs: hosting },
+      strict: { mode: "On", paranoia: 2, inboundThreshold: 5, outboundThreshold: 4, packs: hosting },
       maximum: { mode: "On", paranoia: 3, inboundThreshold: 3, outboundThreshold: 3, packs: all },
     }[name];
     setParanoia(next.paranoia);

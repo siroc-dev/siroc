@@ -50,7 +50,10 @@ func TestBuildPanelServicesExpandsPHP(t *testing.T) {
 	if rows[0].Name != "nginx" || !rows[0].Monitor {
 		t.Fatalf("nginx row %#v", rows[0])
 	}
-	if rows[1].Name != "php8.3" || rows[1].Title != "PHP 8.3 FPM" || !rows[1].Active || rows[1].Manage != "/php-fpm" {
+	if rows[0].unit != "nginx" {
+		t.Fatalf("nginx unit %#v", rows[0])
+	}
+	if rows[1].Name != "php8.3" || rows[1].Title != "PHP 8.3 FPM" || !rows[1].Active || rows[1].Manage != "/php-fpm" || rows[1].unit != "php8.3-fpm" {
 		t.Fatalf("php 8.3 %#v", rows[1])
 	}
 	if rows[2].Name != "php8.4" || rows[2].Active {

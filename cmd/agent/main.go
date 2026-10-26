@@ -529,6 +529,18 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
 	})
+	r.Post("/software/service-usage", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.ServiceUsageReq
+		if !decode(w, r, &req) {
+			return
+		}
+		got := software.ServiceUsage(req.Units)
+		out := make([]rpc.ServiceUsage, 0, len(got))
+		for _, row := range got {
+			out = append(out, row)
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Post("/software/service", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.ServiceReq
 		if !decode(w, r, &req) {

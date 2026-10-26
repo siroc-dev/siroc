@@ -160,6 +160,16 @@ type ServiceReq struct {
 	Action string `json:"action"`
 }
 
+type ServiceUsageReq struct {
+	Units []string `json:"units"`
+}
+
+type ServiceUsage struct {
+	Unit      string `json:"unit"`
+	Memory    int64  `json:"memory"`
+	Processes int    `json:"processes"`
+}
+
 type SiteWriteReq struct {
 	Username   string           `json:"username"`
 	Domain     string           `json:"domain"`

@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.3.8">0.3.8</a>
           <a href="#v0.3.7">0.3.7</a>
           <a href="#v0.3.6">0.3.6</a>
           <a href="#v0.3.5">0.3.5</a>
@@ -137,6 +138,18 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.3.8">
+          <h2><a href="#v0.3.8">0.3.8</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Service Status shows RAM and process count for each listed service, from systemd and cgroup usage.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>ModSecurity WAF defaults skip scanner, session fixation, IP reputation, and GeoIP/DoS packs. Windows CMD and PowerShell RCE rules stay off. Non-ASCII URLs and missing Accept headers from crawlers are not blocked. Existing installs apply this once and can turn packs back on.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.3.7">
           <h2><a href="#v0.3.7">0.3.7</a></h2>

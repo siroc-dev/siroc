@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { PlayCircleFilled, SearchOutlined } from "@ant-design/icons";
 import { App, Button, Card, Input, Space, Switch, Table, Typography } from "antd";
 import { api } from "@/lib/api";
+import { formatBytes } from "@/lib/usage";
 
 type Svc = {
   name: string;
@@ -11,6 +12,8 @@ type Svc = {
   active: boolean;
   monitor: boolean;
   manage?: string;
+  memory?: number;
+  processes?: number;
 };
 
 export function ServiceStatus() {
@@ -88,6 +91,17 @@ export function ServiceStatus() {
         pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (n) => `Total ${n}` }}
         columns={[
           { title: "Service Name", dataIndex: "title" },
+          {
+            title: "RAM",
+            width: 110,
+            render: (_, row) => (row.active && row.memory ? formatBytes(row.memory) : "—"),
+          },
+          {
+            title: "Processes",
+            width: 110,
+            align: "right" as const,
+            render: (_, row) => (row.active && row.processes ? row.processes : "—"),
+          },
           {
             title: "Monitor",
             width: 110,

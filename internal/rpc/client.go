@@ -339,6 +339,21 @@ func (c *Client) FileUpload(username, path, filename string, r io.Reader, root b
 	return nil
 }
 
+func (c *Client) ServiceUsage(units []string) (map[string]ServiceUsage, error) {
+	var out []ServiceUsage
+	err := c.do(http.MethodPost, "/software/service-usage", ServiceUsageReq{Units: units}, &out)
+	if err != nil {
+		return nil, err
+	}
+	got := map[string]ServiceUsage{}
+	for _, row := range out {
+		if row.Unit != "" {
+			got[row.Unit] = row
+		}
+	}
+	return got, nil
+}
+
 func (c *Client) Packages() ([]PackageInfo, error) {
 	var out []PackageInfo
 	err := c.do(http.MethodGet, "/software", nil, &out)

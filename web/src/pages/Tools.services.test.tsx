@@ -17,7 +17,7 @@ describe("System tools services", () => {
   beforeEach(() => {
     vi.mocked(api.get).mockImplementation(async (url: string) => {
       if (String(url).includes("/services")) {
-        return [{ name: "nginx", title: "Nginx", version: "1.31.8", active: true, monitor: true, manage: "/nginx" }];
+        return [{ name: "nginx", title: "Nginx", version: "1.31.8", active: true, monitor: true, manage: "/nginx", memory: 1048576, processes: 3 }];
       }
       return { hostname: "box", time: "now", timezone: "UTC", ntp: true, dns: [], mounts: [], ips: [], routes: [], ifaces: ["eth0"], netplan: true };
     });
@@ -34,6 +34,10 @@ describe("System tools services", () => {
     fireEvent.click(await screen.findByRole("tab", { name: "Service Status" }));
     expect(await screen.findByText("Nginx")).toBeInTheDocument();
     expect(screen.getByText("Memcached")).toBeInTheDocument();
+    expect(screen.getByText("RAM")).toBeInTheDocument();
+    expect(screen.getByText("Processes")).toBeInTheDocument();
+    expect(screen.getByText("1.0 MB")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 
   it("saves an address and gateway on the IP form", async () => {

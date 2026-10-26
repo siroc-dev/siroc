@@ -74,12 +74,15 @@ type brandPublic struct {
 }
 
 type panelService struct {
-	Name    string `json:"name"`
-	Title   string `json:"title"`
-	Version string `json:"version"`
-	Active  bool   `json:"active"`
-	Monitor bool   `json:"monitor"`
-	Manage  string `json:"manage,omitempty"`
+	Name      string `json:"name"`
+	Title     string `json:"title"`
+	Version   string `json:"version"`
+	Active    bool   `json:"active"`
+	Monitor   bool   `json:"monitor"`
+	Manage    string `json:"manage,omitempty"`
+	Memory    int64  `json:"memory,omitempty"`
+	Processes int    `json:"processes,omitempty"`
+	unit      string
 }
 
 func normalizeThemeStyle(v string) (string, error) {
@@ -359,7 +362,32 @@ func (s *Server) listPanelServices(w http.ResponseWriter, _ *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, s.buildPanelServices(list))
+	writeJSON(w, http.StatusOK, s.withServiceUsage(s.buildPanelServices(list)))
+}
+
+func (s *Server) withServiceUsage(rows []panelService) []panelService {
+	units := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.unit != "" {
+			units = append(units, row.unit)
+		}
+	}
+	if len(units) == 0 || s.Agent == nil {
+		return rows
+	}
+	got, err := s.Agent.ServiceUsage(units)
+	if err != nil {
+		return rows
+	}
+	for i, row := range rows {
+		u, ok := got[row.unit]
+		if !ok {
+			continue
+		}
+		rows[i].Memory = u.Memory
+		rows[i].Processes = u.Processes
+	}
+	return rows
 }
 
 func (s *Server) buildPanelServices(list []rpc.PackageInfo) []panelService {
@@ -380,6 +408,7 @@ func (s *Server) buildPanelServices(list []rpc.PackageInfo) []panelService {
 					Active:  active,
 					Monitor: s.monitored(mon, name),
 					Manage:  "/php-fpm",
+					unit:    name + "-fpm",
 				})
 			}
 			continue
@@ -394,6 +423,7 @@ func (s *Server) buildPanelServices(list []rpc.PackageInfo) []panelService {
 			Active:  p.Active,
 			Monitor: s.monitored(mon, p.Name),
 			Manage:  serviceManage[p.Name],
+			unit:    p.Service,
 		})
 	}
 	if out == nil {
