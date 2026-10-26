@@ -440,6 +440,7 @@ func main() {
 	})
 
 	r.Post("/files/list", fileHandler(filesMgr, "list"))
+	r.Post("/files/sizes", fileHandler(filesMgr, "sizes"))
 	r.Post("/files/read", fileHandler(filesMgr, "read"))
 	r.Post("/files/write", fileHandler(filesMgr, "write"))
 	r.Post("/files/mkdir", fileHandler(filesMgr, "mkdir"))
@@ -1705,6 +1706,14 @@ func main() {
 	r.Get("/rclone/run", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, rclone.Job())
 	})
+	r.Post("/rclone/run/cancel", func(w http.ResponseWriter, r *http.Request) {
+		out, err := rclone.Cancel()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Post("/migrate/directadmin/list", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.DAConn
 		if !decode(w, r, &req) {
@@ -1854,6 +1863,8 @@ func fileHandler(m *files.Manager, op string) http.HandlerFunc {
 		switch op {
 		case "list":
 			out, err = mgr.List(req.Username, req.Path, req.Root)
+		case "sizes":
+			out, err = mgr.DirSizes(req.Username, req.Path, req.Root)
 		case "read":
 			out, err = mgr.Read(req.Username, req.Path, req.Root)
 		case "write":

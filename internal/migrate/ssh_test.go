@@ -39,7 +39,7 @@ func TestParseSSHSites(t *testing.T) {
 }
 
 func TestParseReady(t *testing.T) {
-	n, path, err := parseReady("ready 4096 /mnt/data/siroc-tmp/siroc-migrate-shop.example-20261026-000000.tar.gz\n")
+	n, path, err := parseReady("beat\nready 4096 /mnt/data/siroc-tmp/siroc-migrate-shop.example-20261026-000000.tar.gz\nbeat\n")
 	if err != nil || n != 4096 || !strings.Contains(path, "/mnt/data/siroc-tmp/") {
 		t.Fatalf("%d %s %v", n, path, err)
 	}
@@ -64,7 +64,7 @@ func TestShellQuote(t *testing.T) {
 }
 
 func TestParseSiteSizes(t *testing.T) {
-	text := "alice\tshop.test\t1048576\t4096\nalice\tblog.test\t2048\t4096\n"
+	text := "beat\nalice\tshop.test\t1048576\t4096\nbeat\nalice\tblog.test\t2048\t4096\n"
 	got, err := ParseSiteSizes(text, []rpc.DASite{
 		{Owner: "alice", Domain: "shop.test"},
 		{Owner: "alice", Domain: "blog.test"},
@@ -96,6 +96,7 @@ func TestCopyScriptIncludesDatabasesAndFTP(t *testing.T) {
 		"SHOW DATABASES",
 		"could not dump database",
 		"unknown database",
+		"printf 'beat\\n'",
 	} {
 		if !strings.Contains(copySiteScript, needle) {
 			t.Fatalf("copy script missing %s", needle)

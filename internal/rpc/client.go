@@ -40,6 +40,10 @@ func (c *Client) doLong(req *http.Request) (*http.Response, error) {
 }
 
 func (c *Client) do(method, path string, in, out any) error {
+	return c.doTimeout(0, method, path, in, out)
+}
+
+func (c *Client) doTimeout(timeout time.Duration, method, path string, in, out any) error {
 	var body io.Reader
 	if in != nil {
 		b, err := json.Marshal(in)
@@ -55,7 +59,13 @@ func (c *Client) do(method, path string, in, out any) error {
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	res, err := c.http.Do(req)
+	httpClient := c.http
+	if timeout > 0 {
+		cp := *c.http
+		cp.Timeout = timeout
+		httpClient = &cp
+	}
+	res, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("agent unreachable: %w", err)
 	}
@@ -146,6 +156,12 @@ func fileBody(username, path string, root bool, roots []string) FileReq {
 func (c *Client) FileList(username, path string, root bool, roots ...string) (*FileListResp, error) {
 	var out FileListResp
 	err := c.do(http.MethodPost, "/files/list", fileBody(username, path, root, roots), &out)
+	return &out, err
+}
+
+func (c *Client) FileDirSizes(username, path string, root bool, roots ...string) (*FileListResp, error) {
+	var out FileListResp
+	err := c.do(http.MethodPost, "/files/sizes", fileBody(username, path, root, roots), &out)
 	return &out, err
 }
 
@@ -1059,6 +1075,12 @@ func (c *Client) RcloneJob() (*RcloneRunResp, error) {
 	return &out, err
 }
 
+func (c *Client) RcloneCancel() (*RcloneRunResp, error) {
+	var out RcloneRunResp
+	err := c.do(http.MethodPost, "/rclone/run/cancel", nil, &out)
+	return &out, err
+}
+
 func (c *Client) BackupRun(in BackupReq) (*BackupResp, error) {
 	var out BackupResp
 	err := c.do(http.MethodPost, "/backup/run", in, &out)
@@ -1246,7 +1268,7 @@ func (c *Client) DBSync(accounts []DBSyncAccount) (*DBSyncResp, error) {
 
 func (c *Client) DASize(req DASizeReq) (*DASizeList, error) {
 	var out DASizeList
-	err := c.do(http.MethodPost, "/migrate/directadmin/size", req, &out)
+	err := c.doTimeout(2*time.Hour+5*time.Minute, http.MethodPost, "/migrate/directadmin/size", req, &out)
 	return &out, err
 }
 

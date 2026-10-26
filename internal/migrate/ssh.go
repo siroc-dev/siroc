@@ -19,6 +19,13 @@ import (
 	"github.com/siroc-dev/siroc/internal/validate"
 )
 
+const (
+	sshIdle    = 15 * time.Minute
+	sshSizeMax = 2 * time.Hour
+	sshPackMax = 8 * time.Hour
+	sshPullMax = 12 * time.Hour
+)
+
 func sshMode(conn rpc.DAConn) bool {
 	return strings.EqualFold(strings.TrimSpace(conn.Mode), "ssh")
 }
@@ -245,7 +252,7 @@ func MeasureSSH(conn rpc.DAConn, sites []rpc.DASite) (rpc.DASizeList, error) {
 		return rpc.DASizeList{}, err
 	}
 	var out bytes.Buffer
-	if err := c.bash(5*time.Minute, sizeSitesScript, args, &out); err != nil {
+	if err := c.bashWithin(sshIdle, sshSizeMax, sizeSitesScript, args, &out); err != nil {
 		return rpc.DASizeList{}, err
 	}
 	return ParseSiteSizes(out.String(), picked)
@@ -352,7 +359,7 @@ func PullSSH(conn rpc.DAConn, owner, domain, destDir string, progress func(strin
 		progress("Packing the website into a tar file", 20)
 	}
 	var packed bytes.Buffer
-	if err := c.bash(45*time.Minute, copySiteScript, []string{owner, domain}, &packed); err != nil {
+	if err := c.bashWithin(sshIdle, sshPackMax, copySiteScript, []string{owner, domain}, &packed); err != nil {
 		return "", err
 	}
 	total, remote, err := parseReady(packed.String())
@@ -378,7 +385,7 @@ func PullSSH(conn rpc.DAConn, owner, domain, destDir string, progress func(strin
 		}
 	}}
 	cmd, stdin := c.sudoCmd("cat " + shellQuote(remote))
-	err = c.exec(45*time.Minute, cmd, stdin, count)
+	err = c.execWithin(sshIdle, sshPullMax, cmd, stdin, count)
 	closeErr := f.Close()
 	if err != nil || sniff.bad || !sniff.checked || count.n == 0 {
 		_ = os.Remove(dest)
@@ -497,6 +504,10 @@ func (c *sshConn) output(timeout time.Duration, cmd string) (string, error) {
 }
 
 func (c *sshConn) bash(timeout time.Duration, script string, args []string, stdout io.Writer) error {
+	return c.bashWithin(timeout, timeout, script, args, stdout)
+}
+
+func (c *sshConn) bashWithin(idle, max time.Duration, script string, args []string, stdout io.Writer) error {
 	cmd := "/bin/bash -s --"
 	for _, arg := range args {
 		cmd += " " + shellQuote(arg)
@@ -508,10 +519,19 @@ func (c *sshConn) bash(timeout time.Duration, script string, args []string, stdo
 	} else if c.useSudo {
 		cmd = "sudo -n " + cmd
 	}
-	return c.exec(timeout, cmd, stdin, stdout)
+	return c.execWithin(idle, max, cmd, stdin, stdout)
 }
 
 func (c *sshConn) exec(timeout time.Duration, cmd string, stdin io.Reader, stdout io.Writer) error {
+	return c.execWithin(timeout, timeout, cmd, stdin, stdout)
+}
+
+// execWithin stops a command that produces nothing for idle, and always stops at max.
+// Output on stdout or stderr keeps a long pack or download alive.
+func (c *sshConn) execWithin(idle, max time.Duration, cmd string, stdin io.Reader, stdout io.Writer) error {
+	if idle <= 0 || idle > max {
+		idle = max
+	}
 	session, err := c.cli.NewSession()
 	if err != nil {
 		return fmt.Errorf("SSH session failed")
@@ -521,16 +541,42 @@ func (c *sshConn) exec(timeout time.Duration, cmd string, stdin io.Reader, stdou
 		stdout = io.Discard
 	}
 	var stderr bytes.Buffer
+	var last atomic.Int64
+	touch := func() { last.Store(time.Now().UnixNano()) }
+	touch()
 	session.Stdin = stdin
-	session.Stdout = stdout
-	session.Stderr = &stderr
+	session.Stdout = touchWriter{w: stdout, touch: touch}
+	session.Stderr = touchWriter{w: &stderr, touch: touch}
 	var timedOut atomic.Bool
-	timer := time.AfterFunc(timeout, func() {
-		timedOut.Store(true)
-		_ = c.cli.Close()
-	})
-	defer timer.Stop()
+	var finished atomic.Bool
+	stop := make(chan struct{})
+	started := time.Now()
+	go func() {
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				if finished.Load() {
+					return
+				}
+				quiet := time.Since(time.Unix(0, last.Load())) >= idle
+				if time.Since(started) >= max || quiet {
+					if finished.Load() {
+						return
+					}
+					timedOut.Store(true)
+					_ = c.cli.Close()
+					return
+				}
+			}
+		}
+	}()
 	err = session.Run(cmd)
+	finished.Store(true)
+	close(stop)
 	if timedOut.Load() {
 		return fmt.Errorf("SSH command timed out")
 	}
@@ -542,6 +588,21 @@ func (c *sshConn) exec(timeout time.Duration, cmd string, stdin io.Reader, stdou
 		return fmt.Errorf("%s", msg)
 	}
 	return nil
+}
+
+type touchWriter struct {
+	w     io.Writer
+	touch func()
+}
+
+func (t touchWriter) Write(p []byte) (int, error) {
+	if t.touch != nil && len(p) > 0 {
+		t.touch()
+	}
+	if t.w == nil {
+		return len(p), nil
+	}
+	return t.w.Write(p)
 }
 
 func clipSecret(msg, secret string) string {
@@ -663,7 +724,16 @@ if [ $# -lt 2 ]; then
   exit 1
 fi
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+beatpid=
+cleanup() {
+  if [ -n "$beatpid" ]; then
+    kill "$beatpid" 2>/dev/null || true
+  fi
+  rm -rf "$work"
+}
+trap cleanup EXIT
+( while true; do sleep 30; printf 'beat\n'; done ) &
+beatpid=$!
 mysql_user=""
 mysql_pass=""
 mconf=/usr/local/directadmin/conf/mysql.conf
@@ -843,7 +913,19 @@ stage=$(mktemp -d "$workdir/stage.XXXXXX")
 stamp=$(date -u +%Y%m%d-%H%M%S)
 archive="$workdir/siroc-migrate-${domain}-${stamp}.tar.gz"
 keep=0
-trap 'rm -rf "$stage"; if [ "$keep" != 1 ]; then rm -f "$archive"; fi' EXIT
+beatpid=
+cleanup() {
+  if [ -n "$beatpid" ]; then
+    kill "$beatpid" 2>/dev/null || true
+  fi
+  rm -rf "$stage"
+  if [ "$keep" != 1 ]; then
+    rm -f "$archive"
+  fi
+}
+trap cleanup EXIT
+( while true; do sleep 30; printf 'beat\n'; done ) &
+beatpid=$!
 mkdir -p "$stage/domains" "$stage/mysql"
 printf 'username=%s\ndomain=%s\n' "$owner" "$domain" > "$stage/user.conf"
 ln -s "$home" "$stage/domains/$domain"

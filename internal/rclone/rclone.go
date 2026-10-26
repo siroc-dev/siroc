@@ -269,9 +269,11 @@ var (
 )
 
 type runState struct {
-	mu   sync.Mutex
-	snap rpc.RcloneRunResp
-	buf  strings.Builder
+	mu      sync.Mutex
+	snap    rpc.RcloneRunResp
+	buf     strings.Builder
+	cancel  context.CancelFunc
+	stopped bool
 }
 
 func List(req rpc.RcloneListReq) (*rpc.RcloneListResp, error) {
@@ -322,15 +324,23 @@ func Start(req rpc.RcloneRunReq) (*rpc.RcloneRunResp, error) {
 		jobMu.Unlock()
 		return nil, fmt.Errorf("a transfer is already running")
 	}
-	st := &runState{snap: rpc.RcloneRunResp{
-		Running: true,
-		Action:  req.Action,
-		Source:  strings.TrimSpace(req.Source),
-		Dest:    strings.TrimSpace(req.Dest),
-	}}
+	limit := 2 * time.Minute
+	if slow {
+		limit = 30 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	st := &runState{
+		snap: rpc.RcloneRunResp{
+			Running: true,
+			Action:  req.Action,
+			Source:  strings.TrimSpace(req.Source),
+			Dest:    strings.TrimSpace(req.Dest),
+		},
+		cancel: cancel,
+	}
 	current = st
 	jobMu.Unlock()
-	go st.execute(args, slow)
+	go st.execute(ctx, args)
 	out := st.snapshot()
 	return &out, nil
 }
@@ -343,6 +353,28 @@ func Job() rpc.RcloneRunResp {
 		return rpc.RcloneRunResp{}
 	}
 	return st.snapshot()
+}
+
+func Cancel() (*rpc.RcloneRunResp, error) {
+	jobMu.Lock()
+	st := current
+	jobMu.Unlock()
+	if st == nil || !st.running() {
+		return nil, fmt.Errorf("no transfer is running")
+	}
+	st.stop()
+	out := st.snapshot()
+	return &out, nil
+}
+
+func (st *runState) stop() {
+	st.mu.Lock()
+	st.stopped = true
+	c := st.cancel
+	st.mu.Unlock()
+	if c != nil {
+		c()
+	}
 }
 
 func (st *runState) running() bool {
@@ -361,13 +393,16 @@ func (st *runState) snapshot() rpc.RcloneRunResp {
 	return out
 }
 
-func (st *runState) execute(args []string, slow bool) {
-	limit := 2 * time.Minute
-	if slow {
-		limit = 30 * time.Minute
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), limit)
-	defer cancel()
+func (st *runState) execute(ctx context.Context, args []string) {
+	defer func() {
+		st.mu.Lock()
+		c := st.cancel
+		st.cancel = nil
+		st.mu.Unlock()
+		if c != nil {
+			c()
+		}
+	}()
 	cmd := exec.CommandContext(ctx, "rclone", args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -399,8 +434,14 @@ func (st *runState) execute(args []string, slow bool) {
 		st.finish(true, "")
 		return
 	}
+	st.mu.Lock()
+	stopped := st.stopped
+	st.mu.Unlock()
 	msg := "rclone failed"
-	if ctx.Err() == context.DeadlineExceeded {
+	switch {
+	case stopped:
+		msg = "rclone cancelled"
+	case ctx.Err() == context.DeadlineExceeded:
 		msg = "rclone timed out"
 	}
 	st.finish(false, msg)

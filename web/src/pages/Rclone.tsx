@@ -108,6 +108,7 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
         if (stop || gen !== pollGen.current) return;
         if (wasRunning.current && !data.running) {
           if (data.ok) message.success("Finished");
+          else if (data.message === "rclone cancelled") message.info("Cancelled");
           else message.error(data.message || "Failed");
         }
         wasRunning.current = !!data.running;
@@ -320,6 +321,22 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
       wasRunning.current = !!out.running;
       setJob(out);
       if (!out.running && out.ok) message.success("Finished");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function stopJob() {
+    setBusy(true);
+    try {
+      const out = await api.post<Job>("/api/rclone/run/cancel", {});
+      setJob(out);
+      if (!out.running) {
+        wasRunning.current = false;
+        message.info("Cancelled");
+      }
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
     } finally {
@@ -552,17 +569,26 @@ export function Rclone({ embedded = false }: { embedded?: boolean }) {
                       </Space.Compact>
                     </Form.Item>
                   ) : null}
-                  {spec.danger ? (
-                    <Popconfirm title={`Run ${spec.label}?`} description={spec.hint} onConfirm={() => jobForm.submit()}>
-                      <Button danger type="primary" loading={busy || running} disabled={!st.installed || running}>
+                  <Space>
+                    {spec.danger ? (
+                      <Popconfirm title={`Run ${spec.label}?`} description={spec.hint} onConfirm={() => jobForm.submit()}>
+                        <Button danger type="primary" loading={busy && !running} disabled={!st.installed || running}>
+                          {running ? "Running" : `Run ${spec.label}`}
+                        </Button>
+                      </Popconfirm>
+                    ) : (
+                      <Button type="primary" htmlType="submit" loading={busy && !running} disabled={!st.installed || running}>
                         {running ? "Running" : `Run ${spec.label}`}
                       </Button>
-                    </Popconfirm>
-                  ) : (
-                    <Button type="primary" htmlType="submit" loading={busy || running} disabled={!st.installed || running}>
-                      {running ? "Running" : `Run ${spec.label}`}
-                    </Button>
-                  )}
+                    )}
+                    {running ? (
+                      <Popconfirm title="Stop this transfer?" onConfirm={() => void stopJob()}>
+                        <Button danger loading={busy}>
+                          Cancel
+                        </Button>
+                      </Popconfirm>
+                    ) : null}
+                  </Space>
                 </Form>
                 {job && (running || job.percent || (job.files && job.files.length > 0)) ? (
                   <div style={{ marginTop: 16 }}>

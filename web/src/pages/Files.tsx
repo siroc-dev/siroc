@@ -121,6 +121,8 @@ export function Files() {
   const [user, setUser] = useState("");
   const [ready, setReady] = useState(false);
   const [listing, setListing] = useState<Listing>({ path: "/", entries: [] });
+  const [dirSizes, setDirSizes] = useState<{ path: string; sizes: Record<string, number> }>({ path: "", sizes: {} });
+  const [sizing, setSizing] = useState(false);
   const [editPath, setEditPath] = useState("");
   const [absPath, setAbsPath] = useState("");
   const [content, setContent] = useState("");
@@ -182,6 +184,27 @@ export function Files() {
     }
     setExpanded((prev) => Array.from(new Set([...prev, ...keys])));
     if (!data.jail) void prefetchTree(data.path);
+  }
+
+  async function calcSizes() {
+    if (!user || sizing) return;
+    const path = listing.path;
+    const folderCount = listing.entries.filter((e) => e.isDir).length;
+    if (!folderCount) {
+      message.info("This folder has no folders to measure");
+      return;
+    }
+    setSizing(true);
+    try {
+      const data = await api.get<Listing>(`/api/files/sizes?user=${encodeURIComponent(user)}&path=${encodeURIComponent(path)}`);
+      const sizes: Record<string, number> = {};
+      for (const e of data.entries || []) sizes[e.path] = e.size || 0;
+      setDirSizes({ path: data.path || path, sizes });
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "Could not calculate folder sizes");
+    } finally {
+      setSizing(false);
+    }
   }
 
   async function prefetchTree(path: string) {
@@ -1179,13 +1202,34 @@ export function Files() {
                   sorter: (a: Entry, b: Entry) => (a.modTime || "").localeCompare(b.modTime || ""),
                 },
                 {
-                  title: "Size",
-                  width: 110,
+                  title: (
+                    <span className="file-size-head">
+                      Size
+                      <Button
+                        type="link"
+                        size="small"
+                        loading={sizing}
+                        onMouseDown={(ev) => ev.stopPropagation()}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          void calcSizes();
+                        }}
+                      >
+                        Calculate
+                      </Button>
+                    </span>
+                  ),
+                  width: 168,
                   align: "right" as const,
-                  render: (_, e: Entry) => (e.isDir ? "—" : formatBytes(e.size || 0)),
+                  render: (_, e: Entry) => {
+                    if (!e.isDir) return formatBytes(e.size || 0);
+                    if (dirSizes.path === listing.path && e.path in dirSizes.sizes) return formatBytes(dirSizes.sizes[e.path] || 0);
+                    return "—";
+                  },
                   sorter: (a: Entry, b: Entry) => {
                     if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-                    return (a.size || 0) - (b.size || 0);
+                    const sizeOf = (e: Entry) => (e.isDir && dirSizes.path === listing.path ? dirSizes.sizes[e.path] || 0 : e.size || 0);
+                    return sizeOf(a) - sizeOf(b);
                   },
                 },
                 { title: "Permissions", dataIndex: "mode", width: 110, responsive: ["md"] },

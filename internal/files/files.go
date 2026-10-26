@@ -184,6 +184,41 @@ func (m *Manager) List(username, rel string, root bool) (*rpc.FileListResp, erro
 	return &rpc.FileListResp{Path: showPath, AbsPath: abs, Jail: jail, Roots: m.allow(), Entries: resp.Entries}, nil
 }
 
+func (m *Manager) DirSizes(username, rel string, root bool) (*rpc.FileListResp, error) {
+	if root {
+		abs, err := resolveRoot(rel)
+		if err != nil {
+			return nil, err
+		}
+		if skipDirSize(abs) {
+			return nil, fmt.Errorf("that folder is not measured")
+		}
+		resp, err := runHelper(helperReq{Op: "dirsizes", Path: abs, Home: "/"})
+		if err != nil {
+			return nil, err
+		}
+		if resp.Entries == nil {
+			resp.Entries = []rpc.FileEntry{}
+		}
+		return &rpc.FileListResp{Path: filepath.ToSlash(abs), AbsPath: abs, Root: true, Entries: resp.Entries}, nil
+	}
+	abs, home, uid, gid, err := m.resolve(username, rel)
+	if err != nil {
+		return nil, err
+	}
+	if skipDirSize(abs) {
+		return nil, fmt.Errorf("that folder is not measured")
+	}
+	resp, err := m.call(uid, gid, helperReq{Op: "dirsizes", Path: abs, Home: home})
+	if err != nil {
+		return nil, err
+	}
+	if resp.Entries == nil {
+		resp.Entries = []rpc.FileEntry{}
+	}
+	return &rpc.FileListResp{Path: displayPath(filepath.ToSlash(home), filepath.ToSlash(abs)), AbsPath: abs, Entries: resp.Entries}, nil
+}
+
 func (m *Manager) Read(username, rel string, root bool) (*rpc.FileContentResp, error) {
 	if root {
 		return m.rootRead(rel)
@@ -385,6 +420,36 @@ func runHelper(req helperReq) (helperResp, error) {
 			entries = []rpc.FileEntry{}
 		}
 		sortEntries(entries)
+		return helperResp{OK: true, Entries: entries}, nil
+	case "dirsizes":
+		fis, err := os.ReadDir(req.Path)
+		if err != nil {
+			return helperResp{}, err
+		}
+		var entries []rpc.FileEntry
+		for _, e := range fis {
+			name := e.Name()
+			if name == TrashDirName || name == "." || name == ".." {
+				continue
+			}
+			full := filepath.Join(req.Path, name)
+			if skipDirSize(full) || !e.IsDir() {
+				continue
+			}
+			n, err := dirBytes(full)
+			if err != nil {
+				continue
+			}
+			entries = append(entries, rpc.FileEntry{
+				Name:  name,
+				Path:  displayPath(req.Home, filepath.ToSlash(full)),
+				IsDir: true,
+				Size:  n,
+			})
+		}
+		if entries == nil {
+			entries = []rpc.FileEntry{}
+		}
 		return helperResp{OK: true, Entries: entries}, nil
 	case "read":
 		st, err := os.Stat(req.Path)

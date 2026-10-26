@@ -704,6 +704,18 @@ html[data-theme="dark"] .fm-crumb {
   white-space: nowrap;
 }
 
+.file-size-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.file-size-head .ant-btn {
+  padding-inline: 4px;
+  height: auto;
+}
+
 @media (max-width: 576px) {
   .file-toolbar .ant-input-search {
     flex: 1 1 100%;

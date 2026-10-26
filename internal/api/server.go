@@ -96,6 +96,7 @@ func (s *Server) Router() http.Handler {
 		r.Delete("/api/ftp/{id}", s.deleteFTP)
 
 		r.Get("/api/files", s.listFiles)
+		r.Get("/api/files/sizes", s.fileSizes)
 		r.Get("/api/files/content", s.readFile)
 		r.Put("/api/files/content", s.writeFile)
 		r.Post("/api/files/mkdir", s.mkdir)
@@ -247,6 +248,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/rclone/list", s.rcloneList)
 		r.Post("/api/rclone/run", s.rcloneRun)
 		r.Get("/api/rclone/run", s.rcloneJob)
+		r.Post("/api/rclone/run/cancel", s.rcloneCancel)
 		r.Put("/api/accounts/{username}/quota", s.setAccountQuota)
 		r.Get("/api/quota", s.listQuota)
 		r.Get("/api/accounts/redis", s.listAccountRedis)
@@ -949,6 +951,19 @@ func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := s.Agent.FileList(username, r.URL.Query().Get("path"), root, s.fileRoots(username, root)...)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) fileSizes(w http.ResponseWriter, r *http.Request) {
+	username, root, ok := s.fileUser(w, r, r.URL.Query().Get("user"))
+	if !ok {
+		return
+	}
+	out, err := s.Agent.FileDirSizes(username, r.URL.Query().Get("path"), root, s.fileRoots(username, root)...)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
