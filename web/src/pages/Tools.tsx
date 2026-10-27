@@ -11,6 +11,7 @@ import { ServiceStatus } from "@/components/ServiceStatus";
 import { NFSManager } from "@/components/NFSManager";
 import { RAIDManager } from "@/components/RAIDManager";
 import { OptionList, type CheckOption } from "@/components/OptionChecks";
+import { PathPicker } from "@/components/PathPicker";
 
 type Status = {
   hostname: string;
@@ -319,7 +320,7 @@ export function Tools() {
                     </Form.Item>
                     {diskFS !== "swap" ? (
                       <Form.Item name="mountPoint" label="Mount point" rules={[{ required: true }]} extra="Directory on this server. It is created if it does not exist.">
-                        <Input placeholder="/mnt/data" />
+                        <PathPicker user="root" dirsOnly placeholder="/mnt/data" />
                       </Form.Item>
                     ) : null}
                     <Form.Item label="Filesystem">
@@ -478,10 +479,10 @@ export function Tools() {
                       <Typography.Paragraph type="secondary">{st.ffmpeg.version}</Typography.Paragraph>
                       <Form form={ffForm} layout="vertical" onFinish={(v) => apply({ action: "ffmpeg", ...v })}>
                         <Form.Item name="src" label="Source file" rules={[{ required: true }]}>
-                          <Input placeholder="/home/user/video.mp4" />
+                          <PathPicker user="root" placeholder="/home/user/video.mp4" />
                         </Form.Item>
                         <Form.Item name="dest" label="Destination" rules={[{ required: true }]}>
-                          <Input placeholder="/home/user/out.mp4" />
+                          <PathPicker user="root" placeholder="/home/user/out.mp4" />
                         </Form.Item>
                         <Form.Item name="extra" label="Extra args">
                           <Input placeholder="-c:v libx264 -crf 23" />

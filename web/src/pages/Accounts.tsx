@@ -5,6 +5,7 @@ import { App, Alert, Button, Card, Dropdown, Form, Input, InputNumber, Modal, Po
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { formatBytes, type UserUsage } from "@/lib/usage";
+import { PathPicker } from "@/components/PathPicker";
 
 type Account = {
   id: number;
@@ -710,10 +711,13 @@ export function Accounts() {
               </Space.Compact>
             </Form.Item>
             <Form.Item name="home" label="Path">
-              <Input
-                style={{ width: 280 }}
+              <PathPicker
+                user={ftpTarget?.username || "root"}
+                dirsOnly
+                relativeTo={(ftpPath || "").startsWith("/") ? undefined : ftpTarget?.username ? `/home/${ftpTarget.username}` : undefined}
                 addonBefore={(ftpPath || "").startsWith("/") ? undefined : `/home/${ftpTarget?.username || "user"}/`}
                 placeholder="domains/site.test/public_html"
+                style={{ width: 420 }}
               />
             </Form.Item>
             <Form.Item label="Website">

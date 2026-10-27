@@ -3,6 +3,7 @@ import { Alert, App, AutoComplete, Button, Card, Checkbox, Col, Input, Popconfir
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { ScanSummary, type ScanResult } from "@/components/ScanSummary";
+import { PathPicker } from "@/components/PathPicker";
 import { LogTable } from "@/components/LogTable";
 import { logRows } from "@/components/SiteLogs.parse";
 import { Fail2banBans, type Fail2banBan } from "@/components/Fail2banBans";
@@ -253,7 +254,7 @@ export function Security() {
               <Button loading={busy === "fresh"} onClick={() => run("fresh", () => api.post("/api/security/av/update"))}>
                 Update signatures
               </Button>
-              <Input style={{ width: 240 }} value={scanPath} onChange={(e) => setScanPath(e.target.value)} />
+              <PathPicker value={scanPath} onChange={setScanPath} user="root" placeholder="/home" style={{ width: 360 }} />
               <Button
                 type="primary"
                 loading={busy === "scan"}
@@ -292,7 +293,7 @@ export function Security() {
               AMWScan checks PHP under /home, /var/www, or /tmp. Report-only — it does not delete files.
             </Typography.Text>
             <Space wrap>
-              <Input style={{ width: 240 }} value={scanPath} onChange={(e) => setScanPath(e.target.value)} />
+              <PathPicker value={scanPath} onChange={setScanPath} user="root" placeholder="/home" dirsOnly style={{ width: 360 }} />
               <Button
                 type="primary"
                 loading={busy === "amwscan"}

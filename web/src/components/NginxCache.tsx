@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Input, Select, Space, Switch, Typography } from "antd";
 import { formatBytes } from "@/lib/usage";
+import { PathPicker } from "@/components/PathPicker";
 
 export type CachePreset = "public" | "wordpress" | "app" | "long" | "custom";
 
@@ -346,7 +347,7 @@ export function NginxCacheForm({
         />
       </Field>
       <Field label="Cache directory" help="Filled in for this site. Clearing the cache deletes only the files in this folder. The response header X-Cache-Status says HIT, MISS, BYPASS, EXPIRED, STALE, or UPDATING.">
-        <Input value={value.path} disabled={off} onChange={(e) => onChange(edit(value, { path: e.target.value }))} />
+        <PathPicker user="root" dirsOnly value={value.path} disabled={off} onChange={(path) => onChange(edit(value, { path }))} />
       </Field>
     </Space>
   );

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Alert, App, Button, Card, Input, InputNumber, Modal, Select, Space, Switch, Table, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { OptionList, type CheckOption } from "@/components/OptionChecks";
+import { PathPicker } from "@/components/PathPicker";
 
 type NFSOption = CheckOption;
 type NFSChoice = { value: string; label: string; detail: string };
@@ -318,7 +319,7 @@ export function NFSManager() {
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <div>
             <Typography.Text>Directory</Typography.Text>
-            <Input value={share?.path || ""} placeholder="/srv/share" onChange={(e) => setShare((d) => (d ? { ...d, path: e.target.value } : d))} />
+            <PathPicker user="root" dirsOnly value={share?.path || ""} placeholder="/srv/share" onChange={(path) => setShare((d) => (d ? { ...d, path } : d))} />
             <span className="nfs-option-detail">Absolute directory on this server. System paths such as /etc are refused.</span>
           </div>
           <div>
@@ -354,7 +355,7 @@ export function NFSManager() {
           </div>
           <div>
             <Typography.Text>Mount point</Typography.Text>
-            <Input value={mnt?.mountPoint || ""} placeholder="/mnt/share" onChange={(e) => setMnt((d) => (d ? { ...d, mountPoint: e.target.value } : d))} />
+            <PathPicker user="root" dirsOnly value={mnt?.mountPoint || ""} placeholder="/mnt/share" onChange={(mountPoint) => setMnt((d) => (d ? { ...d, mountPoint } : d))} />
             <span className="nfs-option-detail">Local directory. It is created if it does not exist.</span>
           </div>
           <div>

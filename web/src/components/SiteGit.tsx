@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Form, Input, Select, Space, Typography } from "antd";
 import { api } from "@/lib/api";
 import { formatPanelTime } from "@/lib/panelTime";
+import { PathPicker } from "@/components/PathPicker";
 
 export type SiteGitInfo = {
   repo?: string;
@@ -232,7 +233,7 @@ export function SiteGit({ siteId, domain, username, docRoot }: { siteId: number;
           label="Deploy path"
           extra={`Inside /home/${username}/. For Laravel, use the app root (parent of public/), not only ${docRoot.split("/").slice(-1)[0] || "public_html"}.`}
         >
-          <Input placeholder="domains/example.com" />
+          <PathPicker user={username || "root"} dirsOnly relativeTo={username ? `/home/${username}` : undefined} placeholder="domains/example.com" />
         </Form.Item>
         <Form.Item name="command" label="After pull" extra="Runs as the site user in the deploy path. Leave empty to only force-pull.">
           <Input.TextArea rows={8} spellCheck={false} placeholder={info?.laravelHint || "composer install --no-dev"} style={{ fontFamily: "ui-monospace, Menlo, Consolas, monospace" }} />

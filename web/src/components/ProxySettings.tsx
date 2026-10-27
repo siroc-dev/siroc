@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button, Input, InputNumber, Select, Space, Switch, Table, Tabs, Typography } from "antd";
+import { PathPicker } from "@/components/PathPicker";
 
 export type ProxyRewrite = { from: string; to: string };
 export type ProxyReplace = { from: string; to: string; rule?: string };
@@ -262,12 +263,7 @@ export function ProxySettings({
               {cache ? (
                 <div style={{ marginTop: 12 }}>
                   <Typography.Text>Cache path</Typography.Text>
-                  <Input
-                    style={{ marginTop: 8 }}
-                    value={cachePath}
-                    onChange={(e) => setCachePath(e.target.value)}
-                    placeholder="/var/cache/nginx/siroc"
-                  />
+                  <PathPicker user="root" dirsOnly value={cachePath} onChange={setCachePath} placeholder="/var/cache/nginx/siroc" style={{ marginTop: 8 }} />
                   <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
                     Leave empty for the shared cache at /var/cache/nginx/siroc. An absolute path such as /mnt/data/nginx-cache stores this site on that disk.
                   </Typography.Paragraph>

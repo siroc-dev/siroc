@@ -7,6 +7,7 @@ import { AppPackages, type PkgHit, type PkgRow } from "@/components/AppPackages"
 import { api, RequestError } from "@/lib/api";
 import { formatPanelTime } from "@/lib/panelTime";
 import { formatBytes } from "@/lib/usage";
+import { PathPicker } from "@/components/PathPicker";
 
 export type SiteOptions = {
   index?: string[];
@@ -819,10 +820,13 @@ export function SiteSettings({
               <Typography.Paragraph type="secondary">
                 Defaults to {homePrefix(site.username)}. A path that starts with / uses another disk, such as /mnt/data/{site.domain}/public_html.
               </Typography.Paragraph>
-              <Input
+              <PathPicker
+                user={site.username || "root"}
+                relativeTo={docRoot.startsWith("/") ? undefined : site.username ? `/home/${site.username}` : undefined}
                 addonBefore={docRoot.startsWith("/") ? undefined : homePrefix(site.username)}
                 value={docRoot}
-                onChange={(e) => setDocRoot(e.target.value)}
+                onChange={setDocRoot}
+                dirsOnly
                 placeholder={docRoot.startsWith("/") ? `/mnt/data/${site.domain}/public_html` : `domains/${site.domain}/public_html`}
               />
               <Button style={{ marginTop: 12 }} type="primary" loading={busy} onClick={() => onPatch({ docRoot }, "Directory saved")}>
@@ -1252,7 +1256,14 @@ export function SiteSettings({
               </Typography.Paragraph>
               <Typography.Text type="secondary">composer.json directory</Typography.Text>
               <Space.Compact style={{ width: "100%", marginTop: 4, marginBottom: 8 }}>
-                <Input value={composerPath} placeholder={composerDir || "domains/example.com"} onChange={(e) => setComposerPath(e.target.value)} />
+                <PathPicker
+                  user={site.username || "root"}
+                  relativeTo={site.username ? `/home/${site.username}` : undefined}
+                  value={composerPath}
+                  onChange={setComposerPath}
+                  dirsOnly
+                  placeholder={composerDir || "domains/example.com"}
+                />
                 <Button loading={busy} onClick={() => void saveOpts({ composerRoot: composerPath.trim() }, "Composer path saved")}>
                   Save path
                 </Button>

@@ -6,6 +6,7 @@ import { PageSkeleton } from "@/components/PageSkeleton";
 import { formatBytes, formatRate } from "@/lib/usage";
 import { formatPanelTime } from "@/lib/panelTime";
 import { Rclone } from "@/pages/Rclone";
+import { PathPicker } from "@/components/PathPicker";
 
 type Account = { username: string };
 type Dest = {
@@ -435,7 +436,7 @@ export function Backup({ admin }: { admin?: boolean }) {
           </Form.Item>
           {kind === "local" ? (
             <Form.Item name="path" label="Directory" rules={[{ required: true }]}>
-              <Input placeholder="/var/backups/offsite" />
+              <PathPicker user="root" dirsOnly placeholder="/var/backups/offsite" />
             </Form.Item>
           ) : null}
           {kind === "ftp" ? (
@@ -641,7 +642,7 @@ export function Backup({ admin }: { admin?: boolean }) {
         <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 8 }}>
           Or a path on the server
         </Typography.Paragraph>
-        <Input value={restorePath} onChange={(e) => setRestorePath(e.target.value)} placeholder="/var/backups/siroc/user.alice.tar.zst" disabled={busy} />
+        <PathPicker value={restorePath} onChange={setRestorePath} user="root" placeholder="/var/backups/siroc/user.alice.tar.zst" disabled={busy} />
       </Modal>
     </div>
   );

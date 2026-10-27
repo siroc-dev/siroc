@@ -16,6 +16,7 @@ import { SiteLogs } from "@/components/SiteLogs";
 import { SiteWAFRules } from "@/components/SiteWAFRules";
 import { SiteGit } from "@/components/SiteGit";
 import { SiteSettings, isSiteSection, type SiteOptions, type SiteSection } from "@/components/SiteSettings";
+import { PathPicker } from "@/components/PathPicker";
 import type { FormInstance } from "antd/es/form";
 
 type Account = { username: string; wafEnabled?: boolean };
@@ -44,10 +45,13 @@ function defaultDoc(domain: string) {
 function DocRootInput({ user, value, onChange }: { user: string; value?: string; onChange?: (value: string) => void }) {
   const abs = (value || "").startsWith("/");
   return (
-    <Input
+    <PathPicker
+      user={user || "root"}
+      relativeTo={abs ? undefined : user ? `/home/${user}` : undefined}
       addonBefore={abs ? undefined : homePrefix(user)}
       value={value}
-      onChange={(e) => onChange?.(e.target.value)}
+      onChange={onChange}
+      dirsOnly
       placeholder={abs ? "/mnt/data/site/public_html" : "domains/site.test/public_html"}
     />
   );

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, App, Button, Card, Form, Input, InputNumber, Modal, Space, Switch, Table, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
+import { PathPicker } from "@/components/PathPicker";
 
 type Proc = { name: string; status: string; pid?: number; uptime?: string; detail?: string };
 type Program = {
@@ -258,7 +259,7 @@ export function Supervisor() {
               <Input.TextArea rows={3} value={draft.command} onChange={(e) => setDraft({ ...draft, command: e.target.value })} placeholder="/usr/bin/php /var/www/worker.php" />
             </Form.Item>
             <Form.Item label="Directory">
-              <Input value={draft.directory} onChange={(e) => setDraft({ ...draft, directory: e.target.value })} placeholder="/var/www" />
+              <PathPicker user="root" dirsOnly value={draft.directory} onChange={(directory) => setDraft({ ...draft, directory })} placeholder="/var/www" />
             </Form.Item>
             <Form.Item label="User">
               <Input value={draft.user} onChange={(e) => setDraft({ ...draft, user: e.target.value })} placeholder="www-data" />
