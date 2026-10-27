@@ -86,6 +86,14 @@ func amwscanPHP() string {
 	return "php"
 }
 
+func amwscanCmd(bin string, args ...string) *exec.Cmd {
+	base := strings.ToLower(filepath.Base(bin))
+	if base == "amwscan" || strings.HasSuffix(base, ".sh") {
+		return exec.Command(bin, args...)
+	}
+	return exec.Command(amwscanPHP(), append([]string{bin}, args...)...)
+}
+
 func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
 	bin := amwscanBin()
 	if bin == "" {
@@ -99,24 +107,60 @@ func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
 		return nil, err
 	}
 	id := time.Now().UTC().Format("20060102-150405") + "-amwscan"
-	outFile := filepath.Join(scanDir, id+".txt")
-	args := []string{bin, target, "--lite", "--report-only", "--silent", "--report-format=json", "--path-report=" + outFile}
-	cmd := exec.Command(amwscanPHP(), args...)
+	outFile := filepath.Join(scanDir, id+"-report.json")
+	logFile := filepath.Join(scanDir, id+".txt")
+	args := []string{
+		target,
+		"--lite",
+		"--report-only",
+		"--report-format=json",
+		"--path-report=" + outFile,
+		"--path-logs=" + logFile,
+		"--jobs=1",
+		"--disable-definitions-update",
+		"--disable-colors",
+	}
+	cmd := amwscanCmd(bin, args...)
 	cmd.Dir = scanDir
 	raw, err := combinedScan(cmd, 15*time.Minute)
 	body, _ := os.ReadFile(outFile)
+	if len(body) == 0 {
+		if b, e := os.ReadFile(outFile + ".json"); e == nil {
+			body = b
+		}
+	}
+	logBody, _ := os.ReadFile(logFile)
 	summary := strings.TrimSpace(string(body))
+	logText := strings.TrimSpace(string(logBody))
+	console := strings.TrimSpace(raw)
 	if summary == "" {
-		summary = strings.TrimSpace(raw)
+		summary = console
+	}
+	if summary == "" {
+		summary = logText
 	}
 	if summary == "" && err != nil {
-		return nil, fmt.Errorf("amwscan: %s", tailScan(raw))
+		msg := console
+		if msg == "" {
+			msg = err.Error()
+		}
+		return nil, fmt.Errorf("amwscan: %s", tailScan(msg))
 	}
-	resp := &rpc.ScanResp{OK: true, ID: id, Tool: "amwscan", Target: target, Report: "/api/security/scans/" + id, Output: clipScan(summary)}
-	if err != nil && !wpScanJSONOK(summary) {
+	if len(body) > 0 {
+		_ = os.WriteFile(logFile, append([]byte(logText+"\n"), body...), 0640)
+	}
+	display := logText
+	if display == "" {
+		display = console
+	}
+	resp := &rpc.ScanResp{OK: true, ID: id, Tool: "amwscan", Target: target, Report: "/api/security/scans/" + id, Output: clipScan(display)}
+	if err != nil && !wpScanJSONOK(summary) && len(body) == 0 {
 		resp.OK = false
 	}
 	enrichScan(resp, summary)
+	if strings.TrimSpace(resp.Output) == "" {
+		resp.Output = clipScan(display)
+	}
 	return resp, nil
 }
 

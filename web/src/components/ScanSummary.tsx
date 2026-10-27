@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { Alert, Space, Table, Tag, Typography } from "antd";
+import { LogTable } from "@/components/LogTable";
+import { logRows } from "@/components/SiteLogs.parse";
 
 export type ScanFinding = { severity: string; title: string; count?: number; detail?: string };
 export type ScanResult = {
@@ -74,6 +76,14 @@ export function ScanSummary({ scan, extra }: { scan: ScanResult; extra?: ReactNo
             { title: "Detail", dataIndex: "detail", ellipsis: true, render: (v: string) => v || "—" },
           ]}
         />
+      ) : null}
+      {scan.tool === "amwscan" && scan.output ? (
+        <div>
+          <Typography.Text type="secondary">Log</Typography.Text>
+          <div style={{ marginTop: 8 }}>
+            <LogTable rows={logRows(undefined, scan.output)} emptyText="No log lines." />
+          </div>
+        </div>
       ) : null}
     </Space>
   );

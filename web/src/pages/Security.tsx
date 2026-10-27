@@ -3,6 +3,8 @@ import { Alert, App, AutoComplete, Button, Card, Checkbox, Col, Input, Popconfir
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { ScanSummary, type ScanResult } from "@/components/ScanSummary";
+import { LogTable } from "@/components/LogTable";
+import { logRows } from "@/components/SiteLogs.parse";
 import { Fail2banBans, type Fail2banBan } from "@/components/Fail2banBans";
 import { useNavigate } from "react-router-dom";
 import { spaClick } from "@/lib/nav";
@@ -246,11 +248,7 @@ export function Security() {
         {av?.installed ? (
           <Space direction="vertical" style={{ width: "100%" }}>
             <Typography.Text type="secondary">{av.signatures || av.version}</Typography.Text>
-            {av.lastScan ? (
-              <Typography.Paragraph code style={{ whiteSpace: "pre-wrap" }}>
-                {av.lastScan}
-              </Typography.Paragraph>
-            ) : null}
+            {av.lastScan ? <LogTable rows={logRows(undefined, av.lastScan)} emptyText="No scan log yet." /> : null}
             <Space wrap>
               <Button loading={busy === "fresh"} onClick={() => run("fresh", () => api.post("/api/security/av/update"))}>
                 Update signatures

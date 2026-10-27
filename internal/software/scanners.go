@@ -57,8 +57,8 @@ func amwscanInstalled() (bool, string) {
 }
 
 func installAMWScan() error {
-	if err := aptInstall("php-cli", "curl"); err != nil {
-		_ = aptInstall("curl")
+	if err := aptInstall("php-cli", "php-mbstring", "php-xml", "php-zip", "curl"); err != nil {
+		_ = aptInstall("php-cli", "curl")
 	}
 	if err := os.MkdirAll("/opt/siroc/amwscan", 0755); err != nil {
 		return err

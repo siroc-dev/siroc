@@ -42,3 +42,21 @@ func TestSummarizeAMWScanTable(t *testing.T) {
 		t.Fatalf("title %q", st.Title)
 	}
 }
+
+func TestSummarizeAMWScanCanonicalFindings(t *testing.T) {
+	body := `{
+  "path": "/home/alice/public_html",
+  "findings": [
+    {"kind":"malware","rule_id":"eval","subject":"/home/alice/public_html/shell.php","severity":"high","message":"eval obfuscation"},
+    {"kind":"keyword","rule_id":"backdoor","subject":"/home/alice/public_html/theme.php","severity":"info","message":"generic keyword"}
+  ]
+}`
+	st := &rpc.ScanResp{}
+	summarizeAMWScan(st, body)
+	if len(st.Findings) != 2 {
+		t.Fatalf("findings %d", len(st.Findings))
+	}
+	if st.Findings[0].Severity != "high" {
+		t.Fatalf("severity %q", st.Findings[0].Severity)
+	}
+}

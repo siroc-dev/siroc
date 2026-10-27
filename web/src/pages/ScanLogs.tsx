@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { App, Button, Card, Collapse, Select, Space, Table, Tag, Typography } from "antd";
+import { App, Button, Card, Select, Space, Table, Tag, Typography } from "antd";
 import { ScanSummary, toolLabel, type ScanResult } from "@/components/ScanSummary";
 import { api } from "@/lib/api";
 import { spaClick } from "@/lib/nav";
@@ -59,6 +59,8 @@ export function ScanLogs({ embedded }: { embedded?: boolean }) {
               options={[
                 { value: "nikto", label: "Nikto" },
                 { value: "zap", label: "OWASP ZAP" },
+                { value: "wpscan", label: "WPScan" },
+                { value: "amwscan", label: "PHP Antimalware Scanner" },
                 { value: "openvas", label: "OpenVAS / Greenbone" },
               ]}
             />
@@ -121,20 +123,6 @@ export function ScanLogs({ embedded }: { embedded?: boolean }) {
               ) : null
             }
           />
-          {detail.output ? (
-            <Collapse
-              style={{ marginTop: 16 }}
-              items={[
-                {
-                  key: "raw",
-                  label: "Technical log",
-                  children: (
-                    <pre style={{ margin: 0, whiteSpace: "pre-wrap", maxHeight: 360, overflow: "auto" }}>{detail.output}</pre>
-                  ),
-                },
-              ]}
-            />
-          ) : null}
         </Card>
       ) : null}
     </>
