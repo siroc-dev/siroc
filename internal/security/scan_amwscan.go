@@ -10,14 +10,15 @@ import (
 )
 
 type amwScanReport struct {
-	Directory string          `json:"directory"`
-	Path      string          `json:"path"`
-	Scanned   json.RawMessage `json:"scanned"`
-	Detected  json.RawMessage `json:"detected"`
-	Infected  json.RawMessage `json:"infected"`
-	Files     json.RawMessage `json:"files"`
-	Results   json.RawMessage `json:"results"`
-	Findings  json.RawMessage `json:"findings"`
+	Directory     string          `json:"directory"`
+	Path          string          `json:"path"`
+	Scanned       json.RawMessage `json:"scanned"`
+	Detected      json.RawMessage `json:"detected"`
+	Infected      json.RawMessage `json:"infected"`
+	Files         json.RawMessage `json:"files"`
+	Results       json.RawMessage `json:"results"`
+	InfectedFound json.RawMessage `json:"infectedFound"`
+	Findings      json.RawMessage `json:"findings"`
 }
 
 type amwCanonicalFinding struct {
@@ -33,33 +34,43 @@ type amwCanonicalFinding struct {
 }
 
 type amwScanFile struct {
-	File     string          `json:"file"`
-	Path     string          `json:"path"`
-	Status   string          `json:"status"`
-	Severity json.RawMessage `json:"severity"`
-	Exploits []string        `json:"exploits"`
-	Reason   string          `json:"reason"`
-	Mode     string          `json:"mode"`
-	Type     string          `json:"type"`
-	Key      string          `json:"key"`
-	Level    string          `json:"level"`
-	Line     json.RawMessage `json:"line"`
-	Match    string          `json:"match"`
+	File        string          `json:"file"`
+	Path        string          `json:"path"`
+	Status      string          `json:"status"`
+	Severity    json.RawMessage `json:"severity"`
+	Exploits    []string        `json:"exploits"`
+	Reason      string          `json:"reason"`
+	Mode        string          `json:"mode"`
+	Type        string          `json:"type"`
+	Key         string          `json:"key"`
+	Level       string          `json:"level"`
+	Line        json.RawMessage `json:"line"`
+	Match       string          `json:"match"`
+	Description string          `json:"description"`
 }
 
 func summarizeAMWScan(resp *rpc.ScanResp, body string) {
 	resp.Title = "PHP antimalware scan"
 	rep, err := parseAMWScanJSON(body)
 	if err != nil || rep == nil {
-		if rows := amwScanTextRows(body); len(rows) > 0 {
+		useful := amwUsefulLog(body)
+		if rows := amwScanTextRows(useful); len(rows) > 0 {
 			resp.Findings = append(resp.Findings, rows...)
 			resp.Summary = ""
 			return
 		}
-		resp.Summary = "AMWScan finished. Open the original report for the raw log."
-		if strings.TrimSpace(body) != "" {
-			resp.Findings = append(resp.Findings, rpc.ScanFinding{Severity: "info", Title: "AMWScan output", Count: 1, Detail: clipWP(body)})
+		if msg := amwFailLine(useful); msg != "" {
+			resp.OK = false
+			resp.Summary = "AMWScan did not finish: " + clipWP(msg)
+			resp.Findings = append(resp.Findings, rpc.ScanFinding{Severity: "high", Title: "Scan did not finish", Count: 1, Detail: clipWP(msg)})
+			return
 		}
+		if strings.TrimSpace(useful) == "" {
+			resp.Summary = "AMWScan did not write a report."
+			return
+		}
+		resp.Summary = "AMWScan did not write a JSON report."
+		resp.Findings = append(resp.Findings, rpc.ScanFinding{Severity: "info", Title: "Scanner log", Count: 1, Detail: clipWP(useful)})
 		return
 	}
 	if dir := strings.TrimSpace(rep.Directory); dir != "" && resp.Target == "" {
@@ -112,6 +123,12 @@ func amwFileFinding(path string, f amwScanFile) rpc.ScanFinding {
 			detail += " · "
 		}
 		detail += f.Reason
+	}
+	if f.Description != "" && !strings.Contains(detail, f.Description) {
+		if detail != "" {
+			detail += " · "
+		}
+		detail += f.Description
 	}
 	if f.Mode != "" && detail == "" {
 		detail = f.Mode
@@ -208,7 +225,10 @@ func amwScanFiles(rep *amwScanReport) []amwScanFile {
 	if list := amwFileList(rep.Files); len(list) > 0 {
 		return list
 	}
-	return amwFileList(rep.Results)
+	if list := amwFileList(rep.Results); len(list) > 0 {
+		return list
+	}
+	return amwFileList(rep.InfectedFound)
 }
 
 func amwFileList(raw json.RawMessage) []amwScanFile {
@@ -308,6 +328,52 @@ func amwScanSeverity(f amwScanFile) string {
 		}
 		return "medium"
 	}
+}
+
+func amwUsefulLog(body string) string {
+	var keep []string
+	for _, line := range strings.Split(body, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || amwBannerLine(t) {
+			continue
+		}
+		keep = append(keep, t)
+	}
+	return strings.Join(keep, "\n")
+}
+
+func amwBannerLine(t string) bool {
+	low := strings.ToLower(t)
+	switch {
+	case strings.Contains(low, "marco cesarato"):
+		return true
+	case strings.Contains(low, "github.com/marcocesarato/php-antimalware-scanner"):
+		return true
+	case low == "php antimalware scanner" || strings.HasPrefix(low, "version "):
+		return true
+	}
+	letters := 0
+	for _, r := range t {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			letters++
+		}
+	}
+	return letters < 4 && len(t) > 12
+}
+
+func amwFailLine(body string) string {
+	lines := strings.Split(body, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		t := strings.TrimSpace(lines[i])
+		low := strings.ToLower(t)
+		if t == "" {
+			continue
+		}
+		if strings.Contains(low, "timed out") || strings.Contains(low, "fatal") || strings.Contains(low, "uncaught") || strings.Contains(low, "allowed memory") || strings.Contains(low, "php parse error") {
+			return t
+		}
+	}
+	return ""
 }
 
 func rawJSONString(b json.RawMessage) string {

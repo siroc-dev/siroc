@@ -1,6 +1,7 @@
 package security
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
@@ -58,5 +59,40 @@ func TestSummarizeAMWScanCanonicalFindings(t *testing.T) {
 	}
 	if st.Findings[0].Severity != "high" {
 		t.Fatalf("severity %q", st.Findings[0].Severity)
+	}
+}
+
+func TestSummarizeAMWScanInfectedFound(t *testing.T) {
+	body := `{
+  "scanned": 12,
+  "detected": 1,
+  "infectedFound": {
+    "/home/alice/public_html/shell.php": [
+      {"type":"exploit","key":"eval","level":"danger","description":"eval obfuscation","line":4}
+    ]
+  }
+}`
+	st := &rpc.ScanResp{}
+	summarizeAMWScan(st, body)
+	if len(st.Findings) != 1 || st.Findings[0].Severity != "high" {
+		t.Fatalf("findings %#v", st.Findings)
+	}
+	if !strings.Contains(st.Findings[0].Title, "shell.php") {
+		t.Fatalf("title %q", st.Findings[0].Title)
+	}
+}
+
+func TestSummarizeAMWScanIgnoresBanner(t *testing.T) {
+	body := "  |A ||||W ||||S ||||\nCreated by Marco Cesarato\nPHP Antimalware Scanner\nversion 0.21.15\nGithub: https://github.com/marcocesarato/PHP-Antimalware-Scanner\ntimed out after 15m0s\n"
+	st := &rpc.ScanResp{OK: true}
+	summarizeAMWScan(st, body)
+	if st.OK {
+		t.Fatal("expected failed scan")
+	}
+	if len(st.Findings) != 1 || st.Findings[0].Title != "Scan did not finish" {
+		t.Fatalf("findings %#v summary %q", st.Findings, st.Summary)
+	}
+	if strings.Contains(st.Findings[0].Detail, "Marco") {
+		t.Fatalf("banner leaked: %q", st.Findings[0].Detail)
 	}
 }

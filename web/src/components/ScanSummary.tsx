@@ -3,6 +3,24 @@ import { Alert, Space, Table, Tag, Typography } from "antd";
 import { LogTable } from "@/components/LogTable";
 import { logRows } from "@/components/SiteLogs.parse";
 
+function amwBannerLine(line: string) {
+  const t = line.trim();
+  const low = t.toLowerCase();
+  if (!t) return true;
+  if (low.includes("marco cesarato")) return true;
+  if (low.includes("github.com/marcocesarato/php-antimalware-scanner")) return true;
+  if (low === "php antimalware scanner" || low.startsWith("version ")) return true;
+  const letters = (t.match(/[A-Za-z0-9]/g) || []).length;
+  return letters < 4 && t.length > 12;
+}
+
+function amwLog(raw: string) {
+  return raw
+    .split(/\r?\n/)
+    .filter((line) => !amwBannerLine(line))
+    .join("\n");
+}
+
 export type ScanFinding = { severity: string; title: string; count?: number; detail?: string };
 export type ScanResult = {
   ok: boolean;
@@ -34,7 +52,11 @@ export function toolLabel(id: string) {
 }
 
 export function ScanSummary({ scan, extra }: { scan: ScanResult; extra?: ReactNode }) {
-  const findings = scan.findings || [];
+  const findings = (scan.findings || []).filter((f) => {
+    if (scan.tool !== "amwscan" || f.title !== "AMWScan output") return true;
+    return !amwBannerLine(f.detail || "");
+  });
+  const logText = scan.tool === "amwscan" ? amwLog(scan.output || "") : scan.output || "";
   return (
     <Space direction="vertical" style={{ width: "100%" }} size="middle">
       <Alert
@@ -77,11 +99,11 @@ export function ScanSummary({ scan, extra }: { scan: ScanResult; extra?: ReactNo
           ]}
         />
       ) : null}
-      {scan.tool === "amwscan" && scan.output ? (
+      {scan.tool === "amwscan" && logText.trim() ? (
         <div>
           <Typography.Text type="secondary">Log</Typography.Text>
           <div style={{ marginTop: 8 }}>
-            <LogTable rows={logRows(undefined, scan.output)} emptyText="No log lines." />
+            <LogTable rows={logRows(undefined, logText)} emptyText="No log lines." />
           </div>
         </div>
       ) : null}

@@ -3,6 +3,7 @@
 package security
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -113,26 +114,25 @@ func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
 		target,
 		"--lite",
 		"--report-only",
-		"--report-format=json",
-		"--path-report=" + outFile,
-		"--path-logs=" + logFile,
-		"--jobs=1",
+		"--report-format", "json",
+		"--path-report", outFile,
+		"--path-logs", logFile,
+		"--jobs", "1",
 		"--disable-definitions-update",
 		"--disable-colors",
 	}
+	started := time.Now()
 	cmd := amwscanCmd(bin, args...)
 	cmd.Dir = scanDir
 	raw, err := combinedScan(cmd, 15*time.Minute)
-	body, _ := os.ReadFile(outFile)
-	if len(body) == 0 {
-		if b, e := os.ReadFile(outFile + ".json"); e == nil {
-			body = b
-		}
+	console := strings.TrimSpace(raw)
+	if err != nil {
+		console = strings.TrimSpace(console + "\n" + err.Error())
 	}
+	body := readAMWReport(outFile, console, started)
 	logBody, _ := os.ReadFile(logFile)
 	summary := strings.TrimSpace(string(body))
 	logText := strings.TrimSpace(string(logBody))
-	console := strings.TrimSpace(raw)
 	if summary == "" {
 		summary = console
 	}
@@ -140,19 +140,9 @@ func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
 		summary = logText
 	}
 	if summary == "" && err != nil {
-		msg := console
-		if msg == "" {
-			msg = err.Error()
-		}
-		return nil, fmt.Errorf("amwscan: %s", tailScan(msg))
+		return nil, fmt.Errorf("amwscan: %s", tailScan(err.Error()))
 	}
-	if len(body) > 0 {
-		_ = os.WriteFile(logFile, append([]byte(logText+"\n"), body...), 0640)
-	}
-	display := logText
-	if display == "" {
-		display = console
-	}
+	display := amwUsefulLog(strings.TrimSpace(logText + "\n" + console))
 	resp := &rpc.ScanResp{OK: true, ID: id, Tool: "amwscan", Target: target, Report: "/api/security/scans/" + id, Output: clipScan(display)}
 	if err != nil && !wpScanJSONOK(summary) && len(body) == 0 {
 		resp.OK = false
@@ -162,6 +152,52 @@ func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
 		resp.Output = clipScan(display)
 	}
 	return resp, nil
+}
+
+var amwReportSaved = regexp.MustCompile(`Report saved to '([^']+)'`)
+
+func readAMWReport(outFile, console string, started time.Time) []byte {
+	paths := []string{outFile, outFile + ".json"}
+	if m := amwReportSaved.FindStringSubmatch(console); len(m) == 2 {
+		paths = append(paths, m[1])
+	}
+	for _, pattern := range []string{
+		filepath.Join(scanDir, "scanner-report*.json"),
+		filepath.Join(scanDir, "*-report.json"),
+		filepath.Join(scanDir, "*-report.json.json"),
+		"/scanner-report*.json",
+	} {
+		matches, _ := filepath.Glob(pattern)
+		paths = append(paths, matches...)
+	}
+	var best []byte
+	var bestTime time.Time
+	seen := map[string]bool{}
+	for _, p := range paths {
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		if !strings.HasSuffix(strings.ToLower(p), ".json") {
+			continue
+		}
+		st, err := os.Stat(p)
+		if err != nil || st.IsDir() || st.Size() == 0 {
+			continue
+		}
+		if p != outFile && p != outFile+".json" && st.ModTime().Before(started.Add(-3*time.Second)) {
+			continue
+		}
+		b, err := os.ReadFile(p)
+		if err != nil || !bytes.Contains(b, []byte("{")) {
+			continue
+		}
+		if best == nil || st.ModTime().After(bestTime) {
+			best = b
+			bestTime = st.ModTime()
+		}
+	}
+	return best
 }
 
 func wpscanBin() string {
