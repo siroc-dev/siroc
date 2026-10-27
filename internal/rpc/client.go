@@ -647,6 +647,12 @@ func (c *Client) AVScan(path string) (*AVScanResp, error) {
 	return &out, err
 }
 
+func (c *Client) AMWScan(path string) (*ScanResp, error) {
+	var out ScanResp
+	err := c.do(http.MethodPost, "/security/av/amwscan", AVScanReq{Path: path}, &out)
+	return &out, err
+}
+
 func (c *Client) Redis() (*RedisSettings, error) {
 	var out RedisSettings
 	err := c.do(http.MethodGet, "/software/redis", nil, &out)

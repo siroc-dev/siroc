@@ -278,6 +278,13 @@ func catalog() []spec {
 			PostInstall: configureClamAV,
 		},
 		{
+			Name:  "amwscan",
+			Title: "PHP Antimalware Scanner",
+			Installed: func() (bool, string) {
+				return amwscanInstalled()
+			},
+		},
+		{
 			Name:    "openssh",
 			Title:   "OpenSSH server",
 			Service: "ssh",
@@ -361,6 +368,13 @@ func catalog() []spec {
 			Title: "OWASP ZAP",
 			Installed: func() (bool, string) {
 				return zapInstalled()
+			},
+		},
+		{
+			Name:  "wpscan",
+			Title: "WPScan",
+			Installed: func() (bool, string) {
+				return wpscanInstalled()
 			},
 		},
 		{
@@ -636,6 +650,12 @@ func (m *Manager) install(name, version string) error {
 	}
 	if name == "zap" {
 		return installZAP()
+	}
+	if name == "wpscan" {
+		return installWPScan()
+	}
+	if name == "amwscan" {
+		return installAMWScan()
 	}
 	if name == "openvas" {
 		return installOpenVAS()

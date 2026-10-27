@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Alert, List, Space, Tag, Typography } from "antd";
+import { Alert, Space, Table, Tag, Typography } from "antd";
 
 export type ScanFinding = { severity: string; title: string; count?: number; detail?: string };
 export type ScanResult = {
@@ -25,6 +25,8 @@ const sevLabel: Record<string, string> = { high: "High", medium: "Medium", low: 
 export function toolLabel(id: string) {
   if (id === "nikto") return "Nikto";
   if (id === "zap") return "OWASP ZAP";
+  if (id === "wpscan") return "WPScan";
+  if (id === "amwscan") return "PHP Antimalware Scanner";
   if (id === "openvas") return "OpenVAS / Greenbone";
   return id;
 }
@@ -51,28 +53,26 @@ export function ScanSummary({ scan, extra }: { scan: ScanResult; extra?: ReactNo
         }
       />
       {findings.length ? (
-        <List
+        <Table
           size="small"
-          bordered
+          rowKey={(_, i) => String(i)}
+          pagination={findings.length > 12 ? { pageSize: 12 } : false}
           dataSource={findings}
-          renderItem={(f) => (
-            <List.Item>
-              <Space align="start" style={{ width: "100%" }}>
-                <Tag color={sevColor[f.severity] || "default"}>{sevLabel[f.severity] || f.severity}</Tag>
-                <div>
-                  <div>
-                    {f.title}
-                    {f.count && f.count > 1 ? <Typography.Text type="secondary"> × {f.count}</Typography.Text> : null}
-                  </div>
-                  {f.detail ? (
-                    <Typography.Paragraph type="secondary" style={{ margin: "4px 0 0", fontSize: 12 }}>
-                      {f.detail}
-                    </Typography.Paragraph>
-                  ) : null}
-                </div>
-              </Space>
-            </List.Item>
-          )}
+          columns={[
+            {
+              title: "Severity",
+              width: 110,
+              render: (_, f) => <Tag color={sevColor[f.severity] || "default"}>{sevLabel[f.severity] || f.severity}</Tag>,
+            },
+            { title: "Finding", dataIndex: "title" },
+            {
+              title: "Count",
+              width: 80,
+              align: "right" as const,
+              render: (_, f) => (f.count && f.count > 1 ? f.count : "—"),
+            },
+            { title: "Detail", dataIndex: "detail", ellipsis: true, render: (v: string) => v || "—" },
+          ]}
         />
       ) : null}
     </Space>

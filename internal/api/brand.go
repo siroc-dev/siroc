@@ -60,6 +60,8 @@ var (
 		"supervisor": "/supervisor",
 		"clamav":     "/security",
 		"openvas":    "/security",
+		"wpscan":     "/security",
+		"amwscan":    "/security",
 	}
 )
 

@@ -149,6 +149,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/api/security/av", s.avStatus)
 			r.Post("/api/security/av/update", s.avUpdate)
 			r.Post("/api/security/av/scan", s.avScan)
+			r.Post("/api/security/av/amwscan", s.amwScan)
 			r.Get("/api/security/scanners", s.scannersStatus)
 			r.Post("/api/security/scan", s.runScanner)
 			r.Get("/api/security/scans/{id}", s.scannerReport)
@@ -1423,6 +1424,19 @@ func (s *Server) avScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out, err := s.Agent.AVScan(body.Path)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) amwScan(w http.ResponseWriter, r *http.Request) {
+	var body rpc.AVScanReq
+	if !decode(w, r, &body) {
+		return
+	}
+	out, err := s.Agent.AMWScan(body.Path)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return

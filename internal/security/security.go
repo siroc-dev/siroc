@@ -136,6 +136,10 @@ func (m *Manager) AVStatus() (*rpc.AVStatus, error) {
 	if b, err := os.ReadFile("/var/lib/siroc/last-scan.txt"); err == nil {
 		st.LastScan = strings.TrimSpace(string(b))
 	}
+	if p := amwscanBin(); p != "" {
+		st.AMWScan = true
+		st.AMWScanVersion = "AMWScan"
+	}
 	return st, nil
 }
 

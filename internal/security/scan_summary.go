@@ -32,6 +32,10 @@ func enrichScan(resp *rpc.ScanResp, raw string) {
 		summarizeNikto(resp, body)
 	case "zap":
 		summarizeZAP(resp, body)
+	case "wpscan":
+		summarizeWPScan(resp, body)
+	case "amwscan":
+		summarizeAMWScan(resp, body)
 	case "openvas":
 		summarizeOpenVAS(resp, body)
 	default:
@@ -108,6 +112,10 @@ func toolTitle(id string) string {
 		return "Nikto"
 	case "zap":
 		return "OWASP ZAP"
+	case "wpscan":
+		return "WPScan"
+	case "amwscan":
+		return "PHP Antimalware Scanner"
 	case "openvas":
 		return "OpenVAS / Greenbone"
 	default:
@@ -460,7 +468,7 @@ func loadScanLog(id string) (*rpc.ScanResp, error) {
 
 func scanFromReportFile(id, path string) rpc.ScanResp {
 	tool := "scan"
-	for _, t := range []string{"nikto", "zap", "openvas"} {
+	for _, t := range []string{"nikto", "zap", "wpscan", "amwscan", "openvas"} {
 		if strings.Contains(id, t) {
 			tool = t
 			break

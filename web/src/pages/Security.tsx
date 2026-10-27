@@ -28,7 +28,7 @@ type WAF = {
 type Fail2banJail = { name: string; banned?: string[]; failed?: number; total?: number };
 type Fail2ban = { installed: boolean; active: boolean; jails?: Fail2banJail[]; bans?: Fail2banBan[]; whitelist?: string[]; message?: string };
 type CRSRule = { id: number; msg: string; file: string; pack: string; disabled: boolean };
-type AV = { installed: boolean; version?: string; daemonActive: boolean; freshclamActive: boolean; signatures?: string; lastScan?: string };
+type AV = { installed: boolean; version?: string; daemonActive: boolean; freshclamActive: boolean; signatures?: string; lastScan?: string; amwscan?: boolean; amwscanVersion?: string };
 type Scan = { ok: boolean; path: string; infected: number; summary: string };
 type ScanTool = { id: string; title: string; installed: boolean };
 type Scanners = { tools: ScanTool[] };
@@ -46,6 +46,7 @@ export function Security() {
   const [source, setSource] = useState("");
   const [scanPath, setScanPath] = useState("/home");
   const [scan, setScan] = useState<Scan | null>(null);
+  const [amwOut, setAmwOut] = useState<ScanResult | null>(null);
   const [scanners, setScanners] = useState<Scanners | null>(null);
   const [sites, setSites] = useState<SiteOpt[]>([]);
   const [scanTarget, setScanTarget] = useState("http://127.0.0.1:80");
@@ -237,6 +238,7 @@ export function Security() {
             key: "av",
             label: "Antivirus",
             children: (
+      <Space direction="vertical" style={{ width: "100%" }} size={16}>
       <Card
         title="ClamAV antivirus"
         extra={<Tag color={!av?.installed ? "default" : av.daemonActive ? "success" : "warning"}>{!av?.installed ? "Not installed" : av.daemonActive ? "Daemon running" : "Installed"}</Tag>}
@@ -282,6 +284,55 @@ export function Security() {
           <Typography.Text type="secondary">Install ClamAV from Software.</Typography.Text>
         )}
       </Card>
+      <Card
+        title="PHP Antimalware Scanner"
+        extra={<Tag color={av?.amwscan ? "success" : "default"}>{av?.amwscan ? av.amwscanVersion || "Installed" : "Not installed"}</Tag>}
+      >
+        {av?.amwscan ? (
+          <Space direction="vertical" style={{ width: "100%" }} size="middle">
+            <Typography.Text type="secondary">
+              AMWScan checks PHP under /home, /var/www, or /tmp. Report-only — it does not delete files.
+            </Typography.Text>
+            <Space wrap>
+              <Input style={{ width: 240 }} value={scanPath} onChange={(e) => setScanPath(e.target.value)} />
+              <Button
+                type="primary"
+                loading={busy === "amwscan"}
+                onClick={async () => {
+                  setBusy("amwscan");
+                  try {
+                    const res = await api.post<ScanResult>("/api/security/av/amwscan", { path: scanPath });
+                    setAmwOut(res);
+                    message.success(res.high ? `Found ${res.high} high findings` : "PHP scan finished");
+                    await load();
+                  } catch (err) {
+                    message.error(err instanceof Error ? err.message : "Scan failed");
+                  } finally {
+                    setBusy("");
+                  }
+                }}
+              >
+                Scan PHP
+              </Button>
+            </Space>
+            {amwOut ? (
+              <ScanSummary
+                scan={amwOut}
+                extra={
+                  amwOut.id ? (
+                    <Typography.Link href={`/logs?tab=scan&id=${encodeURIComponent(amwOut.id)}`} onClick={spaClick(`/logs?tab=scan&id=${encodeURIComponent(amwOut.id)}`, nav)}>
+                      View in Scan logs
+                    </Typography.Link>
+                  ) : null
+                }
+              />
+            ) : null}
+          </Space>
+        ) : (
+          <Typography.Text type="secondary">Install PHP Antimalware Scanner from Software.</Typography.Text>
+        )}
+      </Card>
+      </Space>
             ),
           },
           {
@@ -411,6 +462,7 @@ export function Security() {
             {(scanners?.tools || [
               { id: "nikto", title: "Nikto", installed: false },
               { id: "zap", title: "OWASP ZAP", installed: false },
+              { id: "wpscan", title: "WPScan", installed: false },
               { id: "openvas", title: "OpenVAS", installed: false },
             ]).map((t) => (
               <Button

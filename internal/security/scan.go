@@ -25,6 +25,7 @@ func (m *Manager) Scanners() *rpc.ScannersStatus {
 		Tools: []rpc.ScannerTool{
 			scannerTool("nikto", "Nikto", "nikto"),
 			scannerTool("zap", "OWASP ZAP", zapBin()),
+			scannerTool("wpscan", "WPScan", wpscanBin()),
 			scannerTool("openvas", "OpenVAS / Greenbone", openvasBin()),
 		},
 	}
@@ -61,6 +62,126 @@ func zapBin() string {
 	return "zap.sh"
 }
 
+func amwscanBin() string {
+	for _, p := range []string{"/opt/siroc/amwscan/scanner", "/usr/local/lib/siroc/amwscan/scanner"} {
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p
+		}
+	}
+	if p, err := exec.LookPath("amwscan"); err == nil {
+		return p
+	}
+	return ""
+}
+
+func amwscanPHP() string {
+	if p, err := exec.LookPath("php"); err == nil {
+		return p
+	}
+	for _, v := range []string{"8.4", "8.3", "8.2", "8.1"} {
+		if p, err := exec.LookPath("php" + v); err == nil {
+			return p
+		}
+	}
+	return "php"
+}
+
+func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
+	bin := amwscanBin()
+	if bin == "" {
+		return nil, fmt.Errorf("PHP Antimalware Scanner is not installed; install it from Software")
+	}
+	target, err := m.scanPath(rel)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(scanDir, 0750); err != nil {
+		return nil, err
+	}
+	id := time.Now().UTC().Format("20060102-150405") + "-amwscan"
+	outFile := filepath.Join(scanDir, id+".txt")
+	args := []string{bin, target, "--lite", "--report-only", "--silent", "--report-format=json", "--path-report=" + outFile}
+	cmd := exec.Command(amwscanPHP(), args...)
+	cmd.Dir = scanDir
+	raw, err := combinedScan(cmd, 15*time.Minute)
+	body, _ := os.ReadFile(outFile)
+	summary := strings.TrimSpace(string(body))
+	if summary == "" {
+		summary = strings.TrimSpace(raw)
+	}
+	if summary == "" && err != nil {
+		return nil, fmt.Errorf("amwscan: %s", tailScan(raw))
+	}
+	resp := &rpc.ScanResp{OK: true, ID: id, Tool: "amwscan", Target: target, Report: "/api/security/scans/" + id, Output: clipScan(summary)}
+	if err != nil && !wpScanJSONOK(summary) {
+		resp.OK = false
+	}
+	enrichScan(resp, summary)
+	return resp, nil
+}
+
+func wpscanBin() string {
+	if p, err := exec.LookPath("wpscan"); err == nil {
+		return p
+	}
+	return "wpscan"
+}
+
+func runWPScan(id, target string) (*rpc.ScanResp, error) {
+	if _, err := exec.LookPath("wpscan"); err != nil {
+		return nil, fmt.Errorf("WPScan is not installed; install it from Software")
+	}
+	outFile := filepath.Join(scanDir, id+".txt")
+	args := []string{
+		"--url", target,
+		"--format", "json",
+		"--output", outFile,
+		"--no-banner",
+		"--disable-tls-checks",
+		"--random-user-agent",
+		"--no-update",
+		"--force",
+	}
+	if tok := wpscanAPIToken(); tok != "" {
+		args = append(args, "--api-token", tok)
+	}
+	cmd := exec.Command("wpscan", args...)
+	raw, err := combinedScan(cmd, 15*time.Minute)
+	body, _ := os.ReadFile(outFile)
+	summary := strings.TrimSpace(string(body))
+	if summary == "" {
+		summary = strings.TrimSpace(raw)
+	}
+	if summary == "" && err != nil {
+		return nil, fmt.Errorf("wpscan: %s", tailScan(raw))
+	}
+	resp := &rpc.ScanResp{OK: true, ID: id, Tool: "wpscan", Target: target, Report: "/api/security/scans/" + id, Output: clipScan(summary)}
+	if err != nil && !wpScanJSONOK(summary) {
+		resp.OK = false
+	}
+	enrichScan(resp, summary)
+	return resp, nil
+}
+
+func wpScanJSONOK(body string) bool {
+	s := strings.TrimSpace(body)
+	if i := strings.Index(s, "{"); i >= 0 {
+		s = s[i:]
+	}
+	return strings.HasPrefix(s, "{")
+}
+
+func wpscanAPIToken() string {
+	if v := strings.TrimSpace(os.Getenv("WPSCAN_API_TOKEN")); v != "" {
+		return v
+	}
+	b, err := os.ReadFile("/var/lib/siroc/wpscan.token")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
 func openvasBin() string {
 	if p, err := exec.LookPath("gvm-cli"); err == nil {
 		return p
@@ -87,6 +208,8 @@ func (m *Manager) RunScan(req rpc.ScanReq) (*rpc.ScanResp, error) {
 		return runNikto(id, target)
 	case "zap":
 		return runZAP(id, target)
+	case "wpscan":
+		return runWPScan(id, target)
 	case "openvas":
 		return runOpenVAS(id, target)
 	default:

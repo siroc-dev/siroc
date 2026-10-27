@@ -32,6 +32,89 @@ func zapInstalled() (bool, string) {
 	return false, ""
 }
 
+func amwscanInstalled() (bool, string) {
+	p := "/opt/siroc/amwscan/scanner"
+	if st, err := os.Stat(p); err != nil || st.IsDir() {
+		if q, err := exec.LookPath("amwscan"); err == nil {
+			p = q
+		} else {
+			return false, ""
+		}
+	}
+	php := "php"
+	if x, err := exec.LookPath("php"); err == nil {
+		php = x
+	}
+	out, err := combinedTimeout(exec.Command(php, p, "--version"), 20*time.Second)
+	if err != nil {
+		return true, "AMWScan"
+	}
+	line := firstLine(out)
+	if line == "" {
+		return true, "AMWScan"
+	}
+	return true, line
+}
+
+func installAMWScan() error {
+	if err := aptInstall("php-cli", "curl"); err != nil {
+		_ = aptInstall("curl")
+	}
+	if err := os.MkdirAll("/opt/siroc/amwscan", 0755); err != nil {
+		return err
+	}
+	dest := "/opt/siroc/amwscan/scanner"
+	urls := []string{
+		"https://raw.githubusercontent.com/marcocesarato/PHP-Antimalware-Scanner/master/dist/scanner",
+		"https://github.com/marcocesarato/PHP-Antimalware-Scanner/releases/latest/download/scanner",
+	}
+	var last error
+	ok := false
+	for _, u := range urls {
+		dl := exec.Command("curl", "-fsSL", "-L", "-o", dest, u)
+		if out, err := combinedTimeout(dl, 2*time.Minute); err != nil {
+			last = fmt.Errorf("download amwscan: %s", tail(out))
+			continue
+		}
+		ok = true
+		break
+	}
+	if !ok {
+		if last == nil {
+			last = fmt.Errorf("download amwscan failed")
+		}
+		return last
+	}
+	_ = os.Chmod(dest, 0755)
+	wrap := "#!/bin/sh\nexec php /opt/siroc/amwscan/scanner \"$@\"\n"
+	if err := os.WriteFile("/usr/local/bin/amwscan", []byte(wrap), 0755); err != nil {
+		return err
+	}
+	return nil
+}
+
+func wpscanInstalled() (bool, string) {
+	return binVersion("wpscan")
+}
+
+func installWPScan() error {
+	_ = aptInstall("wpscan")
+	if ok, _ := wpscanInstalled(); ok {
+		return nil
+	}
+	if err := aptInstall("ruby", "ruby-dev", "build-essential", "libcurl4-openssl-dev", "libxml2-dev", "libxslt1-dev", "zlib1g-dev"); err != nil {
+		return err
+	}
+	if ok, _ := wpscanInstalled(); ok {
+		return nil
+	}
+	out, err := combinedTimeout(exec.Command("gem", "install", "wpscan", "--no-document"), 12*time.Minute)
+	if err != nil {
+		return fmt.Errorf("gem install wpscan: %s", tail(out))
+	}
+	return nil
+}
+
 func openvasInstalled() (bool, string) {
 	if p, err := exec.LookPath("gvm-cli"); err == nil {
 		out, _ := exec.Command(p, "--version").CombinedOutput()

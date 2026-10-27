@@ -757,6 +757,8 @@ type AVStatus struct {
 	FreshclamActive bool   `json:"freshclamActive"`
 	Signatures      string `json:"signatures,omitempty"`
 	LastScan        string `json:"lastScan,omitempty"`
+	AMWScan         bool   `json:"amwscan"`
+	AMWScanVersion  string `json:"amwscanVersion,omitempty"`
 }
 
 type AVScanReq struct {

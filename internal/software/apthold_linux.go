@@ -81,7 +81,7 @@ func aptSeedNames(name string) []string {
 			out = append(out, "python"+v)
 		}
 		return out
-	case "nodejs", "ffmpeg", "composer", "wp-cli", "phpmyadmin", "zap", "openvas":
+	case "nodejs", "ffmpeg", "composer", "wp-cli", "phpmyadmin", "zap", "wpscan", "amwscan", "openvas":
 		return nil
 	default:
 		for _, s := range catalog() {

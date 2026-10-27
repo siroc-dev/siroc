@@ -1079,6 +1079,18 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Post("/security/av/amwscan", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.AVScanReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := secMgr.RunAMWScan(req.Path)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Get("/security/scanners", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, secMgr.Scanners())
 	})

@@ -150,7 +150,7 @@ export function ScanLogs({ embedded }: { embedded?: boolean }) {
           Scan logs
         </Typography.Title>
         <Typography.Paragraph type="secondary">
-          History of Nikto, OWASP ZAP, and OpenVAS runs. New scans from Security are saved here automatically.
+          History of Nikto, OWASP ZAP, WPScan, PHP Antimalware Scanner, and OpenVAS runs. New scans from Security are saved here automatically.
         </Typography.Paragraph>
       </div>
       {body}
