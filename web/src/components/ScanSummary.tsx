@@ -29,6 +29,7 @@ export type ScanResult = {
   target: string;
   report?: string;
   output?: string;
+  running?: boolean;
   title?: string;
   summary?: string;
   findings?: ScanFinding[];

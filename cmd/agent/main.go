@@ -1084,12 +1084,15 @@ func main() {
 		if !decode(w, r, &req) {
 			return
 		}
-		out, err := secMgr.RunAMWScan(req.Path)
+		out, err := secMgr.StartAMWScan(req.Path)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
+	})
+	r.Get("/security/av/amwscan", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, secMgr.AMWScanJob())
 	})
 	r.Get("/security/scanners", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, secMgr.Scanners())

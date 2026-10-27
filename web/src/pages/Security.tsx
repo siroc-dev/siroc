@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Alert, App, AutoComplete, Button, Card, Checkbox, Col, Input, Popconfirm, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
@@ -50,6 +50,8 @@ export function Security() {
   const [scanPath, setScanPath] = useState("/home");
   const [scan, setScan] = useState<Scan | null>(null);
   const [amwOut, setAmwOut] = useState<ScanResult | null>(null);
+  const [amwWatch, setAmwWatch] = useState(true);
+  const amwSawRun = useRef(false);
   const [scanners, setScanners] = useState<Scanners | null>(null);
   const [sites, setSites] = useState<SiteOpt[]>([]);
   const [scanTarget, setScanTarget] = useState("http://127.0.0.1:80");
@@ -85,6 +87,40 @@ export function Security() {
       .catch((e) => message.error(e.message))
       .finally(() => setReady(true));
   }, []);
+
+  useEffect(() => {
+    if (!amwWatch) return;
+    let stop = false;
+    let timer = 0;
+    async function poll() {
+      try {
+        const data = await api.get<ScanResult>("/api/security/av/amwscan");
+        if (stop) return;
+        if (data.running) amwSawRun.current = true;
+        if (data.id) setAmwOut(data);
+        if (data.running) {
+          timer = window.setTimeout(poll, 1000);
+          return;
+        }
+        if (amwSawRun.current) {
+          amwSawRun.current = false;
+          if (!data.ok) message.warning(data.summary || "PHP scan did not finish");
+          else if (data.high) message.warning(`Found ${data.high} high findings`);
+          else message.success("PHP scan finished");
+          void load().catch(() => undefined);
+        }
+      } catch {
+        if (!stop) timer = window.setTimeout(poll, 2000);
+        return;
+      }
+      if (!stop) setAmwWatch(false);
+    }
+    void poll();
+    return () => {
+      stop = true;
+      window.clearTimeout(timer);
+    };
+  }, [amwWatch]);
 
   async function addWhitelist() {
     const ip = whitelist.trim();
@@ -296,14 +332,14 @@ export function Security() {
               <PathPicker value={scanPath} onChange={setScanPath} user="root" placeholder="/home" dirsOnly style={{ width: 360 }} />
               <Button
                 type="primary"
-                loading={busy === "amwscan"}
+                loading={busy === "amwscan" || !!amwOut?.running}
                 onClick={async () => {
                   setBusy("amwscan");
                   try {
                     const res = await api.post<ScanResult>("/api/security/av/amwscan", { path: scanPath });
                     setAmwOut(res);
-                    message.success(res.high ? `Found ${res.high} high findings` : "PHP scan finished");
-                    await load();
+                    amwSawRun.current = true;
+                    setAmwWatch(true);
                   } catch (err) {
                     message.error(err instanceof Error ? err.message : "Scan failed");
                   } finally {
@@ -314,7 +350,16 @@ export function Security() {
                 Scan PHP
               </Button>
             </Space>
-            {amwOut ? (
+            {amwOut?.running ? (
+              <Space direction="vertical" style={{ width: "100%" }} size="small">
+                <Space>
+                  <Tag color="processing">Live</Tag>
+                  <Typography.Text type="secondary">{amwOut.target || scanPath}</Typography.Text>
+                </Space>
+                <LogTable rows={logRows(undefined, amwOut.output || "")} emptyText="Waiting for scanner output." />
+              </Space>
+            ) : null}
+            {amwOut && !amwOut.running ? (
               <ScanSummary
                 scan={amwOut}
                 extra={

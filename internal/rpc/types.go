@@ -842,6 +842,7 @@ type ScanFinding struct {
 
 type ScanResp struct {
 	OK        bool          `json:"ok"`
+	Running   bool          `json:"running,omitempty"`
 	ID        string        `json:"id"`
 	Tool      string        `json:"tool"`
 	Target    string        `json:"target"`

@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
@@ -129,7 +130,43 @@ func phpCLIEnv() []string {
 	return out
 }
 
-func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
+var (
+	amwMu      sync.Mutex
+	amwCurrent *amwRun
+)
+
+type amwRun struct {
+	mu       sync.Mutex
+	raw      strings.Builder
+	snap     rpc.ScanResp
+	timedOut bool
+}
+
+type amwLiveWriter struct {
+	st *amwRun
+}
+
+func (w *amwLiveWriter) Write(p []byte) (int, error) {
+	w.st.mu.Lock()
+	w.st.raw.Write(p)
+	text := amwANSI.ReplaceAllString(collapseScanOutput(w.st.raw.String()), "")
+	w.st.snap.Output = clipScan(amwUsefulLog(text))
+	w.st.snap.Running = true
+	w.st.mu.Unlock()
+	return len(p), nil
+}
+
+func (st *amwRun) snapshot() *rpc.ScanResp {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	out := st.snap
+	if len(st.snap.Findings) > 0 {
+		out.Findings = append([]rpc.ScanFinding(nil), st.snap.Findings...)
+	}
+	return &out
+}
+
+func (m *Manager) StartAMWScan(rel string) (*rpc.ScanResp, error) {
 	bin := amwscanBin()
 	if bin == "" {
 		return nil, fmt.Errorf("PHP Antimalware Scanner is not installed; install it from Software")
@@ -140,6 +177,11 @@ func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
 	}
 	if err := os.MkdirAll(scanDir, 0750); err != nil {
 		return nil, err
+	}
+	amwMu.Lock()
+	if amwCurrent != nil && amwCurrent.snapshot().Running {
+		amwMu.Unlock()
+		return nil, fmt.Errorf("a PHP scan is already running")
 	}
 	id := time.Now().UTC().Format("20060102-150405") + "-amwscan"
 	outFile := filepath.Join(scanDir, id+"-report.log")
@@ -156,12 +198,54 @@ func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
 		"--disable-definitions-update",
 		"--disable-colors",
 	}
-	started := time.Now()
 	cmd := amwscanCmd(bin, errFile, args...)
 	cmd.Dir = scanDir
 	cmd.Env = phpCLIEnv()
-	raw, err := combinedScan(cmd, 15*time.Minute)
-	console := collapseScanOutput(strings.TrimSpace(raw))
+	st := &amwRun{snap: rpc.ScanResp{OK: true, Running: true, ID: id, Tool: "amwscan", Target: target, Title: "PHP antimalware scan", Summary: "Scan is running."}}
+	amwCurrent = st
+	amwMu.Unlock()
+	go st.execute(cmd, id, target, outFile, logFile, errFile, time.Now())
+	return st.snapshot(), nil
+}
+
+func (m *Manager) AMWScanJob() *rpc.ScanResp {
+	amwMu.Lock()
+	st := amwCurrent
+	amwMu.Unlock()
+	if st == nil {
+		return &rpc.ScanResp{}
+	}
+	return st.snapshot()
+}
+
+func (st *amwRun) execute(cmd *exec.Cmd, id, target, outFile, logFile, errFile string, started time.Time) {
+	live := &amwLiveWriter{st: st}
+	cmd.Stdout = live
+	cmd.Stderr = live
+	timer := time.AfterFunc(15*time.Minute, func() {
+		st.mu.Lock()
+		st.timedOut = true
+		st.mu.Unlock()
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	})
+	defer timer.Stop()
+	err := cmd.Run()
+	st.mu.Lock()
+	raw := st.raw.String()
+	timedOut := st.timedOut
+	st.mu.Unlock()
+	if timedOut {
+		err = fmt.Errorf("timed out after 15m0s")
+	}
+	resp := finishAMWScan(id, target, outFile, logFile, errFile, started, collapseScanOutput(strings.TrimSpace(raw)), err)
+	st.mu.Lock()
+	st.snap = *resp
+	st.mu.Unlock()
+}
+
+func finishAMWScan(id, target, outFile, logFile, errFile string, started time.Time, console string, err error) *rpc.ScanResp {
 	if phpErr, readErr := os.ReadFile(errFile); readErr == nil {
 		if extra := strings.TrimSpace(string(phpErr)); extra != "" {
 			console = strings.TrimSpace(console + "\n" + extra)
@@ -181,7 +265,7 @@ func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
 		summary = logText
 	}
 	if summary == "" && err != nil {
-		return nil, fmt.Errorf("amwscan: %s", tailScan(err.Error()))
+		return &rpc.ScanResp{OK: false, ID: id, Tool: "amwscan", Target: target, Title: "PHP antimalware scan", Summary: "AMWScan did not finish: " + tailScan(err.Error())}
 	}
 	display := amwUsefulLog(strings.TrimSpace(logText + "\n" + console))
 	resp := &rpc.ScanResp{OK: true, ID: id, Tool: "amwscan", Target: target, Report: "/api/security/scans/" + id, Output: clipScan(display)}
@@ -192,7 +276,7 @@ func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
 	if strings.TrimSpace(resp.Output) == "" {
 		resp.Output = clipScan(display)
 	}
-	return resp, nil
+	return resp
 }
 
 var amwReportSaved = regexp.MustCompile(`Report saved to '([^']+)'`)
