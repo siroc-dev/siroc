@@ -65,8 +65,8 @@ Example `latest.json` (published to Cloudflare R2 by CI):
 
 ```json
 {
-  "version": "0.3.13",
-  "url": "https://get.siroc.dev/0.3.13/siroc-linux-amd64.tar.gz",
+  "version": "0.3.14",
+  "url": "https://get.siroc.dev/0.3.14/siroc-linux-amd64.tar.gz",
   "sha256": "optional"
 }
 ```
@@ -110,6 +110,18 @@ Tag a release after the token can write R2:
 git tag v0.2.0
 git push origin v0.2.0
 ```
+
+Or build and upload from this machine (same R2 objects as the release workflow). Put credentials in a gitignored `.r2.env` (`CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) and install AWS CLI v2.
+
+```powershell
+.\scripts\release-local.ps1
+```
+
+```bash
+bash scripts/release-local.sh
+```
+
+`-SkipBuild` / `--skip-build` only uploads an existing `dist/siroc-linux-amd64.tar.gz`. `-SkipUpload` / `--skip-upload` only builds the package.
 
 In the panel, set the update channel to `https://get.siroc.dev`.
 

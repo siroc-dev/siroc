@@ -10,3 +10,4 @@ lsp/node_modules/
 .idea/
 .vscode/
 *.log
+.r2.env
