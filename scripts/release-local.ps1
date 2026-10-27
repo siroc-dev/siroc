@@ -61,7 +61,7 @@ if (-not $SkipBuild) {
     & (Join-Path $Root "scripts\package.ps1") $Pkg
 }
 
-if (-not (Test-Path $Pkg)) { throw "missing $Pkg — run without -SkipBuild" }
+if (-not (Test-Path $Pkg)) { throw "missing $Pkg - run without -SkipBuild" }
 
 $py = Find-Python
 $pyArgs = @()
