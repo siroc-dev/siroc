@@ -17,9 +17,21 @@ func TestDefaultWAFPacksSkipScanner(t *testing.T) {
 			t.Fatalf("%s should not be a default pack", id)
 		}
 	}
-	got := mergeWAFRuleIDs([]int{941100, 920270}, defaultSEOWAFRules())
-	if got[0] != 913100 || got[len(got)-1] != 941100 {
+	got := mergeWAFRuleIDs([]int{942100, 920270}, defaultSEOWAFRules())
+	if got[0] != 913100 || got[len(got)-1] != 942100 {
 		t.Fatalf("%v", got)
+	}
+	has941100, has941160 := false, false
+	for _, id := range got {
+		if id == 941100 {
+			has941100 = true
+		}
+		if id == 941160 {
+			has941160 = true
+		}
+	}
+	if !has941100 || !has941160 {
+		t.Fatal("expected XSS rule ids 941100 and 941160")
 	}
 	foundWin := false
 	for _, id := range got {
@@ -39,7 +51,7 @@ func TestApplyWAFStateDefaultsTurnsOffExistingPacks(t *testing.T) {
 	st := applyWAFStateDefaults(wafState{
 		Mode:       "On",
 		Packs:      []string{"scanner", "session", "xss", "sqli", "rce", "leakage"},
-		SEORelaxed: 3,
+		SEORelaxed: 4,
 	})
 	for _, id := range st.Packs {
 		if id == "scanner" || id == "session" || id == "reputation" || id == "dos" || id == "leakage" {
@@ -49,13 +61,22 @@ func TestApplyWAFStateDefaultsTurnsOffExistingPacks(t *testing.T) {
 	if st.SEORelaxed != wafDefaultsVersion {
 		t.Fatalf("seoRelaxed %d", st.SEORelaxed)
 	}
-	found := false
+	foundWin, has941100, has941160 := false, false, false
 	for _, id := range st.DisabledIDs {
 		if id == 932110 {
-			found = true
+			foundWin = true
+		}
+		if id == 941100 {
+			has941100 = true
+		}
+		if id == 941160 {
+			has941160 = true
 		}
 	}
-	if !found {
+	if !foundWin {
 		t.Fatal("windows rule ids not merged")
+	}
+	if !has941100 || !has941160 {
+		t.Fatal("xss rule ids not merged")
 	}
 }

@@ -2,7 +2,7 @@ package security
 
 import "sort"
 
-const wafDefaultsVersion = 4
+const wafDefaultsVersion = 5
 
 type wafState struct {
 	Mode              string   `json:"mode"`
@@ -29,6 +29,7 @@ func defaultWAFPacks() []string {
 // 920270-920274: non-ASCII in the request (Thai slugs and search).
 // 920300-920311: missing or empty Accept (Facebook, Slack, and other link previews).
 // 932110-932140 / 932370-932380: Windows CMD and PowerShell (this panel is Linux).
+// 941100 / 941160: XSS filters that false-positive on WordPress admin and HTML editors.
 func defaultSEOWAFRules() []int {
 	return []int{
 		913100, 913101, 913102, 913110, 913120,
@@ -36,6 +37,7 @@ func defaultSEOWAFRules() []int {
 		920300, 920310, 920311,
 		932110, 932115, 932120, 932125, 932140,
 		932370, 932371, 932380,
+		941100, 941160,
 	}
 }
 
