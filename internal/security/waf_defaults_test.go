@@ -7,7 +7,7 @@ func TestDefaultWAFPacksSkipScanner(t *testing.T) {
 	for _, id := range defaultOffWAFPacks() {
 		off[id] = true
 	}
-	for _, id := range []string{"scanner", "session", "reputation", "dos"} {
+	for _, id := range []string{"scanner", "session", "reputation", "dos", "leakage"} {
 		if !off[id] {
 			t.Fatalf("want %s off by default", id)
 		}
@@ -38,11 +38,11 @@ func TestDefaultWAFPacksSkipScanner(t *testing.T) {
 func TestApplyWAFStateDefaultsTurnsOffExistingPacks(t *testing.T) {
 	st := applyWAFStateDefaults(wafState{
 		Mode:       "On",
-		Packs:      []string{"scanner", "session", "xss", "sqli", "rce"},
-		SEORelaxed: 2,
+		Packs:      []string{"scanner", "session", "xss", "sqli", "rce", "leakage"},
+		SEORelaxed: 3,
 	})
 	for _, id := range st.Packs {
-		if id == "scanner" || id == "session" || id == "reputation" || id == "dos" {
+		if id == "scanner" || id == "session" || id == "reputation" || id == "dos" || id == "leakage" {
 			t.Fatalf("pack %s still on", id)
 		}
 	}

@@ -31,6 +31,7 @@
         <p class="lead">Features added and bugs fixed in each release. Upgrade with the versioned package URL so the checksum matches the file you download.</p>
 
         <nav class="doc-toc">
+          <a href="#v0.3.10">0.3.10</a>
           <a href="#v0.3.9">0.3.9</a>
           <a href="#v0.3.8">0.3.8</a>
           <a href="#v0.3.7">0.3.7</a>
@@ -139,6 +140,20 @@
           <a href="#v0.2.5">0.2.5</a>
           <a href="#v0.2.4">0.2.4</a>
         </nav>
+
+        <section class="release" id="v0.3.10">
+          <h2><a href="#v0.3.10">0.3.10</a></h2>
+          <h3 class="kind">Features</h3>
+          <ul>
+            <li>Service Status can start or stop a service, not only restart it.</li>
+            <li>File Manager text editor has Save &amp; Exit.</li>
+          </ul>
+          <h3 class="kind fix">Fixes</h3>
+          <ul>
+            <li>Extracting a .tar.gz in File Manager works on BusyBox tar, which does not accept --no-absolute-names.</li>
+            <li>WAF turns off the data-leakage pack by default. RESPONSE-951 was exceeding PCRE limits on large WordPress admin pages. PCRE match limits are raised for remaining rules.</li>
+          </ul>
+        </section>
 
         <section class="release" id="v0.3.9">
           <h2><a href="#v0.3.9">0.3.9</a></h2>

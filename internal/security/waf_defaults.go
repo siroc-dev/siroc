@@ -2,7 +2,7 @@ package security
 
 import "sort"
 
-const wafDefaultsVersion = 3
+const wafDefaultsVersion = 4
 
 type wafState struct {
 	Mode              string   `json:"mode"`
@@ -17,11 +17,11 @@ type wafState struct {
 }
 
 func defaultOffWAFPacks() []string {
-	return []string{"scanner", "session", "reputation", "dos"}
+	return []string{"scanner", "session", "reputation", "dos", "leakage"}
 }
 
 func defaultWAFPacks() []string {
-	return []string{"protocol", "lfi", "rfi", "rce", "php", "generic", "xss", "sqli", "leakage"}
+	return []string{"protocol", "lfi", "rfi", "rce", "php", "generic", "xss", "sqli"}
 }
 
 // defaultSEOWAFRules are CRS rules left off on Linux hosting panels.

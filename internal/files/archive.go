@@ -454,8 +454,21 @@ func humanFileBytes(n int64) string {
 	return fmt.Sprintf("%.1f %s", v, u[i])
 }
 
+func tarExtractArgs(src, dest string) []string {
+	switch archiveKind(src) {
+	case "targz":
+		return []string{"-xzf", src, "-C", dest}
+	case "tarbz2":
+		return []string{"-xjf", src, "-C", dest}
+	case "tarxz":
+		return []string{"-xJf", src, "-C", dest}
+	default:
+		return []string{"-xf", src, "-C", dest}
+	}
+}
+
 func untarCmd(src, dest string) error {
-	cmd := exec.Command("tar", "-xf", src, "-C", dest, "--no-absolute-names")
+	cmd := exec.Command("tar", tarExtractArgs(src, dest)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("tar: %s", strings.TrimSpace(string(out)))

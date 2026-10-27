@@ -43,7 +43,7 @@ func wafPackCatalog() []wafPackSpec {
 		{ID: "session", Title: "Session fixation", Description: "Session fixation attempts (CRS 943). Off by default.", Prefixes: []string{"REQUEST-943"}},
 		{ID: "java", Title: "Java attacks", Description: "Java / Jakarta exploits", Prefixes: []string{"REQUEST-944"}},
 		{ID: "nodejs", Title: "Node.js attacks", Description: "Node.js application attacks", Prefixes: []string{"REQUEST-934-APPLICATION-ATTACK-NODEJS", "REQUEST-948"}},
-		{ID: "leakage", Title: "Data leakage", Description: "SQL / PHP / IIS information leaks in responses", Prefixes: []string{"RESPONSE-950", "RESPONSE-951", "RESPONSE-953", "RESPONSE-954"}},
+		{ID: "leakage", Title: "Data leakage", Description: "SQL / PHP / IIS leaks in responses (CRS 950–954). Off by default; RESPONSE-951 exceeds PCRE limits on large WordPress admin pages.", Prefixes: []string{"RESPONSE-950", "RESPONSE-951", "RESPONSE-953", "RESPONSE-954"}},
 	}
 }
 
@@ -240,7 +240,7 @@ func writeWAF(st wafState) error {
 	if err := os.WriteFile(wafStateFile, raw, 0640); err != nil {
 		return err
 	}
-	if err := os.WriteFile(wafEngineFile, []byte("SecRuleEngine "+st.Mode+"\n"), 0644); err != nil {
+	if err := os.WriteFile(wafEngineFile, []byte("SecRuleEngine "+st.Mode+"\nSecPcreMatchLimit 500000\nSecPcreMatchLimitRecursion 500000\n"), 0644); err != nil {
 		return err
 	}
 	setup := fmt.Sprintf(`SecRequestBodyAccess On

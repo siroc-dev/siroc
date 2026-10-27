@@ -43,11 +43,12 @@ export function ServiceStatus() {
     }
   }
 
-  async function restart(row: Svc) {
+  async function control(row: Svc, action: "start" | "stop" | "restart") {
     setBusy("svc:" + row.name);
     try {
-      await api.post("/api/software/service", { name: row.name, action: "restart" });
-      message.success(`Restarted ${row.title}`);
+      await api.post("/api/software/service", { name: row.name, action });
+      const done = action === "start" ? "Started" : action === "stop" ? "Stopped" : "Restarted";
+      message.success(`${done} ${row.title}`);
       await loadSvc();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -122,10 +123,19 @@ export function ServiceStatus() {
           },
           {
             title: "Operate",
-            width: 180,
+            width: 240,
             render: (_, row) => (
               <Space>
-                <Button type="link" size="small" loading={busy === "svc:" + row.name} onClick={() => restart(row)}>
+                {row.active ? (
+                  <Button type="link" size="small" loading={busy === "svc:" + row.name} onClick={() => control(row, "stop")}>
+                    Stop
+                  </Button>
+                ) : (
+                  <Button type="link" size="small" loading={busy === "svc:" + row.name} onClick={() => control(row, "start")}>
+                    Start
+                  </Button>
+                )}
+                <Button type="link" size="small" loading={busy === "svc:" + row.name} onClick={() => control(row, "restart")}>
                   Restart
                 </Button>
                 {row.manage ? <Link to={row.manage}>Manage</Link> : null}

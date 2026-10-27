@@ -533,7 +533,7 @@ function WAFCard({
 
   function profile(name: "monitor" | "balanced" | "strict" | "maximum") {
     const all = (waf?.packs || []).filter((p) => p.available !== false).map((p) => p.id);
-    const skip = new Set(["scanner", "session", "reputation", "dos"]);
+    const skip = new Set(["scanner", "session", "reputation", "dos", "leakage"]);
     const hosting = all.filter((id) => !skip.has(id));
     const next = {
       monitor: { mode: "DetectionOnly", paranoia: 1, inboundThreshold: 5, outboundThreshold: 4, packs: hosting },

@@ -351,12 +351,21 @@ export function Files() {
     }
   }
 
-  async function save() {
+  function closeEditor() {
+    setEditPath("");
+    setContent("");
+    setAbsPath("");
+    setEditorReady(false);
+    setLspOn(false);
+  }
+
+  async function save(close = false) {
     if (!editPath) return;
     setBusy(true);
     try {
       await api.put("/api/files/content", { user, path: editPath, content });
       message.success("Saved");
+      if (close) closeEditor();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -1519,16 +1528,18 @@ export function Files() {
           </Space>
         }
         open={!!editPath}
-        onCancel={() => {
-          setEditPath("");
-          setContent("");
-          setAbsPath("");
-          setEditorReady(false);
-          setLspOn(false);
-        }}
-        onOk={save}
-        confirmLoading={busy}
-        okText="Save"
+        onCancel={closeEditor}
+        footer={
+          <Space>
+            <Button onClick={closeEditor}>Cancel</Button>
+            <Button loading={busy} onClick={() => void save(false)}>
+              Save
+            </Button>
+            <Button type="primary" loading={busy} onClick={() => void save(true)}>
+              Save & Exit
+            </Button>
+          </Space>
+        }
         width="90vw"
         destroyOnHidden
         afterOpenChange={setEditorReady}
@@ -1540,7 +1551,7 @@ export function Files() {
             onKeyDown={(e) => {
               if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
                 e.preventDefault();
-                void save();
+                void save(false);
               }
             }}
           >
@@ -1553,7 +1564,7 @@ export function Files() {
                 value={content}
                 language={languageFromPath(editPath)}
                 onChange={setContent}
-                onSave={save}
+                onSave={() => void save(false)}
                 onLsp={setLspOn}
               />
             </Suspense>
