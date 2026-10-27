@@ -82,6 +82,50 @@ func TestSummarizeAMWScanInfectedFound(t *testing.T) {
 	}
 }
 
+func TestSummarizeAMWScanTextReport(t *testing.T) {
+	body := `PHP Antimalware Scanner Report
+Version: 0.21.15
+Total files scanned: 40
+Infected files: 1
+
+File: /home/alice/public_html/shell.php
+ Size: 1 KB
+ - Exploit eval [Line: 4, Dangerous]
+ Description: eval obfuscation
+ Match: eval($_POST["c"])
+`
+	st := &rpc.ScanResp{OK: true}
+	summarizeAMWScan(st, body)
+	if len(st.Findings) != 1 || st.Findings[0].Severity != "high" {
+		t.Fatalf("findings %#v", st.Findings)
+	}
+	if !strings.Contains(st.Findings[0].Title, "shell.php") || !strings.Contains(st.Findings[0].Detail, "eval obfuscation") {
+		t.Fatalf("finding %#v", st.Findings[0])
+	}
+}
+
+func TestSummarizeAMWScanCleanTextReport(t *testing.T) {
+	body := "PHP Antimalware Scanner Report\nTotal files scanned: 12\nInfected files: 0\n\nNo malware found!\n"
+	st := &rpc.ScanResp{}
+	summarizeAMWScan(st, body)
+	if len(st.Findings) != 0 || !strings.Contains(st.Summary, "No malicious PHP") || !strings.Contains(st.Summary, "12") {
+		t.Fatalf("summary %q findings %#v", st.Summary, st.Findings)
+	}
+}
+
+func TestSummarizeAMWScanExitStatus(t *testing.T) {
+	body := "\r[>                    ] 0% 23/7574 [2 sec/11 min]\r[>                    ] 0% 24/7574 [2 sec/10 min]\nPHP Fatal error: Allowed memory size of 134217728 bytes exhausted in /opt/siroc/amwscan/scanner on line 9\nexit status 255\n"
+	collapsed := collapseScanOutput(body)
+	if strings.Count(collapsed, "23/7574") != 0 || !strings.Contains(collapsed, "24/7574") || !strings.Contains(collapsed, "Allowed memory") {
+		t.Fatalf("collapsed %q", collapsed)
+	}
+	st := &rpc.ScanResp{OK: true}
+	summarizeAMWScan(st, collapsed)
+	if st.OK || !strings.Contains(st.Summary, "Allowed memory") || strings.Contains(st.Summary, "exit status") {
+		t.Fatalf("summary %q ok %v", st.Summary, st.OK)
+	}
+}
+
 func TestSummarizeAMWScanIgnoresBanner(t *testing.T) {
 	body := "  |A ||||W ||||S ||||\nCreated by Marco Cesarato\nPHP Antimalware Scanner\nversion 0.21.15\nGithub: https://github.com/marcocesarato/PHP-Antimalware-Scanner\ntimed out after 15m0s\n"
 	st := &rpc.ScanResp{OK: true}

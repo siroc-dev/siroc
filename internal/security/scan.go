@@ -87,12 +87,46 @@ func amwscanPHP() string {
 	return "php"
 }
 
-func amwscanCmd(bin string, args ...string) *exec.Cmd {
+func amwscanCmd(bin, errLog string, args ...string) *exec.Cmd {
+	script := bin
 	base := strings.ToLower(filepath.Base(bin))
 	if base == "amwscan" || strings.HasSuffix(base, ".sh") {
-		return exec.Command(bin, args...)
+		for _, p := range []string{"/opt/siroc/amwscan/scanner", "/usr/local/lib/siroc/amwscan/scanner"} {
+			if st, err := os.Stat(p); err == nil && !st.IsDir() {
+				script = p
+				break
+			}
+		}
+		if script == bin {
+			return exec.Command(bin, args...)
+		}
 	}
-	return exec.Command(amwscanPHP(), append([]string{bin}, args...)...)
+	phpArgs := []string{
+		"-d", "display_errors=1",
+		"-d", "display_startup_errors=1",
+		"-d", "log_errors=1",
+		"-d", "error_reporting=E_ALL",
+		"-d", "output_buffering=0",
+		"-d", "implicit_flush=1",
+	}
+	if errLog != "" {
+		phpArgs = append(phpArgs, "-d", "error_log="+errLog)
+	}
+	phpArgs = append(phpArgs, script)
+	return exec.Command(amwscanPHP(), append(phpArgs, args...)...)
+}
+
+// phpCLIEnv keeps the system PHP CLI ini, including the unlimited CLI limits.
+// A site pool's PHPRC must not apply to this process.
+func phpCLIEnv() []string {
+	out := make([]string, 0, len(os.Environ()))
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "PHPRC=") || strings.HasPrefix(e, "PHP_INI_SCAN_DIR=") {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
@@ -108,13 +142,14 @@ func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
 		return nil, err
 	}
 	id := time.Now().UTC().Format("20060102-150405") + "-amwscan"
-	outFile := filepath.Join(scanDir, id+"-report.json")
+	outFile := filepath.Join(scanDir, id+"-report.log")
 	logFile := filepath.Join(scanDir, id+".txt")
+	errFile := filepath.Join(scanDir, id+".php-error.log")
 	args := []string{
 		target,
 		"--lite",
 		"--report-only",
-		"--report-format", "json",
+		"--report-format", "txt",
 		"--path-report", outFile,
 		"--path-logs", logFile,
 		"--jobs", "1",
@@ -122,10 +157,16 @@ func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
 		"--disable-colors",
 	}
 	started := time.Now()
-	cmd := amwscanCmd(bin, args...)
+	cmd := amwscanCmd(bin, errFile, args...)
 	cmd.Dir = scanDir
+	cmd.Env = phpCLIEnv()
 	raw, err := combinedScan(cmd, 15*time.Minute)
-	console := strings.TrimSpace(raw)
+	console := collapseScanOutput(strings.TrimSpace(raw))
+	if phpErr, readErr := os.ReadFile(errFile); readErr == nil {
+		if extra := strings.TrimSpace(string(phpErr)); extra != "" {
+			console = strings.TrimSpace(console + "\n" + extra)
+		}
+	}
 	if err != nil {
 		console = strings.TrimSpace(console + "\n" + err.Error())
 	}
@@ -155,17 +196,18 @@ func (m *Manager) RunAMWScan(rel string) (*rpc.ScanResp, error) {
 }
 
 var amwReportSaved = regexp.MustCompile(`Report saved to '([^']+)'`)
+var amwANSI = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func readAMWReport(outFile, console string, started time.Time) []byte {
-	paths := []string{outFile, outFile + ".json"}
+	console = amwANSI.ReplaceAllString(console, "")
+	paths := []string{outFile, outFile + ".log", outFile + ".json", outFile + ".json.json", outFile + ".html"}
 	if m := amwReportSaved.FindStringSubmatch(console); len(m) == 2 {
-		paths = append(paths, m[1])
+		paths = append(paths, strings.TrimSpace(m[1]))
 	}
 	for _, pattern := range []string{
-		filepath.Join(scanDir, "scanner-report*.json"),
-		filepath.Join(scanDir, "*-report.json"),
-		filepath.Join(scanDir, "*-report.json.json"),
-		"/scanner-report*.json",
+		filepath.Join(scanDir, "*-report.*"),
+		filepath.Join(scanDir, "scanner-report*"),
+		"/scanner-report*",
 	} {
 		matches, _ := filepath.Glob(pattern)
 		paths = append(paths, matches...)
@@ -174,22 +216,19 @@ func readAMWReport(outFile, console string, started time.Time) []byte {
 	var bestTime time.Time
 	seen := map[string]bool{}
 	for _, p := range paths {
-		if p == "" || seen[p] {
+		if p == "" || seen[p] || strings.HasSuffix(p, "-amwscan.json") {
 			continue
 		}
 		seen[p] = true
-		if !strings.HasSuffix(strings.ToLower(p), ".json") {
-			continue
-		}
 		st, err := os.Stat(p)
 		if err != nil || st.IsDir() || st.Size() == 0 {
 			continue
 		}
-		if p != outFile && p != outFile+".json" && st.ModTime().Before(started.Add(-3*time.Second)) {
+		if p != outFile && p != outFile+".log" && p != outFile+".json" && st.ModTime().Before(started.Add(-3*time.Second)) {
 			continue
 		}
 		b, err := os.ReadFile(p)
-		if err != nil || !bytes.Contains(b, []byte("{")) {
+		if err != nil || len(bytes.TrimSpace(b)) == 0 {
 			continue
 		}
 		if best == nil || st.ModTime().After(bestTime) {

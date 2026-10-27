@@ -3,6 +3,7 @@ package security
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -65,11 +66,25 @@ func summarizeAMWScan(resp *rpc.ScanResp, body string) {
 			resp.Findings = append(resp.Findings, rpc.ScanFinding{Severity: "high", Title: "Scan did not finish", Count: 1, Detail: clipWP(msg)})
 			return
 		}
+		if strings.Contains(strings.ToLower(useful), "no malware found") {
+			scanned, _, _ := amwCountLine(useful)
+			resp.Summary = fmt.Sprintf("No malicious PHP was reported. %d files scanned.", scanned)
+			return
+		}
+		if scanned, detected, ok := amwCountLine(useful); ok {
+			if detected == 0 {
+				resp.Summary = fmt.Sprintf("No malicious PHP was reported. %d files scanned.", scanned)
+				return
+			}
+			resp.Summary = fmt.Sprintf("Malware detected: %d. %d files scanned.", detected, scanned)
+			resp.Findings = append(resp.Findings, rpc.ScanFinding{Severity: "high", Title: "Malware detected", Count: detected})
+			return
+		}
 		if strings.TrimSpace(useful) == "" {
 			resp.Summary = "AMWScan did not write a report."
 			return
 		}
-		resp.Summary = "AMWScan did not write a JSON report."
+		resp.Summary = "AMWScan did not finish: " + clipWP(lastUsefulLine(useful))
 		resp.Findings = append(resp.Findings, rpc.ScanFinding{Severity: "info", Title: "Scanner log", Count: 1, Detail: clipWP(useful)})
 		return
 	}
@@ -146,7 +161,7 @@ func amwFileFinding(path string, f amwScanFile) rpc.ScanFinding {
 }
 
 func parseAMWScanJSON(body string) (*amwScanReport, error) {
-	s := strings.TrimSpace(body)
+	s := strings.ToValidUTF8(strings.TrimSpace(body), "")
 	if i := strings.Index(s, "{"); i > 0 {
 		s = s[i:]
 	}
@@ -295,9 +310,70 @@ func amwScanTextRows(body string) []rpc.ScanFinding {
 				sev = "info"
 			}
 			out = append(out, rpc.ScanFinding{Severity: sev, Title: item + " · " + cur, Count: 1})
+			continue
+		}
+		if len(out) > 0 && (strings.HasPrefix(low, "description:") || strings.HasPrefix(low, "match:")) {
+			extra := strings.TrimSpace(t[strings.Index(t, ":")+1:])
+			if extra == "" {
+				continue
+			}
+			if out[len(out)-1].Detail != "" {
+				out[len(out)-1].Detail += " · "
+			}
+			out[len(out)-1].Detail = clipWP(out[len(out)-1].Detail + extra)
 		}
 	}
 	return out
+}
+
+var (
+	amwScannedRe  = regexp.MustCompile(`(?i)files scanned:\s*(\d+)`)
+	amwDetectedRe = regexp.MustCompile(`(?i)malware detected:\s*(\d+)`)
+	amwInfectedRe = regexp.MustCompile(`(?i)infected files:\s*(\d+)`)
+)
+
+func amwCountLine(body string) (scanned, detected int, ok bool) {
+	if m := amwScannedRe.FindStringSubmatch(body); len(m) == 2 {
+		scanned, _ = strconv.Atoi(m[1])
+	}
+	if m := amwDetectedRe.FindStringSubmatch(body); len(m) == 2 {
+		detected, _ = strconv.Atoi(m[1])
+		return scanned, detected, true
+	}
+	if m := amwInfectedRe.FindStringSubmatch(body); len(m) == 2 {
+		detected, _ = strconv.Atoi(m[1])
+		return scanned, detected, true
+	}
+	return scanned, 0, false
+}
+
+func collapseScanOutput(s string) string {
+	var b strings.Builder
+	cur := ""
+	for _, r := range s {
+		switch r {
+		case '\r':
+			cur = ""
+		case '\n':
+			b.WriteString(cur)
+			b.WriteByte('\n')
+			cur = ""
+		default:
+			cur += string(r)
+		}
+	}
+	b.WriteString(cur)
+	return b.String()
+}
+
+func lastUsefulLine(body string) string {
+	lines := strings.Split(body, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if t := strings.TrimSpace(lines[i]); t != "" {
+			return t
+		}
+	}
+	return body
 }
 
 func amwCanonSeverity(f amwCanonicalFinding) string {
@@ -363,17 +439,22 @@ func amwBannerLine(t string) bool {
 
 func amwFailLine(body string) string {
 	lines := strings.Split(body, "\n")
+	exitLine := ""
 	for i := len(lines) - 1; i >= 0; i-- {
 		t := strings.TrimSpace(lines[i])
 		low := strings.ToLower(t)
 		if t == "" {
 			continue
 		}
-		if strings.Contains(low, "timed out") || strings.Contains(low, "fatal") || strings.Contains(low, "uncaught") || strings.Contains(low, "allowed memory") || strings.Contains(low, "php parse error") {
+		if strings.Contains(low, "exit status") && exitLine == "" {
+			exitLine = t
+			continue
+		}
+		if strings.Contains(low, "timed out") || strings.Contains(low, "fatal") || strings.Contains(low, "uncaught") || strings.Contains(low, "allowed memory") || strings.Contains(low, "php parse error") || strings.Contains(low, "unable to write") || strings.Contains(low, "permission denied") || strings.HasPrefix(low, "error:") {
 			return t
 		}
 	}
-	return ""
+	return exitLine
 }
 
 func rawJSONString(b json.RawMessage) string {
