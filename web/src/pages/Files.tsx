@@ -58,7 +58,7 @@ import { SSHTerminal } from "@/components/SSHTerminal";
 const MonacoFileEditor = lazy(() => import("@/components/MonacoFileEditor").then((m) => ({ default: m.MonacoFileEditor })));
 
 type Account = { username: string };
-type Entry = { name: string; path: string; isDir: boolean; size: number; mode: string; modTime: string };
+type Entry = { name: string; path: string; isDir: boolean; size: number; partial?: boolean; mode: string; modTime: string };
 type Listing = { path: string; absPath?: string; root?: boolean; jail?: string; roots?: string[]; entries: Entry[] };
 type Clip = { items: { path: string; name: string; isDir: boolean }[]; op: "copy" | "move" };
 type TrashItem = { id: string; name: string; from: string; isDir: boolean; size: number; deleted: string; expires: string };
@@ -121,7 +121,8 @@ export function Files() {
   const [user, setUser] = useState("");
   const [ready, setReady] = useState(false);
   const [listing, setListing] = useState<Listing>({ path: "/", entries: [] });
-  const [dirSizes, setDirSizes] = useState<{ path: string; sizes: Record<string, number> }>({ path: "", sizes: {} });
+  const [dirSizes, setDirSizes] = useState<{ path: string; sizes: Record<string, number>; partial: Record<string, boolean> }>({ path: "", sizes: {}, partial: {} });
+  const sizeGen = useRef(0);
   const [sizing, setSizing] = useState(false);
   const [editPath, setEditPath] = useState("");
   const [absPath, setAbsPath] = useState("");
@@ -189,21 +190,42 @@ export function Files() {
   async function calcSizes() {
     if (!user || sizing) return;
     const path = listing.path;
-    const folderCount = listing.entries.filter((e) => e.isDir).length;
-    if (!folderCount) {
+    const folders = listing.entries.filter((e) => e.isDir);
+    if (!folders.length) {
       message.info("This folder has no folders to measure");
       return;
     }
+    const gen = ++sizeGen.current;
     setSizing(true);
+    setDirSizes({ path, sizes: {}, partial: {} });
+    let failed = false;
     try {
-      const data = await api.get<Listing>(`/api/files/sizes?user=${encodeURIComponent(user)}&path=${encodeURIComponent(path)}`);
-      const sizes: Record<string, number> = {};
-      for (const e of data.entries || []) sizes[e.path] = e.size || 0;
-      setDirSizes({ path: data.path || path, sizes });
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : "Could not calculate folder sizes");
+      for (const folder of folders) {
+        if (sizeGen.current !== gen) return;
+        try {
+          const data = await api.get<Listing>(
+            `/api/files/sizes?user=${encodeURIComponent(user)}&path=${encodeURIComponent(path)}&name=${encodeURIComponent(folder.name)}`,
+          );
+          if (sizeGen.current !== gen) return;
+          const entry = (data.entries || []).find((e) => e.isDir) || (data.entries || [])[0];
+          if (!entry) continue;
+          setDirSizes((prev) => {
+            if (prev.path !== (data.path || path)) return prev;
+            return {
+              path: data.path || path,
+              sizes: { ...prev.sizes, [entry.path]: entry.size || 0 },
+              partial: { ...prev.partial, [entry.path]: !!entry.partial },
+            };
+          });
+        } catch (e) {
+          if (!failed) {
+            failed = true;
+            message.error(e instanceof Error ? e.message : "Could not calculate folder sizes");
+          }
+        }
+      }
     } finally {
-      setSizing(false);
+      if (sizeGen.current === gen) setSizing(false);
     }
   }
 
@@ -233,6 +255,11 @@ export function Files() {
     const data = await api.get<Listing>(`/api/files?user=${encodeURIComponent(user)}&path=${encodeURIComponent(key)}`);
     setTreeKids((prev) => ({ ...prev, [data.path]: data.entries }));
   }
+
+  useEffect(() => {
+    sizeGen.current += 1;
+    setSizing(false);
+  }, [listing.path]);
 
   useEffect(() => {
     api
@@ -1237,7 +1264,10 @@ export function Files() {
                   align: "right" as const,
                   render: (_, e: Entry) => {
                     if (!e.isDir) return formatBytes(e.size || 0);
-                    if (dirSizes.path === listing.path && e.path in dirSizes.sizes) return formatBytes(dirSizes.sizes[e.path] || 0);
+                    if (dirSizes.path === listing.path && e.path in dirSizes.sizes) {
+                      const text = formatBytes(dirSizes.sizes[e.path] || 0);
+                      return dirSizes.partial[e.path] ? `> ${text}` : text;
+                    }
                     return "—";
                   },
                   sorter: (a: Entry, b: Entry) => {

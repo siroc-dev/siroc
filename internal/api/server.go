@@ -968,7 +968,7 @@ func (s *Server) fileSizes(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	out, err := s.Agent.FileDirSizes(username, r.URL.Query().Get("path"), root, s.fileRoots(username, root)...)
+	out, err := s.Agent.FileDirSizes(username, r.URL.Query().Get("path"), r.URL.Query().Get("name"), root, s.fileRoots(username, root)...)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return

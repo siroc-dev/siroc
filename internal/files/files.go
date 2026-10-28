@@ -58,6 +58,7 @@ type helperReq struct {
 	Mode     string   `json:"mode,omitempty"`
 	URL      string   `json:"url,omitempty"`
 	Query    string   `json:"query,omitempty"`
+	Name     string   `json:"name,omitempty"`
 	Home     string   `json:"home"`
 	Roots    []string `json:"roots,omitempty"`
 }
@@ -184,7 +185,14 @@ func (m *Manager) List(username, rel string, root bool) (*rpc.FileListResp, erro
 	return &rpc.FileListResp{Path: showPath, AbsPath: abs, Jail: jail, Roots: m.allow(), Entries: resp.Entries}, nil
 }
 
-func (m *Manager) DirSizes(username, rel string, root bool) (*rpc.FileListResp, error) {
+func (m *Manager) DirSizes(username, rel, name string, root bool) (*rpc.FileListResp, error) {
+	if name != "" {
+		var err error
+		name, err = cleanDirSizeName(name)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if root {
 		abs, err := resolveRoot(rel)
 		if err != nil {
@@ -193,7 +201,7 @@ func (m *Manager) DirSizes(username, rel string, root bool) (*rpc.FileListResp, 
 		if skipDirSize(abs) {
 			return nil, fmt.Errorf("that folder is not measured")
 		}
-		resp, err := runHelper(helperReq{Op: "dirsizes", Path: abs, Home: "/"})
+		resp, err := runHelper(helperReq{Op: "dirsizes", Path: abs, Home: "/", Name: name})
 		if err != nil {
 			return nil, err
 		}
@@ -209,7 +217,7 @@ func (m *Manager) DirSizes(username, rel string, root bool) (*rpc.FileListResp, 
 	if skipDirSize(abs) {
 		return nil, fmt.Errorf("that folder is not measured")
 	}
-	resp, err := m.call(uid, gid, helperReq{Op: "dirsizes", Path: abs, Home: home})
+	resp, err := m.call(uid, gid, helperReq{Op: "dirsizes", Path: abs, Home: home, Name: name})
 	if err != nil {
 		return nil, err
 	}
@@ -422,6 +430,28 @@ func runHelper(req helperReq) (helperResp, error) {
 		sortEntries(entries)
 		return helperResp{OK: true, Entries: entries}, nil
 	case "dirsizes":
+		if req.Name != "" {
+			name, err := cleanDirSizeName(req.Name)
+			if err != nil {
+				return helperResp{}, err
+			}
+			full := filepath.Join(req.Path, name)
+			info, err := os.Lstat(full)
+			if err != nil || skipDirSize(full) || !followsDir(full, info) {
+				return helperResp{}, fmt.Errorf("folder not found")
+			}
+			n, partial, err := dirBytes(full)
+			if err != nil {
+				return helperResp{}, err
+			}
+			return helperResp{OK: true, Entries: []rpc.FileEntry{{
+				Name:    name,
+				Path:    displayPath(req.Home, filepath.ToSlash(full)),
+				IsDir:   true,
+				Size:    n,
+				Partial: partial,
+			}}}, nil
+		}
 		fis, err := os.ReadDir(req.Path)
 		if err != nil {
 			return helperResp{}, err
@@ -437,15 +467,16 @@ func runHelper(req helperReq) (helperResp, error) {
 			if err != nil || skipDirSize(full) || !followsDir(full, info) {
 				continue
 			}
-			n, err := dirBytes(full)
+			n, partial, err := dirBytes(full)
 			if err != nil {
 				continue
 			}
 			entries = append(entries, rpc.FileEntry{
-				Name:  name,
-				Path:  displayPath(req.Home, filepath.ToSlash(full)),
-				IsDir: true,
-				Size:  n,
+				Name:    name,
+				Path:    displayPath(req.Home, filepath.ToSlash(full)),
+				IsDir:   true,
+				Size:    n,
+				Partial: partial,
 			})
 		}
 		if entries == nil {

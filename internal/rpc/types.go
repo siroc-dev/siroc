@@ -75,6 +75,7 @@ type FileReq struct {
 	Content  string   `json:"content,omitempty"`
 	URL      string   `json:"url,omitempty"`
 	Query    string   `json:"query,omitempty"`
+	Name     string   `json:"name,omitempty"`
 	Root     bool     `json:"root,omitempty"`
 	Roots    []string `json:"roots,omitempty"`
 }
@@ -90,6 +91,7 @@ type FileEntry struct {
 	Path    string `json:"path"`
 	IsDir   bool   `json:"isDir"`
 	Size    int64  `json:"size"`
+	Partial bool   `json:"partial,omitempty"`
 	Mode    string `json:"mode"`
 	ModTime string `json:"modTime"`
 }

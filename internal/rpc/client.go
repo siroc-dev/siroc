@@ -159,9 +159,11 @@ func (c *Client) FileList(username, path string, root bool, roots ...string) (*F
 	return &out, err
 }
 
-func (c *Client) FileDirSizes(username, path string, root bool, roots ...string) (*FileListResp, error) {
+func (c *Client) FileDirSizes(username, path, name string, root bool, roots ...string) (*FileListResp, error) {
 	var out FileListResp
-	err := c.do(http.MethodPost, "/files/sizes", fileBody(username, path, root, roots), &out)
+	req := fileBody(username, path, root, roots)
+	req.Name = name
+	err := c.do(http.MethodPost, "/files/sizes", req, &out)
 	return &out, err
 }
 

@@ -1919,7 +1919,7 @@ func fileHandler(m *files.Manager, op string) http.HandlerFunc {
 		case "list":
 			out, err = mgr.List(req.Username, req.Path, req.Root)
 		case "sizes":
-			out, err = mgr.DirSizes(req.Username, req.Path, req.Root)
+			out, err = mgr.DirSizes(req.Username, req.Path, req.Name, req.Root)
 		case "read":
 			out, err = mgr.Read(req.Username, req.Path, req.Root)
 		case "write":
