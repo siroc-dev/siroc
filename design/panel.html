@@ -292,7 +292,7 @@
             <h3>Accounts by disk</h3>
             <table><thead><tr><th>User</th><th>Sites</th><th>Disk</th><th>PHP</th></tr></thead>
             <tbody>
-              <tr><td>mangablackcat</td><td>3</td><td>4.8G</td><td>8.4</td></tr>
+              <tr><td>blog</td><td>3</td><td>4.8G</td><td>8.4</td></tr>
               <tr><td>shop</td><td>1</td><td>1.2G</td><td>8.3</td></tr>
               <tr><td>api</td><td>2</td><td>640M</td><td>8.4</td></tr>
             </tbody></table>
@@ -301,35 +301,35 @@
           <div class="row"><button class="solid">Add account</button><input class="field" placeholder="Search users" /></div>
           <article class="card"><table><thead><tr><th>User</th><th>Home</th><th>Quota</th><th>SSH</th><th></th></tr></thead>
           <tbody>
-            <tr><td>mangablackcat</td><td>/home/mangablackcat</td><td>10G</td><td><span class="tag ok">on</span></td><td><button class="ghost">Open</button></td></tr>
+            <tr><td>blog</td><td>/home/blog</td><td>10G</td><td><span class="tag ok">on</span></td><td><button class="ghost">Open</button></td></tr>
             <tr><td>shop</td><td>/home/shop</td><td>none</td><td><span class="tag ok">on</span></td><td><button class="ghost">Open</button></td></tr>
           </tbody></table></article>`,
         sites: `
           <div class="row"><button class="solid">Add website</button><input class="field" placeholder="Domain" /></div>
           <article class="card"><table><thead><tr><th>Domain</th><th>User</th><th>PHP</th><th>SSL</th><th>Deploy</th></tr></thead>
           <tbody>
-            <tr><td>mangablackcat.com</td><td>mangablackcat</td><td>8.4</td><td><span class="tag ok">Let's Encrypt</span></td><td><span class="tag">a1b2c3d Fix storage link</span></td></tr>
+            <tr><td>blog.example.com</td><td>blog</td><td>8.4</td><td><span class="tag ok">Let's Encrypt</span></td><td><span class="tag">a1b2c3d Fix storage link</span></td></tr>
             <tr><td>shop.example.com</td><td>shop</td><td>8.3</td><td><span class="tag warn">self-signed</span></td><td><span class="tag">—</span></td></tr>
           </tbody></table></article>
           <article class="card" style="margin-top:14px"><h3>Latest deploy</h3><div class="stat" style="font-size:18px">a1b2c3d4e5f6</div><div class="sub">Fix storage link · Ada · 2026-10-05 03:12</div></article>`,
         php: `
-          <div class="row"><select class="field"><option>mangablackcat</option></select><select class="field"><option>PHP 8.4</option><option>PHP 8.3</option></select><button class="solid">Save</button></div>
+          <div class="row"><select class="field"><option>blog</option></select><select class="field"><option>PHP 8.4</option><option>PHP 8.3</option></select><button class="solid">Save</button></div>
           <div class="grid g3">
             <article class="card"><h3>memory_limit</h3><input class="field" value="256M" /></article>
             <article class="card"><h3>upload_max_filesize</h3><input class="field" value="10G" /></article>
-            <article class="card"><h3>Base directory</h3><div class="stat" style="font-size:16px">/home/mangablackcat</div><div class="sub">open_basedir and chdir</div></article>
+            <article class="card"><h3>Base directory</h3><div class="stat" style="font-size:16px">/home/blog</div><div class="sub">open_basedir and chdir</div></article>
           </div>`,
         files: `
-          <div class="row"><input class="field" value="/home/mangablackcat/domains/mangablackcat.com/public_html" style="min-width:420px" /><button class="solid">Open</button><button class="ghost">Rename</button></div>
+          <div class="row"><input class="field" value="/home/blog/domains/blog.example.com/public_html" style="min-width:420px" /><button class="solid">Open</button><button class="ghost">Rename</button></div>
           <article class="card"><table><thead><tr><th>Name</th><th>Size</th><th>Modified</th></tr></thead>
           <tbody>
             <tr><td>index.php</td><td>1.2K</td><td>today</td></tr>
             <tr><td>cover.webp</td><td>240K</td><td>yesterday</td></tr>
             <tr><td>storage</td><td>link</td><td>today</td></tr>
           </tbody></table><p class="note">Page 1 of 3 · 50 files</p></article>`,
-        term: `<article class="card"><pre class="log">mangablackcat@host:~$ ls domains
-mangablackcat.com
-mangablackcat@host:~$ _</pre></article>`,
+        term: `<article class="card"><pre class="log">blog@host:~$ ls domains
+blog.example.com
+blog@host:~$ _</pre></article>`,
         soft: `
           <div class="grid g3">
             <article class="card"><h3>Nginx</h3><span class="tag ok">installed</span><div class="sub">1.31 · lua · VOD</div></article>
@@ -347,7 +347,7 @@ nginx: configuration test is successful</pre></article>`,
             <p class="note">Localhost is always ignored.</p>
           </article>`,
         logs: `
-          <div class="row"><select class="field"><option>mangablackcat.com</option></select><button class="ghost">Clear</button><button class="solid">Clear all</button></div>
+          <div class="row"><select class="field"><option>blog.example.com</option></select><button class="ghost">Clear</button><button class="solid">Clear all</button></div>
           <div class="split">
             <article class="card list"><button class="on">nginx access</button><button>nginx error</button><button>apache error</button><button>laravel.log</button></article>
             <article class="card"><pre class="log">10.0.0.8 - - [05/Oct/2026:03:01:00] "GET /latest HTTP/1.1" 200
@@ -421,6 +421,12 @@ nginx: configuration test is successful</pre></article>`,
         document.getElementById("shell").hidden = true;
         document.getElementById("login").hidden = false;
       };
+      const open = new URLSearchParams(location.search).get("view");
+      if (open && bodies[open]) {
+        document.getElementById("login").hidden = true;
+        document.getElementById("shell").hidden = false;
+        show(open);
+      }
     </script>
   </body>
 </html>

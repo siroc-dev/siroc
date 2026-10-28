@@ -65,65 +65,11 @@ Example `latest.json` (published to Cloudflare R2 by CI):
 
 ```json
 {
-  "version": "0.3.20",
-  "url": "https://get.siroc.dev/0.3.20/siroc-linux-amd64.tar.gz",
+  "version": "0.3.21",
+  "url": "https://get.siroc.dev/0.3.21/siroc-linux-amd64.tar.gz",
   "sha256": "optional"
 }
 ```
-
-## Website and auto-deploy
-
-The public site lives in `site/` and publishes to **siroc.dev** through **Cloudflare Workers Git** (not GitHub Actions). Release tarballs go to R2 bucket **siroc-cp** at **https://get.siroc.dev**.
-
-### One-time Cloudflare setup
-
-In the Cloudflare “Set up your application” form:
-
-| Field | Value |
-| --- | --- |
-| GitHub | `siroc-dev/siroc` |
-| Project name | `siroc` |
-| Build command | `bash scripts/stamp-site.sh` |
-| Deploy command | `npx wrangler deploy` |
-
-Then:
-
-1. Attach custom domain **siroc.dev** to the Worker (wrangler already routes `siroc.dev` and `www.siroc.dev`).
-2. On R2 bucket **siroc-cp**, add custom domain **get.siroc.dev** and allow public reads.
-3. GitHub Actions secrets for the **release** workflow (R2 S3 API only — do not put an R2 token in Wrangler):
-   - `CLOUDFLARE_ACCOUNT_ID`
-   - `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` from Cloudflare → R2 → **Manage R2 API Tokens** → Object Read & Write on `siroc-cp`
-
-Do not run `wrangler deploy` from GitHub Actions with that R2 token. It has no Workers access (`No access to the specified service`). Cloudflare Workers Git already deploys `site/` with the account login.
-
-### What CI does
-
-| Workflow | Trigger | Result |
-| --- | --- | --- |
-| Cloudflare Workers Git | push to `main` | publishes `site/` to siroc.dev |
-| `.github/workflows/site.yml` | site/VERSION change | stamps URLs and checks the public site files |
-| `.github/workflows/release.yml` | tag `v*` (or manual) | uploads `siroc-linux-amd64.tar.gz` and `latest.json` to `siroc-cp`, then deletes version prefixes older than the newest 3 |
-
-Tag a release after the token can write R2:
-
-```bash
-git tag v0.2.0
-git push origin v0.2.0
-```
-
-Or build and upload from this machine (same R2 objects as the release workflow). Put credentials in a gitignored `.r2.env` (`CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) and install AWS CLI v2.
-
-```powershell
-.\scripts\release-local.ps1
-```
-
-```bash
-bash scripts/release-local.sh
-```
-
-`-SkipBuild` / `--skip-build` only uploads an existing `dist/siroc-linux-amd64.tar.gz`. `-SkipUpload` / `--skip-upload` only builds the package.
-
-In the panel, set the update channel to `https://get.siroc.dev`.
 
 ## Test with Docker
 
