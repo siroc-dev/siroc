@@ -9,6 +9,19 @@ func TestRestorePathOK(t *testing.T) {
 	if !RestorePathOK("/var/backups/offsite/alice.tar.gz", "") {
 		t.Fatal("local dest path")
 	}
+	got, err := UserLocalDir("alice", "/home/alice/backups")
+	if err != nil || got != "/home/alice/backups" {
+		t.Fatalf("%s %v", got, err)
+	}
+	if got, err = UserLocalDir("alice", "backups"); err != nil || got != "/home/alice/backups" {
+		t.Fatalf("relative %s %v", got, err)
+	}
+	if _, err = UserLocalDir("alice", "/var/backups/offsite"); err == nil {
+		t.Fatal("outside home")
+	}
+	if _, err = UserLocalDir("alice", "/home/alice/../bob"); err == nil {
+		t.Fatal("escaped home")
+	}
 	if !RestorePathOK("/home/alice/alice.tar.gz", "alice") {
 		t.Fatal("home path")
 	}

@@ -10,8 +10,8 @@ func (s *Store) CreateBackupDest(d BackupDest) (*BackupDest, error) {
 	if d.UseSSL {
 		ssl = 1
 	}
-	res, err := s.DB.Exec(`INSERT INTO backup_dests (name, kind, host, port, user_name, path, bucket, region, endpoint, prefix, use_ssl, password_enc, secret_enc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		d.Name, d.Kind, d.Host, d.Port, d.User, d.Path, d.Bucket, d.Region, d.Endpoint, d.Prefix, ssl, d.PasswordEnc, d.SecretEnc)
+	res, err := s.DB.Exec(`INSERT INTO backup_dests (name, kind, host, port, user_name, path, bucket, region, endpoint, prefix, use_ssl, password_enc, secret_enc, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.Name, d.Kind, d.Host, d.Port, d.User, d.Path, d.Bucket, d.Region, d.Endpoint, d.Prefix, ssl, d.PasswordEnc, d.SecretEnc, d.Owner)
 	if err != nil {
 		return nil, err
 	}
@@ -23,8 +23,8 @@ func (s *Store) GetBackupDest(id int64) (*BackupDest, error) {
 	d := &BackupDest{}
 	var ssl int
 	var created string
-	err := s.DB.QueryRow(`SELECT id, name, kind, host, port, user_name, path, bucket, region, endpoint, prefix, use_ssl, password_enc, secret_enc, created_at FROM backup_dests WHERE id = ?`, id).
-		Scan(&d.ID, &d.Name, &d.Kind, &d.Host, &d.Port, &d.User, &d.Path, &d.Bucket, &d.Region, &d.Endpoint, &d.Prefix, &ssl, &d.PasswordEnc, &d.SecretEnc, &created)
+	err := s.DB.QueryRow(`SELECT id, name, kind, host, port, user_name, path, bucket, region, endpoint, prefix, use_ssl, password_enc, secret_enc, owner, created_at FROM backup_dests WHERE id = ?`, id).
+		Scan(&d.ID, &d.Name, &d.Kind, &d.Host, &d.Port, &d.User, &d.Path, &d.Bucket, &d.Region, &d.Endpoint, &d.Prefix, &ssl, &d.PasswordEnc, &d.SecretEnc, &d.Owner, &created)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func (s *Store) GetBackupDest(id int64) (*BackupDest, error) {
 }
 
 func (s *Store) ListBackupDests() ([]BackupDest, error) {
-	rows, err := s.DB.Query(`SELECT id, name, kind, host, port, user_name, path, bucket, region, endpoint, prefix, use_ssl, password_enc, secret_enc, created_at FROM backup_dests ORDER BY name`)
+	rows, err := s.DB.Query(`SELECT id, name, kind, host, port, user_name, path, bucket, region, endpoint, prefix, use_ssl, password_enc, secret_enc, owner, created_at FROM backup_dests ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +45,7 @@ func (s *Store) ListBackupDests() ([]BackupDest, error) {
 		var d BackupDest
 		var ssl int
 		var created string
-		if err := rows.Scan(&d.ID, &d.Name, &d.Kind, &d.Host, &d.Port, &d.User, &d.Path, &d.Bucket, &d.Region, &d.Endpoint, &d.Prefix, &ssl, &d.PasswordEnc, &d.SecretEnc, &created); err != nil {
+		if err := rows.Scan(&d.ID, &d.Name, &d.Kind, &d.Host, &d.Port, &d.User, &d.Path, &d.Bucket, &d.Region, &d.Endpoint, &d.Prefix, &ssl, &d.PasswordEnc, &d.SecretEnc, &d.Owner, &created); err != nil {
 			return nil, err
 		}
 		d.UseSSL = ssl == 1

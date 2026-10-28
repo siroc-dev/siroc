@@ -107,7 +107,7 @@ function cronWhen(c: Cron) {
   return `Daily at ${hm}`;
 }
 
-export function Backup({ admin }: { admin?: boolean }) {
+export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
   const { message } = App.useApp();
   const [params, setParams] = useSearchParams();
   const tab = admin && params.get("tab") === "rclone" ? "rclone" : "archives";
@@ -435,8 +435,17 @@ export function Backup({ admin }: { admin?: boolean }) {
             />
           </Form.Item>
           {kind === "local" ? (
-            <Form.Item name="path" label="Directory" rules={[{ required: true }]}>
-              <PathPicker user="root" dirsOnly placeholder="/var/backups/offsite" />
+            <Form.Item
+              name="path"
+              label="Directory"
+              extra={admin ? undefined : "Must stay inside your home directory."}
+              rules={[{ required: true }]}
+            >
+              <PathPicker
+                user={admin ? "root" : user || accounts[0]?.username || ""}
+                dirsOnly
+                placeholder={admin ? "/var/backups/offsite" : `/home/${user || accounts[0]?.username || ""}/backups`}
+              />
             </Form.Item>
           ) : null}
           {kind === "ftp" ? (
@@ -523,7 +532,7 @@ export function Backup({ admin }: { admin?: boolean }) {
           <Form.Item name="username" label="Account" rules={[{ required: true }]}>
             <Select
               options={[
-                { value: "*", label: "All accounts" },
+                ...(admin ? [{ value: "*", label: "All accounts" }] : []),
                 ...accounts.map((a) => ({ value: a.username, label: a.username })),
               ]}
             />
@@ -575,7 +584,7 @@ export function Backup({ admin }: { admin?: boolean }) {
           <Form.Item name="username" label="Account" rules={[{ required: true }]}>
             <Select
               options={[
-                { value: "*", label: "All accounts (one file each)" },
+                ...(admin ? [{ value: "*", label: "All accounts (one file each)" }] : []),
                 ...accounts.map((a) => ({ value: a.username, label: a.username })),
               ]}
             />

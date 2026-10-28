@@ -152,7 +152,7 @@ export function Security() {
           Security
         </Typography.Title>
         <Typography.Paragraph type="secondary">
-          UFW and Fail2ban install with the base stack. The firewall turns on once and keeps SSH 22, FTP 21, HTTP 80, HTTPS 443, the panel port, and the FTP passive range open. A whitelist address is always allowed. A blacklist address is denied before those port rules.
+          Install UFW and Fail2ban from Software. Once UFW is installed, the firewall turns on once and keeps SSH 22, FTP 21, HTTP 80, HTTPS 443, the panel port, and the FTP passive range open. A whitelist address is always allowed. A blacklist address is denied before those port rules.
         </Typography.Paragraph>
       </div>
 
@@ -263,7 +263,7 @@ export function Security() {
             />
           </Space>
         ) : (
-          <Typography.Text type="secondary">UFW installs with the base stack and turns on the first time it is available.</Typography.Text>
+          <Typography.Text type="secondary">Install UFW from Software. It turns on the first time it is available.</Typography.Text>
         )}
       </Card>
             ),
@@ -392,7 +392,7 @@ export function Security() {
                 }
               >
                 {!fail2ban?.installed ? (
-                  <Typography.Text type="secondary">Fail2ban installs with the base stack. After install it watches panel login, SSH, FTP, MySQL/MariaDB, Redis, Nginx, and Apache.</Typography.Text>
+                  <Typography.Text type="secondary">Install Fail2ban from Software. After install it watches panel login, SSH, FTP, MySQL/MariaDB, Redis, Nginx, and Apache.</Typography.Text>
                 ) : (
                   <Space direction="vertical" style={{ width: "100%" }} size="middle">
                     <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>

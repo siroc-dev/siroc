@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useMatch, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import { MoreOutlined } from "@ant-design/icons";
-import { Alert, App, Button, Card, Col, Dropdown, Flex, Form, Input, InputNumber, Modal, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Col, Dropdown, Form, Input, InputNumber, Modal, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api, RequestError } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { asList } from "@/lib/lists";
@@ -14,6 +14,7 @@ import { ArtisanRun, type ArtisanCmd } from "@/components/ArtisanRun";
 import { LaravelQueues, type LaravelQueueRow, type LaravelSchedule } from "@/components/LaravelQueues";
 import { SiteLogs } from "@/components/SiteLogs";
 import { SiteWAFRules } from "@/components/SiteWAFRules";
+import { AccountWAF } from "@/components/AccountWAF";
 import { SiteGit } from "@/components/SiteGit";
 import { SiteSettings, isSiteSection, type SiteOptions, type SiteSection } from "@/components/SiteSettings";
 import { PathPicker } from "@/components/PathPicker";
@@ -382,7 +383,6 @@ export function Sites() {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [accountCrons, setAccountCrons] = useState<{ id: number; account: string; enabled: boolean }[]>([]);
   const [backupBusy, setBackupBusy] = useState(false);
-  const [ruleSiteId, setRuleSiteId] = useState(0);
   const [ready, setReady] = useState(false);
 
   async function load() {
@@ -453,20 +453,6 @@ export function Sites() {
 
   function accountWAFOn(username: string) {
     return accounts.find((a) => a.username === username)?.wafEnabled !== false;
-  }
-
-  async function setAccountWAF(username: string, enabled: boolean) {
-    const key = `acc:${username}`;
-    setWafBusy(key);
-    try {
-      await api.put(`/api/accounts/${encodeURIComponent(username)}/waf`, { enabled });
-      message.success(enabled ? "ModSecurity enabled for this account" : "ModSecurity disabled for this account");
-      await load();
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : "Failed");
-    } finally {
-      setWafBusy("");
-    }
   }
 
   async function setSiteWAF(s: Site, enabled: boolean) {
@@ -1170,53 +1156,7 @@ export function Sites() {
     </Card>
   );
 
-  const ruleSite = sites.find((s) => s.id === ruleSiteId) || sites[0];
-
-  const wafTab = (
-    <Space direction="vertical" size={16} style={{ width: "100%" }}>
-    <Card title="ModSecurity WAF">
-      <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-        Blocks common attacks on Apache (SQL injection, XSS). The global engine stays under Security. Turn WAF off for your whole account, or disable it on a single website in the table.
-      </Typography.Paragraph>
-      {accounts.length ? (
-        <Space direction="vertical" style={{ width: "100%" }} size="middle">
-          {accounts.map((a) => (
-            <Flex key={a.username} align="center" justify="space-between" gap={16}>
-              <div>
-                <Typography.Text strong>{admin ? a.username : "Protect my websites"}</Typography.Text>
-                <div>
-                  <Typography.Text type="secondary">
-                    {a.wafEnabled !== false ? "On for this account" : "Off for this account — site switches are disabled"}
-                  </Typography.Text>
-                </div>
-              </div>
-              <Switch
-                checked={a.wafEnabled !== false}
-                loading={wafBusy === `acc:${a.username}`}
-                onChange={(v) => void setAccountWAF(a.username, v)}
-              />
-            </Flex>
-          ))}
-        </Space>
-      ) : (
-        <Typography.Text type="secondary">Create a hosting account first.</Typography.Text>
-      )}
-    </Card>
-    <Card title="Rule exceptions">
-      <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-        Disable a rule on one website when it blocks a real request. The same rule stays on for every other site.
-      </Typography.Paragraph>
-      <Select
-        style={{ minWidth: 260, marginBottom: 12 }}
-        placeholder="Select a website"
-        value={ruleSite?.id}
-        options={sites.map((s) => ({ value: s.id, label: siteLabel(s) }))}
-        onChange={setRuleSiteId}
-      />
-      {ruleSite ? <SiteWAFRules siteId={ruleSite.id} domain={ruleSite.domain} /> : <Typography.Text type="secondary">Add a website first.</Typography.Text>}
-    </Card>
-    </Space>
-  );
+  const wafTab = <AccountWAF admin onChanged={() => void load()} />;
 
   if (!ready) return <PageSkeleton />;
 
@@ -1283,10 +1223,7 @@ export function Sites() {
           ]}
         />
       ) : openSite ? null : (
-        <>
-          {wafTab}
-          {sitesTable}
-        </>
+        sitesTable
       )}
 
       <Modal

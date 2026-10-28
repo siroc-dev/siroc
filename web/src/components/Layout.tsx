@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { elapsed, jobLabel, type InstallQueue } from "@/lib/jobs";
 import { canUsePath, spaClick } from "@/lib/nav";
 import { Mark } from "@/components/Mark";
+import { StackPrompt } from "@/components/StackPrompt";
 import { useBrand } from "@/components/ThemeProvider";
 
 const { Sider, Content, Header } = AntLayout;
@@ -30,7 +31,19 @@ const items = [
   { key: "/apache", label: "Status", blurb: "Nginx, Apache, PHP-FPM, and the database." },
 ];
 
-export function Layout({ user, admin, version }: { user: string; admin?: boolean; version?: string }) {
+export function Layout({
+  user,
+  admin,
+  version,
+  stackPrompt,
+  onStackDone,
+}: {
+  user: string;
+  admin?: boolean;
+  version?: string;
+  stackPrompt?: boolean;
+  onStackDone?: () => void;
+}) {
   const nav = useNavigate();
   const loc = useLocation();
   const { message } = App.useApp();
@@ -216,6 +229,7 @@ export function Layout({ user, admin, version }: { user: string; admin?: boolean
           </Form.Item>
         </Form>
       </Modal>
+      <StackPrompt open={!!stackPrompt} onDone={() => onStackDone?.()} />
     </AntLayout>
   );
 }

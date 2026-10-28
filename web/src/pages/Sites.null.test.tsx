@@ -52,7 +52,7 @@ describe("Sites page", () => {
     unmount();
   });
 
-  it("lets a hosting user toggle account and per-site WAF", async () => {
+  it("lets a hosting user toggle per-site WAF from the website list", async () => {
     vi.mocked(api.get).mockImplementation(async (url: string) => {
       if (url === "/api/accounts") return [{ username: "a01", wafEnabled: true }];
       if (url === "/api/sites") {
@@ -65,14 +65,13 @@ describe("Sites page", () => {
     vi.mocked(api.put).mockResolvedValue({ ok: true });
     const { unmount } = renderSites(false, "a01");
     await waitFor(() => {
-      expect(screen.getByText("Protect my websites")).toBeTruthy();
+      expect(screen.getByRole("link", { name: "a01.test" })).toBeTruthy();
     });
-    expect(screen.getByRole("link", { name: "a01.test" })).toBeTruthy();
+    expect(screen.queryByText("Protect my websites")).toBeNull();
     const switches = screen.getAllByRole("switch");
-    expect(switches.length).toBeGreaterThanOrEqual(2);
     switches[0].click();
     await waitFor(() => {
-      expect(api.put).toHaveBeenCalledWith("/api/accounts/a01/waf", { enabled: false });
+      expect(api.put).toHaveBeenCalledWith("/api/sites/1/waf", { enabled: false });
     });
     unmount();
   });

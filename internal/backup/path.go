@@ -1,6 +1,33 @@
 package backup
 
-import "strings"
+import (
+	"fmt"
+	"path"
+	"strings"
+
+	"github.com/siroc-dev/siroc/internal/validate"
+)
+
+// UserLocalDir is a backup directory inside /home/<username>.
+// A relative path is joined onto that home. Anything else is rejected.
+func UserLocalDir(username, raw string) (string, error) {
+	if err := validate.LinuxUser(username); err != nil {
+		return "", err
+	}
+	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if raw == "" || strings.ContainsRune(raw, 0) {
+		return "", fmt.Errorf("directory is required")
+	}
+	home := "/home/" + username
+	clean := path.Clean(raw)
+	if !strings.HasPrefix(raw, "/") {
+		clean = path.Clean(home + "/" + raw)
+	}
+	if clean != home && !strings.HasPrefix(clean, home+"/") {
+		return "", fmt.Errorf("local directory must stay inside %s", home)
+	}
+	return clean, nil
+}
 
 func RestorePathOK(src, username string) bool {
 	src = strings.ReplaceAll(strings.TrimSpace(src), "\\", "/")

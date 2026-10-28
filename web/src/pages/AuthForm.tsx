@@ -4,8 +4,6 @@ import { api, RequestError, type Captcha } from "@/lib/api";
 import { Mark } from "@/components/Mark";
 import { useBrand } from "@/components/ThemeProvider";
 
-export type SetupStackPkg = { name: string; title: string; version: string };
-
 const loginMemoryKey = "siroc.login";
 
 type SavedLogin = { username: string; password: string };
@@ -38,7 +36,6 @@ export function AuthForm({
   endpoint,
   extra,
   setup,
-  stack,
   onDone,
 }: {
   title: string;
@@ -47,7 +44,6 @@ export function AuthForm({
   endpoint: string;
   extra?: Record<string, string>;
   setup?: boolean;
-  stack?: SetupStackPkg[];
   onDone: () => void;
 }) {
   const [error, setError] = useState("");
@@ -193,14 +189,8 @@ export function AuthForm({
               type="info"
               showIcon
               style={{ marginBottom: 16 }}
-              message="Required stack"
-              description={
-                stack?.length
-                  ? `After setup, Siroc installs ${stack
-                      .map((p) => (p.version ? `${p.title} ${p.version}` : p.title))
-                      .join(", ")}.`
-                  : "After setup, Siroc installs Nginx, Apache, PHP-FPM 8.4, and MariaDB 11."
-              }
+              message="Software"
+              description="Nothing is installed during setup. The first sign-in recommends Nginx, Apache, MariaDB or MySQL, Redis, Let's Encrypt, and FTP."
             />
           ) : null}
           {captcha ? (

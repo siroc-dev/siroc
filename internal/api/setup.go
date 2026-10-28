@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/siroc-dev/siroc/internal/auth"
 	"github.com/siroc-dev/siroc/internal/setup"
@@ -130,64 +129,51 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 		resp["leMessage"] = leErr.Error()
 		log.Printf("setup: Let's Encrypt account: %v", leErr)
 	}
-	go s.enqueueBaseStack()
+	if err := s.Store.SetSetting(stackPromptSetting, "pending"); err != nil {
+		log.Printf("setup: stack prompt: %v", err)
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Server) enqueueBaseStack() {
-	for i := 0; i < 30; i++ {
-		if _, err := s.Agent.Health(); err == nil {
-			break
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	for _, it := range software.BaseStack() {
-		if s.baseStackPresent(it.Name, it.Version) && !s.baseStackFailed(it.Name, it.Version) {
-			continue
-		}
-		if _, err := s.enqueueInstall(it.Name, it.Version); err != nil {
-			if strings.Contains(err.Error(), "already queued") || strings.Contains(err.Error(), "already installing") {
-				continue
-			}
-			log.Printf("base stack %s %s: %v", it.Name, it.Version, err)
-			continue
-		}
-		log.Printf("base stack queued %s %s", it.Name, it.Version)
-	}
+const stackPromptSetting = "stack_prompt"
+
+func (s *Server) stackPromptPending() bool {
+	v, err := s.Store.Setting(stackPromptSetting)
+	return err == nil && v == "pending"
 }
 
-func (s *Server) baseStackPresent(name, version string) bool {
-	switch name {
-	case "php":
-		list, err := s.Agent.PHPVersions()
-		if err != nil {
-			return false
-		}
-		want := version
-		if want == "" {
-			want = software.BasePHPVersion
-		}
-		for _, v := range list {
-			if v == want {
-				return true
-			}
-		}
-		return false
-	default:
-		pkgs, err := s.Agent.Packages()
-		if err != nil {
-			return false
-		}
-		for _, p := range pkgs {
-			if p.Name == name && p.Installed {
-				return true
-			}
-		}
-		return false
+func (s *Server) acceptStack(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(currentUser(r)) {
+		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
+		return
 	}
-}
-
-func (s *Server) baseStackFailed(name, version string) bool {
-	st, err := s.Store.LastInstallStatus(name, version)
-	return err == nil && st == "error"
+	var body struct {
+		Skip bool   `json:"skip"`
+		DB   string `json:"db"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if !body.Skip {
+		pkgs, err := software.RecommendedInstall(body.DB)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		for _, it := range pkgs {
+			if _, err := s.enqueueInstall(it.Name, it.Version); err != nil {
+				msg := err.Error()
+				if strings.Contains(msg, "already queued") || strings.Contains(msg, "already installing") {
+					continue
+				}
+				writeErr(w, http.StatusBadRequest, err)
+				return
+			}
+		}
+	}
+	if err := s.Store.SetSetting(stackPromptSetting, "done"); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

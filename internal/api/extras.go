@@ -76,19 +76,33 @@ func (s *Server) listBackupDests(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	if !isAdmin(currentUser(r)) {
+		owner := currentUser(r).Username
+		filtered := list[:0]
+		for _, d := range list {
+			if d.Owner == owner {
+				filtered = append(filtered, d)
+			}
+		}
+		list = filtered
+		if list == nil {
+			list = []store.BackupDest{}
+		}
+	}
 	writeJSON(w, http.StatusOK, list)
 }
 
 func (s *Server) createBackupDest(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(currentUser(r)) {
-		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
-		return
-	}
 	var body backupDestBody
 	if !decode(w, r, &body) {
 		return
 	}
 	d, err := s.fillBackupDest(body, nil)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	d, err = s.scopeBackupDest(r, d)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -102,10 +116,6 @@ func (s *Server) createBackupDest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateBackupDest(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(currentUser(r)) {
-		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
-		return
-	}
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
@@ -116,11 +126,21 @@ func (s *Server) updateBackupDest(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("destination not found"))
 		return
 	}
+	if err := s.backupDestOwner(r, prev); err != nil {
+		writeErr(w, http.StatusForbidden, err)
+		return
+	}
 	var body backupDestBody
 	if !decode(w, r, &body) {
 		return
 	}
 	d, err := s.fillBackupDest(body, prev)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	d.Owner = prev.Owner
+	d, err = s.scopeBackupDest(r, d)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -213,6 +233,32 @@ func (s *Server) fillBackupDest(body backupDestBody, prev *store.BackupDest) (st
 		}
 		d.SecretEnc = enc
 	}
+	return d, nil
+}
+
+func (s *Server) backupDestOwner(r *http.Request, d *store.BackupDest) error {
+	if isAdmin(currentUser(r)) {
+		return nil
+	}
+	if d == nil || d.Owner != currentUser(r).Username {
+		return fmt.Errorf("destination not found")
+	}
+	return nil
+}
+
+func (s *Server) scopeBackupDest(r *http.Request, d store.BackupDest) (store.BackupDest, error) {
+	if isAdmin(currentUser(r)) {
+		return d, nil
+	}
+	d.Owner = currentUser(r).Username
+	if d.Kind != "local" {
+		return d, nil
+	}
+	dir, err := backup.UserLocalDir(d.Owner, d.Path)
+	if err != nil {
+		return d, err
+	}
+	d.Path = dir
 	return d, nil
 }
 
@@ -571,13 +617,18 @@ func (s *Server) listBackupJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteBackupDest(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(currentUser(r)) {
-		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
-		return
-	}
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
+		return
+	}
+	prev, err := s.Store.GetBackupDest(id)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("destination not found"))
+		return
+	}
+	if err := s.backupDestOwner(r, prev); err != nil {
+		writeErr(w, http.StatusForbidden, err)
 		return
 	}
 	n, err := s.Store.CountBackupCronsByDest(id)
@@ -613,6 +664,16 @@ func (s *Server) runBackup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, http.StatusNotFound, fmt.Errorf("destination not found"))
 		return
+	}
+	if err := s.backupDestOwner(r, dest); err != nil {
+		writeErr(w, http.StatusForbidden, err)
+		return
+	}
+	if !isAdmin(currentUser(r)) && dest.Kind == "local" {
+		if _, err := backup.UserLocalDir(currentUser(r).Username, dest.Path); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
 	}
 	names, ok := s.backupUsernames(w, r, body.Username)
 	if !ok {

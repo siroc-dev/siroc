@@ -76,6 +76,15 @@ func TestApplyWAFStateDefaultsTurnsOffExistingPacks(t *testing.T) {
 	if !foundWin {
 		t.Fatal("windows rule ids not merged")
 	}
+	has920450 := false
+	for _, id := range st.DisabledIDs {
+		if id == 920450 {
+			has920450 = true
+		}
+	}
+	if !has920450 {
+		t.Fatal("rule 920450 not merged")
+	}
 	if !has941100 || !has941160 {
 		t.Fatal("xss rule ids not merged")
 	}

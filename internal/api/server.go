@@ -72,6 +72,7 @@ func (s *Server) Router() http.Handler {
 		r.Use(s.requireAuth)
 		r.Get("/api/me", s.me)
 		r.Post("/api/me/password", s.changePassword)
+		r.Post("/api/me/stack", s.acceptStack)
 		r.Post("/api/me/return", s.returnAdmin)
 		r.Get("/api/dashboard", s.dashboard)
 		r.Get("/api/usage", s.userUsage)
@@ -316,7 +317,6 @@ func (s *Server) ListenAndServe() error {
 	go s.runMigrateApply()
 	go s.applyStoredSites()
 	s.prepareFirstRun()
-	go s.enqueueBaseStack()
 	h := s.Router()
 	if s.Cfg.DisableTLS {
 		log.Printf("siroc-panel listening http://%s", s.Cfg.ListenAddr)
@@ -453,6 +453,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		"version":      version.Current(),
 		"timezone":     serverTimezone(),
 		"agentOk":      agentOK,
+		"stackPrompt":  isAdmin(u) && s.stackPromptPending(),
 	})
 }
 

@@ -124,6 +124,7 @@ type BackupDest struct {
 	HasSecret   bool      `json:"hasSecret"`
 	PasswordEnc string    `json:"-"`
 	SecretEnc   string    `json:"-"`
+	Owner       string    `json:"owner,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
@@ -252,6 +253,7 @@ CREATE TABLE IF NOT EXISTS settings (
 		`ALTER TABLE sites ADD COLUMN site_opts_json TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE sites ADD COLUMN nginx_conf TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE sites ADD COLUMN apache_conf TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE backup_dests ADD COLUMN owner TEXT NOT NULL DEFAULT ''`,
 	} {
 		_, _ = s.DB.Exec(col)
 	}
@@ -289,6 +291,7 @@ CREATE TABLE IF NOT EXISTS backup_dests (
   use_ssl INTEGER NOT NULL DEFAULT 1,
   password_enc TEXT NOT NULL DEFAULT '',
   secret_enc TEXT NOT NULL DEFAULT '',
+  owner TEXT NOT NULL DEFAULT '',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS backup_jobs (

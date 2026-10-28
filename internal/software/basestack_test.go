@@ -17,3 +17,34 @@ func TestBaseStack(t *testing.T) {
 		t.Fatalf("tail %+v", got[4:])
 	}
 }
+
+func TestRecommendedInstall(t *testing.T) {
+	maria, err := RecommendedInstall("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mysql, err := RecommendedInstall("mysql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RecommendedInstall("both"); err == nil {
+		t.Fatal("expected error")
+	}
+	want := []string{"nginx", "apache", "mariadb", "redis", "certbot", "vsftpd"}
+	if len(maria) != len(want) {
+		t.Fatalf("len %d", len(maria))
+	}
+	for i, name := range want {
+		if maria[i].Name != name {
+			t.Fatalf("maria[%d]=%s", i, maria[i].Name)
+		}
+	}
+	if maria[2].Version != "11.4" || mysql[2].Name != "mysql" || mysql[2].Version != "8.4" {
+		t.Fatalf("db maria=%+v mysql=%+v", maria[2], mysql[2])
+	}
+	for _, pkg := range mysql {
+		if pkg.Name == "mariadb" {
+			t.Fatal("mysql choice also queued mariadb")
+		}
+	}
+}

@@ -20,6 +20,7 @@ import { Tools } from "@/pages/Tools";
 import { OSUpdates } from "@/pages/OSUpdates";
 import { Databases } from "@/pages/Databases";
 import { Security } from "@/pages/Security";
+import { UserSecurity } from "@/pages/UserSecurity";
 import { Logs } from "@/pages/Logs";
 import { PHP } from "@/pages/PHP";
 import { Monitoring } from "@/pages/Monitoring";
@@ -49,29 +50,30 @@ export function App() {
   const [needed, setNeeded] = useState(false);
   const [setupOK, setSetupOK] = useState(false);
   const [setupToken, setSetupToken] = useState("");
-  const [setupStack, setSetupStack] = useState<{ name: string; title: string; version: string }[]>([]);
   const [user, setUser] = useState<string | null>(null);
   const [admin, setAdmin] = useState(false);
   const [version, setVersion] = useState("");
+  const [stackPrompt, setStackPrompt] = useState(false);
 
   async function boot() {
     const token = setupTokenFromURL();
     setSetupToken(token);
     const path = token ? `/api/setup/status?token=${encodeURIComponent(token)}` : "/api/setup/status";
-    const s = await api.get<{ needed: boolean; authorized?: boolean; stack?: { name: string; title: string; version: string }[] }>(path);
+    const s = await api.get<{ needed: boolean; authorized?: boolean }>(path);
     setNeeded(s.needed);
     setSetupOK(!!s.authorized);
-    setSetupStack(s.stack || []);
     if (!s.needed) {
       try {
-        const me = await api.get<{ username: string; admin?: boolean; version?: string; timezone?: string }>("/api/me");
+        const me = await api.get<{ username: string; admin?: boolean; version?: string; timezone?: string; stackPrompt?: boolean }>("/api/me");
         setUser(me.username);
         setAdmin(!!me.admin);
         setVersion(me.version || "");
+        setStackPrompt(!!me.stackPrompt);
         setPanelTimezone(me.timezone);
       } catch {
         setUser(null);
         setAdmin(false);
+        setStackPrompt(false);
       }
     }
     setReady(true);
@@ -113,7 +115,6 @@ export function App() {
         endpoint="/api/setup"
         extra={{ token: setupToken }}
         setup
-        stack={setupStack}
         onDone={() => {
           setNeeded(false);
           setSetupOK(false);
@@ -147,14 +148,14 @@ export function App() {
           )
         }
       />
-      <Route element={user ? <Layout user={user} admin={admin} version={version} /> : <Navigate to="/login" replace />}>
+      <Route element={user ? <Layout user={user} admin={admin} version={version} stackPrompt={stackPrompt} onStackDone={() => setStackPrompt(false)} /> : <Navigate to="/login" replace />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/accounts" element={<AdminOnly admin={admin}><Accounts /></AdminOnly>} />
         <Route path="/files" element={<Files />} />
         <Route path="/terminal" element={<TerminalPage />} />
         <Route path="/software" element={<AdminOnly admin={admin}><Software /></AdminOnly>} />
         <Route path="/supervisor" element={<AdminOnly admin={admin}><Supervisor /></AdminOnly>} />
-        <Route path="/security" element={<AdminOnly admin={admin}><Security /></AdminOnly>} />
+        <Route path="/security" element={admin ? <Security /> : <UserSecurity />} />
         <Route path="/logs" element={<Logs />} />
         <Route path="/scan-logs" element={<Navigate to="/logs?tab=scan" replace />} />
         <Route path="/sites" element={<Sites />} />
@@ -162,7 +163,7 @@ export function App() {
         <Route path="/sites/:id" element={<Sites />} />
         <Route path="/php" element={<PHP />} />
         <Route path="/databases" element={<Databases />} />
-        <Route path="/backup" element={<Backup admin={admin} />} />
+        <Route path="/backup" element={<Backup admin={admin} user={user || ""} />} />
         <Route path="/migrate" element={<AdminOnly admin={admin}><Migrate /></AdminOnly>} />
         <Route path="/rclone" element={<Navigate to="/backup?tab=rclone" replace />} />
         <Route path="/tools" element={<AdminOnly admin={admin}><Tools /></AdminOnly>} />

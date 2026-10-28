@@ -4,7 +4,7 @@ import { ADMIN_ONLY_PATHS, canUsePath, spaClick } from "./nav";
 
 describe("nav", () => {
   it("lets hosting users keep the pages they can use", () => {
-    for (const path of ["/", "/sites", "/sites/1", "/sites/1/settings", "/php", "/files", "/terminal", "/databases", "/backup", "/logs"]) {
+    for (const path of ["/", "/sites", "/sites/1", "/sites/1/settings", "/php", "/files", "/terminal", "/databases", "/backup", "/logs", "/security"]) {
       expect(canUsePath(false, path)).toBe(true);
     }
   });
