@@ -281,6 +281,13 @@ func disableUserRedis(username string) error {
 }
 
 func writeUserRedisConf(username string, port int, pass string, maxMB int64) error {
+	// The base dir must be owned by and traversable for the redis user, or
+	// redis-server cannot chdir into its per-account subdir ("dir" directive)
+	// and exits at config-load time with a permission error.
+	if err := os.MkdirAll(redisInstDataBase, 0755); err != nil {
+		return err
+	}
+	_ = exec.Command("chown", "redis:redis", redisInstDataBase).Run()
 	dataDir := redisInstDataDir(username)
 	if err := os.MkdirAll(dataDir, 0750); err != nil {
 		return err
