@@ -118,11 +118,21 @@ export function RedisStatusPanel({ data, hist }: { data: RedisStatusData; hist?:
   );
 }
 
+type RedisInstance = {
+  username: string;
+  enabled: boolean;
+  active?: boolean;
+  port?: number;
+  maxMemoryMB?: number;
+  usedMemoryMB?: number;
+};
+
 export function Redis() {
   const [data, setData] = useState<RedisStatusData | null>(null);
   const [error, setError] = useState("");
   const [live, setLive] = useState(true);
   const [hist, setHist] = useState<number[]>([]);
+  const [instances, setInstances] = useState<RedisInstance[]>([]);
 
   useEffect(() => {
     let stop = false;
@@ -136,6 +146,10 @@ export function Redis() {
       } catch (e) {
         if (!stop) setError(e instanceof Error ? e.message : "Failed");
       }
+      const rows = await api
+        .get<RedisInstance[]>("/api/accounts/redis")
+        .catch(() => [] as RedisInstance[]);
+      if (!stop) setInstances(rows || []);
     }
     load();
     if (!live) return () => { stop = true; };
@@ -192,6 +206,66 @@ export function Redis() {
       />
       {data.message && !data.ready ? <Alert type="warning" showIcon message={data.message} /> : null}
       {data.ready ? <RedisStatusPanel data={data} hist={hist} /> : null}
+      {instances.length > 0 ? (
+        <Card
+          size="small"
+          title="Per-account instances"
+          extra={
+            <Typography.Text type="secondary">
+              {instances.filter((i) => i.active).length} / {instances.length} running
+            </Typography.Text>
+          }
+          style={{ marginTop: 16 }}
+        >
+          <div className="cp-table-wrap">
+            <Table
+              size="small"
+              rowKey={(r) => r.username}
+              pagination={false}
+              dataSource={instances}
+              scroll={{ x: "max-content" }}
+              columns={[
+                { title: "Account", dataIndex: "username" },
+                {
+                  title: "Status",
+                  width: 110,
+                  render: (_, r: RedisInstance) =>
+                    r.active ? <Tag color="success">Running</Tag> : <Tag color="error">Down</Tag>,
+                },
+                {
+                  title: "Port",
+                  dataIndex: "port",
+                  width: 90,
+                  render: (v: number) => v || "—",
+                },
+                {
+                  title: "Memory",
+                  width: 240,
+                  render: (_, r: RedisInstance) => {
+                    const used = r.usedMemoryMB ?? 0;
+                    const lim = r.maxMemoryMB ?? 0;
+                    const pct = lim ? Math.min(100, Math.round((used / lim) * 100)) : 0;
+                    return (
+                      <div>
+                        <Typography.Text type="secondary">
+                          {used} MB{lim ? ` / ${lim} MB` : ""}
+                        </Typography.Text>
+                        {lim ? (
+                          <Progress
+                            percent={pct}
+                            showInfo={false}
+                            strokeColor={pct >= 85 ? "#ff4d4f" : "#dc2626"}
+                          />
+                        ) : null}
+                      </div>
+                    );
+                  },
+                },
+              ]}
+            />
+          </div>
+        </Card>
+      ) : null}
     </div>
   );
 }
