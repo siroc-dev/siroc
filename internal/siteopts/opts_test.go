@@ -46,6 +46,7 @@ func TestNormalizePHPAndComposerPath(t *testing.T) {
 	got, err := Normalize(Options{
 		PHP:          &PHP{MemoryLimit: "512M", MaxExecutionTime: 120, DisplayErrors: &on, DisableFunctions: "exec,system"},
 		ComposerRoot: "domains/shop",
+		LaravelRoot:  "apps/shop",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -56,11 +57,17 @@ func TestNormalizePHPAndComposerPath(t *testing.T) {
 	if got.ComposerRoot != "domains/shop" {
 		t.Fatalf("root %q", got.ComposerRoot)
 	}
+	if got.LaravelRoot != "apps/shop" {
+		t.Fatalf("laravel %q", got.LaravelRoot)
+	}
 	if _, err := Normalize(Options{PHP: &PHP{MemoryLimit: "lots"}}); err == nil {
 		t.Fatal("expected invalid memory_limit")
 	}
 	if _, err := Normalize(Options{ComposerRoot: "../etc"}); err == nil {
 		t.Fatal("expected invalid composer path")
+	}
+	if _, err := Normalize(Options{LaravelRoot: "../etc"}); err == nil {
+		t.Fatal("expected invalid laravel path")
 	}
 	cleared, err := Normalize(Options{PHP: &PHP{}})
 	if err != nil || cleared.PHP != nil {

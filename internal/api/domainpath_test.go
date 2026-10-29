@@ -23,10 +23,14 @@ func TestReplaceSiteDomainPath(t *testing.T) {
 	}
 	opt, changed := replaceSiteOptionPaths(home, "old.test", "new.test", siteopts.Options{
 		ComposerRoot: "domains/old.test",
+		LaravelRoot:  "domains/old.test/app",
 		Cache:        &siteopts.Cache{Path: filepath.Join(home, "domains", "old.test", "cache")},
 	})
 	if !changed || opt.ComposerRoot != "domains/new.test" {
 		t.Fatalf("composer %q", opt.ComposerRoot)
+	}
+	if opt.LaravelRoot != "domains/new.test/app" {
+		t.Fatalf("laravel %q", opt.LaravelRoot)
 	}
 	if opt.Cache == nil || opt.Cache.Path != filepath.Join(home, "domains", "new.test", "cache") {
 		t.Fatalf("cache %#v", opt.Cache)

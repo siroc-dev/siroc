@@ -31,6 +31,8 @@ type Options struct {
 	PHP *PHP `json:"php,omitempty"`
 	// ComposerRoot is the directory that holds composer.json. Empty uses the app directory above the document root when that file is there.
 	ComposerRoot string `json:"composerRoot,omitempty"`
+	// LaravelRoot is the Laravel app directory (the folder that contains artisan). Empty detects the document root or its parent.
+	LaravelRoot string `json:"laravelRoot,omitempty"`
 	// AccessLog and ErrorLog are nil when that log stays on. A false pointer turns that log off.
 	AccessLog *bool `json:"accessLog,omitempty"`
 	ErrorLog  *bool `json:"errorLog,omitempty"`
@@ -85,7 +87,7 @@ func Marshal(o Options) (string, error) {
 }
 
 func IsZero(o Options) bool {
-	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && len(o.HotlinkDomains) == 0 && !o.Maintenance && len(o.Redirects) == 0 && o.Proxy == nil && !staticExplicitOff(o) && o.StaticExt == "" && o.ForceHTTPS == nil && o.PHP == nil && o.ComposerRoot == "" && o.AccessLog == nil && o.ErrorLog == nil && o.Cache == nil
+	return len(o.Index) == 0 && o.Access == "" && len(o.IPs) == 0 && !o.Hotlink && len(o.HotlinkDomains) == 0 && !o.Maintenance && len(o.Redirects) == 0 && o.Proxy == nil && !staticExplicitOff(o) && o.StaticExt == "" && o.ForceHTTPS == nil && o.PHP == nil && o.ComposerRoot == "" && o.LaravelRoot == "" && o.AccessLog == nil && o.ErrorLog == nil && o.Cache == nil
 }
 
 func Normalize(in Options) (Options, error) {
@@ -199,11 +201,16 @@ func Normalize(in Options) (Options, error) {
 		return Options{}, err
 	}
 	out.PHP = php
-	root, err := cleanComposerRoot(in.ComposerRoot)
+	root, err := cleanOptionalPath(in.ComposerRoot, "composer")
 	if err != nil {
 		return Options{}, err
 	}
 	out.ComposerRoot = root
+	laravelRoot, err := cleanOptionalPath(in.LaravelRoot, "laravel")
+	if err != nil {
+		return Options{}, err
+	}
+	out.LaravelRoot = laravelRoot
 	out.AccessLog = offOnly(in.AccessLog)
 	out.ErrorLog = offOnly(in.ErrorLog)
 	cache, err := normalizeSiteCache(in.Cache)
@@ -283,16 +290,16 @@ func normalizePHP(in *PHP) (*PHP, error) {
 	return out, nil
 }
 
-func cleanComposerRoot(raw string) (string, error) {
+func cleanOptionalPath(raw, label string) (string, error) {
 	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
 	if raw == "" {
 		return "", nil
 	}
 	if strings.ContainsAny(raw, "\r\n\x00") || strings.Contains(raw, "..") {
-		return "", fmt.Errorf("invalid composer path")
+		return "", fmt.Errorf("invalid %s path", label)
 	}
 	if len(raw) > 200 {
-		return "", fmt.Errorf("composer path is too long")
+		return "", fmt.Errorf("%s path is too long", label)
 	}
 	return raw, nil
 }

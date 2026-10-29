@@ -25,6 +25,7 @@ export type SiteOptions = {
   errorLog?: boolean;
   php?: SitePHP;
   composerRoot?: string;
+  laravelRoot?: string;
   cache?: {
     on?: boolean;
     enabled?: boolean;
@@ -217,6 +218,7 @@ function baseOpts(site: SiteSettingsSite): SiteOptions {
     errorLog: o.errorLog,
     php: o.php,
     composerRoot: o.composerRoot,
+    laravelRoot: o.laravelRoot,
     cache: o.cache,
   };
 }

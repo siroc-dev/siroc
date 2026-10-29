@@ -180,11 +180,26 @@ func (m *Manager) SiteApp(req rpc.SiteAppReq) (*rpc.SiteAppResp, error) {
 		return nil, err
 	}
 	kind, root := detectKind(doc)
+	customLaravel := strings.TrimSpace(req.LaravelRoot) != "" && useCustomLaravelRoot(req.Action, req.Focus)
+	missingArtisan := false
+	if customLaravel {
+		abs, err := validate.AccountPath(m.HomeRoot, req.Username, req.LaravelRoot, "")
+		if err != nil {
+			return nil, err
+		}
+		kind, root, missingArtisan = pickLaravelRoot(kind, root, abs, fileOK(filepath.Join(abs, "artisan")))
+	}
 	comp, err := m.resolveComposerRoot(req.Username, doc, req.ComposerRoot)
 	if err != nil {
 		return nil, err
 	}
+	if kind == "laravel" && strings.TrimSpace(req.ComposerRoot) == "" && customLaravel {
+		comp = root
+	}
 	out := &rpc.SiteAppResp{OK: true, Kind: kind, AppRoot: root, ComposerRoot: comp, DocRoot: doc}
+	if missingArtisan {
+		out.Message = "no artisan file in " + root
+	}
 	action := strings.TrimSpace(req.Action)
 	if action == "install-wordpress" {
 		return wpInstall(req, out)

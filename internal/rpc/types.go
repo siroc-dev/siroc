@@ -365,6 +365,8 @@ type SiteAppReq struct {
 	Pingbacks    *bool             `json:"pingbacks,omitempty"`
 	UploadsPHP   *bool             `json:"uploadsPhp,omitempty"`
 	ComposerRoot string            `json:"composerRoot,omitempty"`
+	LaravelRoot  string            `json:"laravelRoot,omitempty"`
+	Focus        string            `json:"focus,omitempty"`
 }
 
 type SiteAppResp struct {

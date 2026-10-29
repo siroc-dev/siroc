@@ -43,6 +43,43 @@ function defaultDoc(domain: string) {
   return d ? `domains/${d}/public_html` : "";
 }
 
+function LaravelPath({
+  site,
+  using,
+  busy,
+  onSave,
+}: {
+  site: Site;
+  using?: string;
+  busy: boolean;
+  onSave: (path: string) => void;
+}) {
+  const [path, setPath] = useState(site.options?.laravelRoot || "");
+  return (
+    <Space direction="vertical" size={8} style={{ width: "100%" }}>
+      <Typography.Text>App path</Typography.Text>
+      <Space.Compact style={{ width: "100%" }}>
+        <PathPicker
+          user={site.username || "root"}
+          relativeTo={site.username ? `/home/${site.username}` : undefined}
+          addonBefore={homePrefix(site.username)}
+          value={path}
+          onChange={setPath}
+          dirsOnly
+          placeholder="domains/example.com"
+        />
+        <Button type="primary" loading={busy} onClick={() => onSave(path.trim())}>
+          Save path
+        </Button>
+      </Space.Compact>
+      <Typography.Text type="secondary">
+        {using ? `Using ${using}. ` : ""}
+        Leave empty to detect artisan in the document root or the folder above it.
+      </Typography.Text>
+    </Space>
+  );
+}
+
 function DocRootInput({ user, value, onChange }: { user: string; value?: string; onChange?: (value: string) => void }) {
   const abs = (value || "").startsWith("/");
   return (
@@ -786,7 +823,7 @@ export function Sites() {
     setApp(null);
     setEnvText("");
     setLoginUrls([]);
-    const out = await runApp(s, { action: "status" });
+    const out = await runApp(s, { action: "status", focus: kind });
     if (!out) return;
     if (kind === "laravel" && out.kind === "laravel") {
       await runApp(s, { action: "env-get" });
@@ -800,6 +837,23 @@ export function Sites() {
         adminUser: randomWPLogin(),
         dbSuffix: "wp",
       });
+    }
+  }
+
+  async function saveLaravelPath(path: string) {
+    if (!appSite) return;
+    setAppBusy(true);
+    try {
+      const options = { ...(appSite.options || {}), laravelRoot: path };
+      const st = await api.patch<Site>(`/api/sites/${appSite.id}`, { options });
+      const next = st?.id ? { ...appSite, ...st } : { ...appSite, options };
+      setSites((cur) => cur.map((s) => (s.id === next.id ? { ...s, ...next } : s)));
+      setAppSite(next);
+      message.success(path ? "Laravel path saved" : "Laravel path cleared");
+      await openApp(next, "laravel");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+      setAppBusy(false);
     }
   }
 
@@ -1572,8 +1626,13 @@ export function Sites() {
         destroyOnHidden
       >
         {appBusy && !app ? <Typography.Text type="secondary">Loading…</Typography.Text> : null}
-        {app && appKind === "laravel" && app.kind !== "laravel" ? (
-          <Alert type="info" showIcon message="This document root is not a Laravel app (no artisan file). Point the site at public/ or the app root." />
+        {app && appKind === "laravel" && appSite ? (
+          <Space direction="vertical" size={16} style={{ width: "100%", marginBottom: app.kind === "laravel" ? 16 : 0 }}>
+            <LaravelPath key={`${appSite.id}:${appSite.options?.laravelRoot || ""}`} site={appSite} using={app.kind === "laravel" ? app.appRoot : undefined} busy={appBusy} onSave={(path) => void saveLaravelPath(path)} />
+            {app.kind !== "laravel" ? (
+              <Alert type="info" showIcon message={app.message || "No artisan file in this directory. Choose the folder that contains artisan."} />
+            ) : null}
+          </Space>
         ) : null}
         {app && appKind === "wordpress" && app.kind !== "wordpress" ? (
           <Space direction="vertical" size={16} style={{ width: "100%" }}>
@@ -1646,7 +1705,6 @@ export function Sites() {
                 label: "App",
                 children: (
                   <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                    <Typography.Text type="secondary">App root {app.appRoot}</Typography.Text>
                     {app.laravel ? (
                       <LaravelQueues
                         laravel={app.laravel}

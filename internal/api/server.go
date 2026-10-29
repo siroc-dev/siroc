@@ -2184,6 +2184,7 @@ func (s *Server) siteApp(w http.ResponseWriter, r *http.Request) {
 	body.DocRoot = st.DocRoot
 	body.PHPVersion = st.PHPVersion
 	body.ComposerRoot = st.Options.ComposerRoot
+	body.LaravelRoot = st.Options.LaravelRoot
 	out, err := s.Agent.SiteApp(body)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
@@ -2457,6 +2458,10 @@ func replaceSiteOptionPaths(home, oldDomain, newDomain string, opt siteopts.Opti
 		opt.ComposerRoot = next
 		changed = true
 	}
+	if next := replaceSiteDomainPath(home, oldDomain, newDomain, opt.LaravelRoot); next != opt.LaravelRoot {
+		opt.LaravelRoot = next
+		changed = true
+	}
 	if opt.Cache != nil {
 		if next := replaceSiteDomainPath(home, oldDomain, newDomain, opt.Cache.Path); next != opt.Cache.Path {
 			opt.Cache.Path = next
@@ -2674,6 +2679,9 @@ func (s *Server) moveSite(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(next.Options.ComposerRoot, "/") {
 		next.Options.ComposerRoot = validate.Rehome(s.Cfg.HomeRoot, st.Username, username, next.Options.ComposerRoot)
 	}
+	if strings.HasPrefix(next.Options.LaravelRoot, "/") {
+		next.Options.LaravelRoot = validate.Rehome(s.Cfg.HomeRoot, st.Username, username, next.Options.LaravelRoot)
+	}
 	req := s.siteWriteReq(next, st.PHPVersion, st.Enabled, st.Aliases, st.SSL, st.SSLKind, st.Rewrite)
 	if err := s.Agent.SiteMove(rpc.SiteMoveReq{SiteWriteReq: req, OldUsername: st.Username, OldDocRoot: oldAbs}); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
@@ -2686,7 +2694,7 @@ func (s *Server) moveSite(w http.ResponseWriter, r *http.Request) {
 	if next.NginxConf != st.NginxConf || next.ApacheConf != st.ApacheConf {
 		_ = s.Store.UpdateSiteConfig(st.ID, next.NginxConf, next.ApacheConf)
 	}
-	if next.Options.ComposerRoot != st.Options.ComposerRoot {
+	if next.Options.ComposerRoot != st.Options.ComposerRoot || next.Options.LaravelRoot != st.Options.LaravelRoot {
 		_ = s.restoreSiteOptions(st.ID, &next.Options)
 	}
 	if g, err := s.Store.GetSiteGit(st.ID); err == nil && g != nil && strings.HasPrefix(strings.ReplaceAll(g.Path, "\\", "/"), "/") {
