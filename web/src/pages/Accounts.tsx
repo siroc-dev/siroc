@@ -35,6 +35,7 @@ function ftpHomeValue(user: string, abs: string) {
 type UserRedis = {
   username: string;
   enabled: boolean;
+  active?: boolean;
   installed?: boolean;
   host?: string;
   port?: number;
@@ -63,7 +64,7 @@ export function Accounts() {
   const [redisTarget, setRedisTarget] = useState<Account | null>(null);
   const [redisInfo, setRedisInfo] = useState<UserRedis | null>(null);
   const [redisLimit, setRedisLimit] = useState(2048);
-  const [redisMap, setRedisMap] = useState<Record<string, boolean>>({});
+  const [redisMap, setRedisMap] = useState<Record<string, "on" | "down" | "off">>({});
   const [form] = Form.useForm();
   const [cliForm] = Form.useForm();
   const [quotaForm] = Form.useForm();
@@ -94,8 +95,8 @@ export function Accounts() {
     setPhpVers(find("php"));
     setPyVers(find("python"));
     setNodeVers(find("nodejs"));
-    const next: Record<string, boolean> = {};
-    for (const r of redisRows || []) next[r.username] = !!r.enabled;
+    const next: Record<string, "on" | "down" | "off"> = {};
+    for (const r of redisRows || []) next[r.username] = r.enabled ? (r.active ? "on" : "down") : "off";
     setRedisMap(next);
   }
 
@@ -435,8 +436,12 @@ export function Accounts() {
             {
               title: "Redis",
               width: 90,
-              render: (_, a) =>
-                redisMap[a.username] ? <Tag color="success">On</Tag> : <Tag>Off</Tag>,
+              render: (_, a) => {
+                const s = redisMap[a.username];
+                if (s === "on") return <Tag color="success">On</Tag>;
+                if (s === "down") return <Tag color="error">Down</Tag>;
+                return <Tag>Off</Tag>;
+              },
             },
             {
               title: "WAF",
@@ -645,11 +650,25 @@ export function Accounts() {
               onChange={(on) => void saveRedis({ enabled: on })}
             />
             <Typography.Text>Enable Redis for this account</Typography.Text>
+            {redisInfo?.enabled ? (
+              redisInfo.active ? (
+                <Tag color="success">Running</Tag>
+              ) : (
+                <Tag color="error">Down</Tag>
+              )
+            ) : null}
           </Space>
           <Typography.Text type="secondary">
             Runs a dedicated Redis instance for this account on its own loopback port with a random password and a
             hard memory limit. Persistence is off, so it works as a cache and evicts the oldest keys when full.
           </Typography.Text>
+          {redisInfo?.enabled && redisInfo.active === false ? (
+            <Alert
+              type="error"
+              showIcon
+              message="This instance is enabled but not running. Re-save to restart it, or check the server with: systemctl status redis-siroc@USER"
+            />
+          ) : null}
           {redisInfo?.enabled ? (
             <>
               <div>

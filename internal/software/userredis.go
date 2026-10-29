@@ -96,6 +96,7 @@ func getUserRedis(username string) (*rpc.UserRedis, error) {
 		return st, nil
 	}
 	if st.Enabled && st.Port > 0 && redisInstActive(username) {
+		st.Active = true
 		if used, err := redisInstUsedMB(st.Port, st.Password); err == nil {
 			st.UsedMemoryMB = used
 		}

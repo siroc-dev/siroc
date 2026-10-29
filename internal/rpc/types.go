@@ -809,6 +809,7 @@ type UserRedisReq struct {
 type UserRedis struct {
 	Username     string `json:"username"`
 	Enabled      bool   `json:"enabled"`
+	Active       bool   `json:"active"`
 	Installed    bool   `json:"installed"`
 	Host         string `json:"host,omitempty"`
 	Port         int    `json:"port,omitempty"`
