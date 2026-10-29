@@ -42,6 +42,8 @@ type UserRedis = {
   password?: string;
   prefix?: string;
   database?: number;
+  maxMemoryMB?: number;
+  usedMemoryMB?: number;
   file?: string;
   message?: string;
 };
@@ -60,6 +62,7 @@ export function Accounts() {
   const [quotaTarget, setQuotaTarget] = useState<Account | null>(null);
   const [redisTarget, setRedisTarget] = useState<Account | null>(null);
   const [redisInfo, setRedisInfo] = useState<UserRedis | null>(null);
+  const [redisLimit, setRedisLimit] = useState(2048);
   const [redisMap, setRedisMap] = useState<Record<string, boolean>>({});
   const [form] = Form.useForm();
   const [cliForm] = Form.useForm();
@@ -187,6 +190,7 @@ export function Accounts() {
     try {
       const data = await api.get<UserRedis>(`/api/accounts/${a.username}/redis`);
       setRedisInfo(data);
+      setRedisLimit(data.maxMemoryMB || 2048);
     } catch (err) {
       setRedisInfo(null);
       message.error(err instanceof Error ? err.message : "Cannot load Redis");
@@ -195,12 +199,13 @@ export function Accounts() {
     }
   }
 
-  async function saveRedis(body: { enabled?: boolean; rotatePassword?: boolean }) {
+  async function saveRedis(body: { enabled?: boolean; rotatePassword?: boolean; maxMemoryMB?: number }) {
     if (!redisTarget) return;
     setBusy(true);
     try {
       const data = await api.put<UserRedis>(`/api/accounts/${redisTarget.username}/redis`, body);
       setRedisInfo(data);
+      setRedisLimit(data.maxMemoryMB || 2048);
       await load();
       if (data.message) message.success(data.message);
       else message.success("Redis updated");
@@ -642,11 +647,38 @@ export function Accounts() {
             <Typography.Text>Enable Redis for this account</Typography.Text>
           </Space>
           <Typography.Text type="secondary">
-            Uses the system Redis with an ACL user, a random password, and isolated keys under the prefix{" "}
-            {redisTarget ? `${redisTarget.username}:` : "user:"}.
+            Runs a dedicated Redis instance for this account on its own loopback port with a random password and a
+            hard memory limit. Persistence is off, so it works as a cache and evicts the oldest keys when full.
           </Typography.Text>
           {redisInfo?.enabled ? (
             <>
+              <div>
+                <Typography.Text type="secondary">Memory limit (MB)</Typography.Text>
+                <Space align="center" style={{ display: "flex", marginTop: 4 }}>
+                  <InputNumber
+                    min={16}
+                    max={65536}
+                    step={128}
+                    value={redisLimit}
+                    disabled={busy}
+                    style={{ width: 160 }}
+                    onChange={(v) => setRedisLimit(typeof v === "number" ? v : 2048)}
+                  />
+                  <Button
+                    type="primary"
+                    loading={busy}
+                    disabled={redisLimit === redisInfo?.maxMemoryMB}
+                    onClick={() => void saveRedis({ maxMemoryMB: redisLimit })}
+                  >
+                    Apply limit
+                  </Button>
+                </Space>
+                <div>
+                  <Typography.Text type="secondary">
+                    Using {redisInfo?.usedMemoryMB ?? 0} MB of {redisInfo?.maxMemoryMB ?? redisLimit} MB
+                  </Typography.Text>
+                </div>
+              </div>
               <div>
                 <Typography.Text type="secondary">Host</Typography.Text>
                 <Typography.Paragraph copyable style={{ marginBottom: 8 }}>
@@ -656,17 +688,9 @@ export function Accounts() {
                 <Typography.Paragraph copyable style={{ marginBottom: 8 }}>
                   {String(redisInfo.port || 6379)}
                 </Typography.Paragraph>
-                <Typography.Text type="secondary">Username</Typography.Text>
-                <Typography.Paragraph copyable style={{ marginBottom: 8 }}>
-                  {redisInfo.redisUser || redisTarget?.username}
-                </Typography.Paragraph>
                 <Typography.Text type="secondary">Password</Typography.Text>
                 <Typography.Paragraph copyable={{ text: redisInfo.password || "" }} style={{ marginBottom: 8 }}>
                   {redisInfo.password || "—"}
-                </Typography.Paragraph>
-                <Typography.Text type="secondary">Prefix</Typography.Text>
-                <Typography.Paragraph copyable style={{ marginBottom: 8 }}>
-                  {redisInfo.prefix || ""}
                 </Typography.Paragraph>
                 <Typography.Text type="secondary">Credentials file</Typography.Text>
                 <Typography.Paragraph copyable style={{ marginBottom: 8 }}>

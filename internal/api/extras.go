@@ -383,6 +383,7 @@ func (s *Server) setAccountRedis(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Enabled        *bool `json:"enabled"`
 		RotatePassword bool  `json:"rotatePassword"`
+		MaxMemoryMB    int64 `json:"maxMemoryMB"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -391,6 +392,7 @@ func (s *Server) setAccountRedis(w http.ResponseWriter, r *http.Request) {
 		Username:       username,
 		Enabled:        body.Enabled,
 		RotatePassword: body.RotatePassword,
+		MaxMemoryMB:    body.MaxMemoryMB,
 	})
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)

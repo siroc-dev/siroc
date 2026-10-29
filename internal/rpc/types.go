@@ -803,20 +803,23 @@ type UserRedisReq struct {
 	Username       string `json:"username"`
 	Enabled        *bool  `json:"enabled,omitempty"`
 	RotatePassword bool   `json:"rotatePassword,omitempty"`
+	MaxMemoryMB    int64  `json:"maxMemoryMB,omitempty"`
 }
 
 type UserRedis struct {
-	Username  string `json:"username"`
-	Enabled   bool   `json:"enabled"`
-	Installed bool   `json:"installed"`
-	Host      string `json:"host,omitempty"`
-	Port      int    `json:"port,omitempty"`
-	RedisUser string `json:"redisUser,omitempty"`
-	Password  string `json:"password,omitempty"`
-	Prefix    string `json:"prefix,omitempty"`
-	Database  int    `json:"database,omitempty"`
-	File      string `json:"file,omitempty"`
-	Message   string `json:"message,omitempty"`
+	Username     string `json:"username"`
+	Enabled      bool   `json:"enabled"`
+	Installed    bool   `json:"installed"`
+	Host         string `json:"host,omitempty"`
+	Port         int    `json:"port,omitempty"`
+	RedisUser    string `json:"redisUser,omitempty"`
+	Password     string `json:"password,omitempty"`
+	Prefix       string `json:"prefix,omitempty"`
+	Database     int    `json:"database,omitempty"`
+	MaxMemoryMB  int64  `json:"maxMemoryMB,omitempty"`
+	UsedMemoryMB int64  `json:"usedMemoryMB,omitempty"`
+	File         string `json:"file,omitempty"`
+	Message      string `json:"message,omitempty"`
 }
 
 type ScannerTool struct {
