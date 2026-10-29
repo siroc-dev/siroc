@@ -276,10 +276,12 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
         <Typography.Text type="secondary">Siroc archives and DirectAdmin user backups. Restore creates a missing account, its websites, and its databases.</Typography.Text>
         <Space>
           <Button onClick={() => { setEditingDest(null); setOpen(true); }}>Add destination</Button>
-          <Button onClick={() => setRestoreOpen(true)}>Restore archive</Button>
-          <Button onClick={() => { setEditingCron(null); setCronOpen(true); }} disabled={!dests.length}>
-            Add schedule
-          </Button>
+          {admin ? <Button onClick={() => setRestoreOpen(true)}>Restore archive</Button> : null}
+          {admin ? (
+            <Button onClick={() => { setEditingCron(null); setCronOpen(true); }} disabled={!dests.length}>
+              Add schedule
+            </Button>
+          ) : null}
           <Button type="primary" onClick={() => setRunOpen(true)} disabled={!dests.length}>
             Run backup
           </Button>
@@ -315,6 +317,7 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
           ]}
         />
       </Card>
+      {admin ? (
       <Card title="Schedules">
         <Table
           rowKey="id"
@@ -353,6 +356,7 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
           ]}
         />
       </Card>
+      ) : null}
       <Card title="Jobs">
         <Table
           rowKey="id"
@@ -376,7 +380,7 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
               title: "",
               width: 110,
               render: (_, j) =>
-                j.localPath && j.status === "ok" ? (
+                admin && j.localPath && j.status === "ok" ? (
                   <Popconfirm
                     title={`Restore ${j.account}?`}
                     description="Creates the Linux user if it is missing, then restores home, databases, and sites."

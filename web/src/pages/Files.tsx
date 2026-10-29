@@ -124,6 +124,7 @@ export function Files() {
   const [dirSizes, setDirSizes] = useState<{ path: string; sizes: Record<string, number>; partial: Record<string, boolean> }>({ path: "", sizes: {}, partial: {} });
   const sizeGen = useRef(0);
   const [sizing, setSizing] = useState(false);
+  const [sizingPath, setSizingPath] = useState("");
   const [editPath, setEditPath] = useState("");
   const [absPath, setAbsPath] = useState("");
   const [content, setContent] = useState("");
@@ -187,17 +188,23 @@ export function Files() {
     if (!data.jail) void prefetchTree(data.path);
   }
 
-  async function calcSizes() {
+  async function calcSizes(target?: Entry) {
     if (!user || sizing) return;
     const path = listing.path;
-    const folders = listing.entries.filter((e) => e.isDir);
+    const folders = target ? [target] : listing.entries.filter((e) => e.isDir);
     if (!folders.length) {
       message.info("This folder has no folders to measure");
       return;
     }
     const gen = ++sizeGen.current;
     setSizing(true);
-    setDirSizes({ path, sizes: {}, partial: {} });
+    setSizingPath(target ? target.path : "");
+    if (target) {
+      // Measuring one folder keeps any sizes already calculated in this directory.
+      setDirSizes((prev) => (prev.path === path ? prev : { path, sizes: {}, partial: {} }));
+    } else {
+      setDirSizes({ path, sizes: {}, partial: {} });
+    }
     let failed = false;
     try {
       for (const folder of folders) {
@@ -225,7 +232,10 @@ export function Files() {
         }
       }
     } finally {
-      if (sizeGen.current === gen) setSizing(false);
+      if (sizeGen.current === gen) {
+        setSizing(false);
+        setSizingPath("");
+      }
     }
   }
 
@@ -1268,7 +1278,21 @@ export function Files() {
                       const text = formatBytes(dirSizes.sizes[e.path] || 0);
                       return dirSizes.partial[e.path] ? `> ${text}` : text;
                     }
-                    return "—";
+                    return (
+                      <Button
+                        type="link"
+                        size="small"
+                        loading={sizingPath === e.path}
+                        disabled={sizing && sizingPath !== e.path}
+                        onMouseDown={(ev) => ev.stopPropagation()}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          void calcSizes(e);
+                        }}
+                      >
+                        Calculate
+                      </Button>
+                    );
                   },
                   sorter: (a: Entry, b: Entry) => {
                     if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;

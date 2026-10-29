@@ -121,13 +121,8 @@ func (s *Server) updateBackupDest(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
 		return
 	}
-	prev, err := s.Store.GetBackupDest(id)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("destination not found"))
-		return
-	}
-	if err := s.backupDestOwner(r, prev); err != nil {
-		writeErr(w, http.StatusForbidden, err)
+	prev, ok := s.ownedBackupDest(w, r, id)
+	if !ok {
 		return
 	}
 	var body backupDestBody
@@ -244,6 +239,21 @@ func (s *Server) backupDestOwner(r *http.Request, d *store.BackupDest) error {
 		return fmt.Errorf("destination not found")
 	}
 	return nil
+}
+
+// ownedBackupDest loads a destination and enforces ownership. A missing
+// destination and one owned by someone else return the same 404 so a
+// non-admin cannot tell valid IDs of other accounts apart from unused ones.
+func (s *Server) ownedBackupDest(w http.ResponseWriter, r *http.Request, id int64) (*store.BackupDest, bool) {
+	dest, err := s.Store.GetBackupDest(id)
+	if err == nil {
+		err = s.backupDestOwner(r, dest)
+	}
+	if err != nil {
+		writeErr(w, http.StatusNotFound, fmt.Errorf("destination not found"))
+		return nil, false
+	}
+	return dest, true
 }
 
 func (s *Server) scopeBackupDest(r *http.Request, d store.BackupDest) (store.BackupDest, error) {
@@ -622,13 +632,7 @@ func (s *Server) deleteBackupDest(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
 		return
 	}
-	prev, err := s.Store.GetBackupDest(id)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, fmt.Errorf("destination not found"))
-		return
-	}
-	if err := s.backupDestOwner(r, prev); err != nil {
-		writeErr(w, http.StatusForbidden, err)
+	if _, ok := s.ownedBackupDest(w, r, id); !ok {
 		return
 	}
 	n, err := s.Store.CountBackupCronsByDest(id)
@@ -660,13 +664,8 @@ func (s *Server) runBackup(w http.ResponseWriter, r *http.Request) {
 	if body.IncludeDB != nil {
 		includeDB = *body.IncludeDB
 	}
-	dest, err := s.Store.GetBackupDest(body.DestID)
-	if err != nil {
-		writeErr(w, http.StatusNotFound, fmt.Errorf("destination not found"))
-		return
-	}
-	if err := s.backupDestOwner(r, dest); err != nil {
-		writeErr(w, http.StatusForbidden, err)
+	dest, ok := s.ownedBackupDest(w, r, body.DestID)
+	if !ok {
 		return
 	}
 	if !isAdmin(currentUser(r)) && dest.Kind == "local" {

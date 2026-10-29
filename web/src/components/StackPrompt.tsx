@@ -49,6 +49,9 @@ export function StackPrompt({ open, onDone }: { open: boolean; onDone: () => voi
         <Radio value="mariadb">MariaDB 11.4</Radio>
         <Radio value="mysql">MySQL 8.4</Radio>
       </Radio.Group>
+      <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
+        This prompt shows once. You can install or change any of this later from the Software page.
+      </Typography.Paragraph>
     </Modal>
   );
 }
