@@ -28,6 +28,17 @@ func wpLoaderNoise(s string) bool {
 	return strings.Contains(l, "ioncube loader") || strings.Contains(l, "no decryption key available") || strings.Contains(l, "unable to call protected function")
 }
 
+func withWPSkipThemes(args []string) []string {
+	for _, a := range args {
+		if a == "--skip-themes" || strings.HasPrefix(a, "--skip-themes=") {
+			return args
+		}
+	}
+	out := make([]string, len(args), len(args)+1)
+	copy(out, args)
+	return append(out, "--skip-themes")
+}
+
 func cleanWPField(s string) string {
 	s = strings.TrimSpace(s)
 	if wpLoaderNoise(s) {

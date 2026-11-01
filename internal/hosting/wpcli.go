@@ -103,6 +103,9 @@ func wpCLIScript(root, raw string) (string, error) {
 			args = append(args, url)
 		}
 	}
+	if !strings.Contains(s, "--skip-themes") {
+		args = append(args, "--skip-themes")
+	}
 	return strings.Join(args, " "), nil
 }
 

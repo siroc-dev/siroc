@@ -70,7 +70,7 @@ func wpRun(user, root string, args ...string) (string, error) {
 	if err := ensureWPCLI(); err != nil {
 		return "", err
 	}
-	return runAs(user, root, 8*time.Minute, wpExec(root)+" --path="+shellQuote(root)+" "+strings.Join(withWPURL(root, args), " "))
+	return runAs(user, root, 8*time.Minute, wpExec(root)+" --path="+shellQuote(root)+" "+strings.Join(withWPSkipThemes(withWPURL(root, args)), " "))
 }
 
 func wpSiteHost(doc string) (host, scheme string) {

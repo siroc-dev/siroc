@@ -29,6 +29,17 @@ func TestWPLoaderNoise(t *testing.T) {
 	}
 }
 
+func TestWithWPSkipThemes(t *testing.T) {
+	got := withWPSkipThemes([]string{"user", "list", "--role=administrator"})
+	if len(got) != 4 || got[3] != "--skip-themes" {
+		t.Fatalf("skip flag: %#v", got)
+	}
+	again := withWPSkipThemes([]string{"plugin", "list", "--skip-themes"})
+	if len(again) != 3 {
+		t.Fatalf("duplicate skip: %#v", again)
+	}
+}
+
 func TestHostFromDocPath(t *testing.T) {
 	if got := hostFromDocPath("/home/doujinmoon/domains/doujinmoon.com/public_html"); got != "doujinmoon.com" {
 		t.Fatalf("host %q", got)
