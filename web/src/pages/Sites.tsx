@@ -229,6 +229,8 @@ type WPStatus = {
   prefix?: string;
   xmlrpcBlocked?: boolean;
   pingbacksOff?: boolean;
+  cron?: boolean;
+  cronSystem?: boolean;
   uploadsPhpBlocked?: boolean;
   users?: WPUser[];
   usersAt?: string;
@@ -1823,6 +1825,21 @@ export function Sites() {
                         Refresh
                       </Button>
                     </Space>
+                    <Space wrap align="center">
+                      <Switch
+                        checked={app.wordpress?.cron !== false}
+                        loading={appBusy}
+                        onChange={(on) => void runApp(appSite, { action: "cron", cron: on })}
+                      />
+                      <Typography.Text>Cron</Typography.Text>
+                    </Space>
+                    <Typography.Text type="secondary">
+                      {app.wordpress?.cronSystem
+                        ? "A system job runs WordPress tasks every minute. Page visits do not trigger cron."
+                        : app.wordpress?.cron === false
+                          ? "Scheduled tasks do not run."
+                          : "WordPress runs cron when someone visits the site. Turn this off to stop scheduled tasks. Turn it back on to run them every minute from the system."}
+                    </Typography.Text>
                     <Typography.Text>Site title</Typography.Text>
                     <Input value={wpName} onChange={(e) => setWpName(e.target.value)} />
                     <Typography.Text>Site URL</Typography.Text>

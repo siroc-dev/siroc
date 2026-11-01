@@ -842,6 +842,7 @@ func (m *Manager) Delete(username, domain string) error {
 	dropXMLRPCSnippet(domain)
 	_ = os.RemoveAll(localSSLDir(domain))
 	cleanupLaravel(username, domain)
+	cleanupWPCron(username, domain)
 	dropApp(username, domain)
 	_ = exec.Command("a2dissite", domain+".conf").Run()
 	_ = os.Remove(filepath.Join("/etc/apache2/sites-available", domain+".conf"))
@@ -894,6 +895,7 @@ func (m *Manager) Rename(req rpc.SiteRenameReq) error {
 		_ = os.WriteFile(uploadsPHPSnippetPath(newDom), b, 0644)
 	}
 	renameLaravel(req.Username, old, newDom)
+	renameWPCron(req.Username, old, newDom)
 	renameApp(req.Username, old, newDom)
 	dropOldVhosts(req.Username, old)
 	if err := m.Write(req.SiteWriteReq); err != nil {
@@ -954,6 +956,7 @@ func (m *Manager) MoveUser(req rpc.SiteMoveReq) error {
 	dropSitePools(req.OldUsername, req.Domain, "")
 	dropApp(req.OldUsername, req.Domain)
 	moveLaravelUser(req.OldUsername, req.Username, req.Domain, oldHome, newHome)
+	moveWPCron(req.OldUsername, req.Username, req.Domain, oldHome, newHome)
 	return nil
 }
 

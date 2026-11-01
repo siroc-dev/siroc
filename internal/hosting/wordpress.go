@@ -196,6 +196,7 @@ func wpStatus(user, root, domain string) (*rpc.WPStatus, error) {
 		st := c.status()
 		_ = attachWPUsers(st, user, root, false)
 		fillWPHarden(st, root, domain)
+		fillWPCron(st, user, root, domain)
 		return st, nil
 	}
 	if err := ensureWPCLI(); err != nil {
@@ -217,6 +218,7 @@ func wpStatus(user, root, domain string) (*rpc.WPStatus, error) {
 	}
 	_ = attachWPUsers(st, user, root, false)
 	fillWPHarden(st, root, domain)
+	fillWPCron(st, user, root, domain)
 	return st, nil
 }
 
@@ -516,6 +518,16 @@ func wpAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error
 	case "site-refresh":
 		bust = true
 		out.Message = "Website data refreshed"
+	case "cron":
+		on := req.Cron != nil && *req.Cron
+		if err := setWPCron(user, root, req.Domain, on); err != nil {
+			return nil, err
+		}
+		if on {
+			out.Message = "WordPress cron runs every minute"
+		} else {
+			out.Message = "WordPress cron is off"
+		}
 	case "xmlrpc":
 		on := req.XMLRPC != nil && *req.XMLRPC
 		if err := setWPXMLRPC(user, root, req.Domain, on); err != nil {

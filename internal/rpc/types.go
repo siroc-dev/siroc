@@ -363,6 +363,7 @@ type SiteAppReq struct {
 	Login        string            `json:"login,omitempty"`
 	XMLRPC       *bool             `json:"xmlrpc,omitempty"`
 	Pingbacks    *bool             `json:"pingbacks,omitempty"`
+	Cron         *bool             `json:"cron,omitempty"`
 	UploadsPHP   *bool             `json:"uploadsPhp,omitempty"`
 	ComposerRoot string            `json:"composerRoot,omitempty"`
 	LaravelRoot  string            `json:"laravelRoot,omitempty"`
@@ -460,6 +461,8 @@ type WPStatus struct {
 	Prefix            string     `json:"prefix,omitempty"`
 	XMLRPCBlocked     bool       `json:"xmlrpcBlocked"`
 	PingbacksOff      bool       `json:"pingbacksOff"`
+	Cron              bool       `json:"cron"`
+	CronSystem        bool       `json:"cronSystem"`
 	UploadsPHPBlocked bool       `json:"uploadsPhpBlocked"`
 	Users             []WPUser   `json:"users"`
 	UsersAt           string     `json:"usersAt,omitempty"`
