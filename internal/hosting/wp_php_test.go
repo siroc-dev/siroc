@@ -20,4 +20,20 @@ func TestWPLoaderNoise(t *testing.T) {
 	if wpLoaderNoise("doujinmoon") || wpLoaderNoise("WordPress 7.1.4") {
 		t.Fatal("real site fields should be kept")
 	}
+	fatal := "PHP Fatal error: No decryption key available - Unable to call protected function de8411"
+	if !wpLoaderNoise(fatal) {
+		t.Fatal("expected a protected-function failure to be rejected")
+	}
+	if cleanWPField(fatal) != "" || cleanWPField("  doujinmoon  ") != "doujinmoon" {
+		t.Fatal("clean field")
+	}
+}
+
+func TestHostFromDocPath(t *testing.T) {
+	if got := hostFromDocPath("/home/doujinmoon/domains/doujinmoon.com/public_html"); got != "doujinmoon.com" {
+		t.Fatalf("host %q", got)
+	}
+	if hostFromDocPath("/var/www/html") != "" {
+		t.Fatal("expected no host")
+	}
 }

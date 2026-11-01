@@ -13,6 +13,7 @@ import (
 )
 
 var phpFPMSockRe = regexp.MustCompile(`/run/php/php(\d+\.\d+)-`)
+var apacheServerNameRe = regexp.MustCompile(`(?m)^[ \t]*ServerName[ \t]+([^ \t#]+)`)
 
 func phpVerFromApacheConf(conf string) string {
 	m := phpFPMSockRe.FindStringSubmatch(conf)
@@ -23,7 +24,26 @@ func phpVerFromApacheConf(conf string) string {
 }
 
 func wpLoaderNoise(s string) bool {
-	return strings.Contains(strings.ToLower(s), "ioncube loader")
+	l := strings.ToLower(s)
+	return strings.Contains(l, "ioncube loader") || strings.Contains(l, "no decryption key available") || strings.Contains(l, "unable to call protected function")
+}
+
+func cleanWPField(s string) string {
+	s = strings.TrimSpace(s)
+	if wpLoaderNoise(s) {
+		return ""
+	}
+	return s
+}
+
+func hostFromDocPath(doc string) string {
+	parts := strings.Split(strings.ReplaceAll(doc, "\\", "/"), "/")
+	for i, p := range parts {
+		if p == "domains" && i+1 < len(parts) && strings.Contains(parts[i+1], ".") {
+			return parts[i+1]
+		}
+	}
+	return ""
 }
 
 var wpSiteCacheDir = filepath.Join(layout.Cache, "wp-sites")

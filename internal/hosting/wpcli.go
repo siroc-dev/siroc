@@ -98,7 +98,23 @@ func wpCLIScript(root, raw string) (string, error) {
 		}
 		args = append(args, shellQuote(f))
 	}
+	if !strings.Contains(s, "--url=") && !strings.Contains(s, "--url ") {
+		if url := wpURLArg(root); url != "" {
+			args = append(args, url)
+		}
+	}
 	return strings.Join(args, " "), nil
+}
+
+func wpURLArg(root string) string {
+	host, scheme := wpSiteHost(root)
+	if host == "" {
+		return ""
+	}
+	if scheme == "" {
+		scheme = "https"
+	}
+	return "--url=" + shellQuote(scheme+"://"+host)
 }
 
 func blockedWPCLI(cmd, rest []string) error {

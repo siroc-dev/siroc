@@ -70,7 +70,43 @@ func wpRun(user, root string, args ...string) (string, error) {
 	if err := ensureWPCLI(); err != nil {
 		return "", err
 	}
-	return runAs(user, root, 8*time.Minute, wpExec(root)+" --path="+shellQuote(root)+" "+strings.Join(args, " "))
+	return runAs(user, root, 8*time.Minute, wpExec(root)+" --path="+shellQuote(root)+" "+strings.Join(withWPURL(root, args), " "))
+}
+
+func wpSiteHost(doc string) (host, scheme string) {
+	doc = filepath.Clean(doc)
+	scheme = "https"
+	if doc != "" && doc != "." && doc != "/" {
+		matches, _ := filepath.Glob("/etc/apache2/sites-available/*.conf")
+		needle := "DocumentRoot " + doc
+		for _, p := range matches {
+			b, err := os.ReadFile(p)
+			if err != nil || !strings.Contains(string(b), needle) {
+				continue
+			}
+			if m := apacheServerNameRe.FindStringSubmatch(string(b)); len(m) == 2 {
+				host = m[1]
+				break
+			}
+		}
+	}
+	if host == "" {
+		host = hostFromDocPath(doc)
+	}
+	return host, scheme
+}
+
+func withWPURL(root string, args []string) []string {
+	for _, a := range args {
+		if a == "--url" || strings.HasPrefix(a, "--url=") {
+			return args
+		}
+	}
+	host, scheme := wpSiteHost(root)
+	if host == "" {
+		return args
+	}
+	return append(append([]string{}, args...), "--url="+shellQuote(scheme+"://"+host))
 }
 
 func phpVerForDoc(doc string) string {
@@ -109,7 +145,15 @@ func ioncubeZendArg(ver string) string {
 
 func wpExec(root string) string {
 	ver := phpVerForDoc(root)
-	cmd := "unset PHPRC PHP_INI_SCAN_DIR; " + shellQuote(phpBin(ver))
+	cmd := "unset PHPRC PHP_INI_SCAN_DIR; "
+	if host, scheme := wpSiteHost(root); host != "" {
+		cmd += "export HTTP_HOST=" + shellQuote(host) + " SERVER_NAME=" + shellQuote(host) + " REQUEST_SCHEME=" + shellQuote(scheme)
+		if scheme == "https" {
+			cmd += " HTTPS=on"
+		}
+		cmd += "; "
+	}
+	cmd += shellQuote(phpBin(ver))
 	if extra := ioncubeZendArg(ver); extra != "" {
 		cmd += " " + extra
 	}
@@ -187,32 +231,32 @@ func fetchWPSite(user, root string) (*rpc.WPStatus, error) {
 	wg.Add(7)
 	go func() {
 		defer wg.Done()
-		name, _ = wpRun(user, root, "option", "get", "blogname")
-		name = strings.TrimSpace(name)
+		name, _ = wpRun(user, root, "option", "get", "blogname", "--skip-plugins", "--skip-themes")
+		name = cleanWPField(name)
 	}()
 	go func() {
 		defer wg.Done()
-		url, _ = wpRun(user, root, "option", "get", "siteurl")
-		url = strings.TrimSpace(url)
+		url, _ = wpRun(user, root, "option", "get", "siteurl", "--skip-plugins", "--skip-themes")
+		url = cleanWPField(url)
 	}()
 	go func() {
 		defer wg.Done()
-		home, _ = wpRun(user, root, "option", "get", "home")
-		home = strings.TrimSpace(home)
+		home, _ = wpRun(user, root, "option", "get", "home", "--skip-plugins", "--skip-themes")
+		home = cleanWPField(home)
 	}()
 	go func() {
 		defer wg.Done()
-		version, _ = wpRun(user, root, "core", "version")
-		version = strings.TrimSpace(version)
+		version, _ = wpRun(user, root, "core", "version", "--skip-plugins", "--skip-themes")
+		version = cleanWPField(version)
 	}()
 	go func() {
 		defer wg.Done()
-		prefix = strings.TrimSpace(mustWP(user, root, "db", "prefix"))
+		prefix = cleanWPField(mustWP(user, root, "db", "prefix", "--skip-plugins", "--skip-themes"))
 	}()
 	go func() {
 		defer wg.Done()
 		var rows []map[string]any
-		plugErr = wpJSON(user, root, &rows, "plugin", "list", "--fields=name,status,version,update,title", "--format=json")
+		plugErr = wpJSON(user, root, &rows, "plugin", "list", "--skip-themes", "--fields=name,status,version,update,title", "--format=json")
 		if plugErr != nil {
 			return
 		}
