@@ -70,7 +70,54 @@ func wpRun(user, root string, args ...string) (string, error) {
 	if err := ensureWPCLI(); err != nil {
 		return "", err
 	}
-	return runAs(user, root, 8*time.Minute, "wp --path="+shellQuote(root)+" "+strings.Join(args, " "))
+	return runAs(user, root, 8*time.Minute, wpExec(root)+" --path="+shellQuote(root)+" "+strings.Join(args, " "))
+}
+
+func phpVerForDoc(doc string) string {
+	doc = filepath.Clean(doc)
+	if doc == "" || doc == "." || doc == "/" {
+		return ""
+	}
+	matches, _ := filepath.Glob("/etc/apache2/sites-available/*.conf")
+	needle := "DocumentRoot " + doc
+	for _, p := range matches {
+		b, err := os.ReadFile(p)
+		if err != nil || !strings.Contains(string(b), needle) {
+			continue
+		}
+		if ver := phpVerFromApacheConf(string(b)); ver != "" {
+			return ver
+		}
+	}
+	return ""
+}
+
+func ioncubeZendArg(ver string) string {
+	ver = strings.TrimSpace(ver)
+	if ver == "" {
+		return ""
+	}
+	if matches, _ := filepath.Glob(filepath.Join("/etc/php", ver, "cli", "conf.d", "*ioncube*")); len(matches) > 0 {
+		return ""
+	}
+	matches, _ := filepath.Glob("/usr/lib/php/*/ioncube_loader_lin_" + ver + ".so")
+	if len(matches) == 0 {
+		return ""
+	}
+	return "-d " + shellQuote("zend_extension="+matches[0])
+}
+
+func wpExec(root string) string {
+	ver := phpVerForDoc(root)
+	cmd := "unset PHPRC PHP_INI_SCAN_DIR; " + shellQuote(phpBin(ver))
+	if extra := ioncubeZendArg(ver); extra != "" {
+		cmd += " " + extra
+	}
+	wpBin, err := exec.LookPath("wp")
+	if err != nil || wpBin == "" {
+		wpBin = "/usr/local/bin/wp"
+	}
+	return cmd + " " + shellQuote(wpBin)
 }
 
 func wpPlugin(name string) (string, error) {
@@ -111,7 +158,7 @@ func wpStatus(user, root, domain string) (*rpc.WPStatus, error) {
 		return nil, err
 	}
 	st, plugErr := fetchWPSite(user, root)
-	if plugErr == nil && (st.Version != "" || st.Name != "") {
+	if plugErr == nil && (st.Version != "" || st.Name != "") && !wpLoaderNoise(st.Name) && !wpLoaderNoise(st.URL) && !wpLoaderNoise(st.Home) && !wpLoaderNoise(st.Version) && !wpLoaderNoise(st.Prefix) {
 		_ = saveWPSiteCache(user, root, wpSiteCacheFile{
 			At:      now.UTC(),
 			Name:    st.Name,

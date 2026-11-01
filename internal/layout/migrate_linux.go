@@ -15,9 +15,22 @@ import (
 	"syscall"
 )
 
+// devMode reports whether Siroc is running from a source checkout (for
+// example the Docker test VPS) rather than an installed package. In that case
+// the binaries, web assets, and data stay where they are built under
+// /opt/siroc and SIROC_DATA_DIR, so relocating to /siroc would only point the
+// services at paths that were never actually moved.
+func devMode() bool {
+	_, err := os.Stat("/opt/siroc/go.mod")
+	return err == nil
+}
+
 // Migrate moves Siroc data under /siroc and leaves the old path as a symlink.
 // Account homes stay in /home. It is safe to run on every start and during an update.
 func Migrate() error {
+	if devMode() {
+		return nil
+	}
 	if err := os.MkdirAll(Root, 0755); err != nil {
 		return err
 	}
@@ -40,9 +53,7 @@ func Migrate() error {
 	note(relocate("/etc/apache2/sites-available", filepath.Join(Etc, "apache2", "sites-available"), true, nil))
 	note(relocate("/etc/apache2/sites-enabled", filepath.Join(Etc, "apache2", "sites-enabled"), true, nil))
 	note(relocate("/etc/mysql/conf.d", filepath.Join(Etc, "mysql", "conf.d"), false, nil))
-	if _, err := os.Stat("/opt/siroc/go.mod"); err != nil {
-		note(relocate("/opt/siroc/web", Web, false, nil))
-	}
+	note(relocate("/opt/siroc/web", Web, false, nil))
 	note(linkBins())
 	note(rewriteUnits())
 	note(AllowAppArmor())

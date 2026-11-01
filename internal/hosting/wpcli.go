@@ -73,7 +73,7 @@ func wpCLIScript(root, raw string) (string, error) {
 	if err := blockedWPCLI(cmd, fields[i:]); err != nil {
 		return "", err
 	}
-	args := []string{"wp", "--path=" + shellQuote(root), "--no-color"}
+	args := []string{wpExec(root), "--path=" + shellQuote(root), "--no-color"}
 	for _, c := range cmd {
 		args = append(args, shellQuote(c))
 	}
@@ -305,8 +305,8 @@ func rewritePrefixedColumn(user, root, table, column, old, next string) (string,
 }
 
 var (
-	wpDBIdentRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,63}$`)
-	wpDBHostRe  = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	wpDBIdentRe    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,63}$`)
+	wpDBHostRe     = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 	wpPrefixLineRe = regexp.MustCompile(`(?m)^\$table_prefix\s*=\s*['"].*?['"];`)
 )
 

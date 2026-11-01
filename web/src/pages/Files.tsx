@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
 import { useOutletContext, useSearchParams } from "react-router-dom";
 import {
   App,
@@ -135,6 +135,8 @@ export function Files() {
   const [lspOn, setLspOn] = useState(false);
   const [upItems, setUpItems] = useState<{ key: string; name: string; folder: boolean; count: number; pct: number; speed?: number; status?: "active" | "success" | "exception" }[]>([]);
   const [upOpen, setUpOpen] = useState(false);
+  const [dropOver, setDropOver] = useState(false);
+  const dropDepth = useRef(0);
   const [clip, setClip] = useState<Clip | null>(null);
   const [perm, setPerm] = useState<Entry | null>(null);
   const [modeBits, setModeBits] = useState({ u: 6, g: 4, o: 4 });
@@ -270,6 +272,15 @@ export function Files() {
     sizeGen.current += 1;
     setSizing(false);
   }, [listing.path]);
+
+  useEffect(() => {
+    function clearDrop() {
+      dropDepth.current = 0;
+      setDropOver(false);
+    }
+    window.addEventListener("dragend", clearDrop);
+    return () => window.removeEventListener("dragend", clearDrop);
+  }, []);
 
   useEffect(() => {
     api
@@ -552,6 +563,43 @@ export function Files() {
   function cancelUpload() {
     uploadStop.current = true;
     uploadXhr.current?.abort();
+  }
+
+  function fileDrag(dt: DataTransfer | null) {
+    return !!dt && [...dt.types].includes("Files");
+  }
+
+  function onListDragEnter(ev: DragEvent) {
+    if (!user || !fileDrag(ev.dataTransfer)) return;
+    ev.preventDefault();
+    dropDepth.current += 1;
+    setDropOver(true);
+  }
+
+  function onListDragOver(ev: DragEvent) {
+    if (!user || !fileDrag(ev.dataTransfer)) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = busy ? "none" : "copy";
+  }
+
+  function onListDragLeave(ev: DragEvent) {
+    if (!fileDrag(ev.dataTransfer)) return;
+    dropDepth.current = Math.max(0, dropDepth.current - 1);
+    if (dropDepth.current === 0) setDropOver(false);
+  }
+
+  function onListDrop(ev: DragEvent) {
+    if (!fileDrag(ev.dataTransfer)) return;
+    ev.preventDefault();
+    dropDepth.current = 0;
+    setDropOver(false);
+    if (!user || busy) return;
+    const transfer = ev.dataTransfer;
+    void filesFromDrop(transfer).then((files) => {
+      if (!files.length) return;
+      setUpOpen(true);
+      void uploadMany(files);
+    });
   }
 
   async function uploadMany(files: File[]) {
@@ -1098,7 +1146,20 @@ export function Files() {
             loadData={async (node) => loadTreeNode(String(node.key))}
           />
         </aside>
-        <section className="fm-main">
+        <section
+          className="fm-main"
+          onDragEnter={onListDragEnter}
+          onDragOver={onListDragOver}
+          onDragLeave={onListDragLeave}
+          onDrop={onListDrop}
+        >
+          {dropOver ? (
+            <div className="fm-drop" aria-hidden="true">
+              <InboxOutlined />
+              <div>Drop files or folders to upload</div>
+              <div className="fm-drop-hint">{listing.path}</div>
+            </div>
+          ) : null}
           <div className="fm-toolbar">
             <Button icon={<FileAddOutlined />} disabled={!user} onClick={() => setFileOpen(true)}>
               New file

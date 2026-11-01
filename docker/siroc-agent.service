@@ -5,6 +5,8 @@ After=network.target cloud-init.service
 [Service]
 Type=simple
 Environment=HOME=/root
+Environment=SIROC_ROOT=/opt/siroc
+Environment=SIROC_DATA_DIR=/var/lib/siroc
 Environment=SIROC_UPDATE_URL=https://get.siroc.dev
 RuntimeDirectory=siroc
 RuntimeDirectoryMode=0750

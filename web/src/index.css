@@ -565,10 +565,45 @@ html[data-theme="dark"] .fm-crumb {
 }
 
 .fm-main {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+
+.fm-drop {
+  position: absolute;
+  inset: 8px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  pointer-events: none;
+  border: 2px dashed #1677ff;
+  border-radius: 10px;
+  background: rgba(22, 119, 255, 0.12);
+  color: #1677ff;
+  font-size: 16px;
+}
+
+.fm-drop-hint {
+  max-width: 80%;
+  overflow: hidden;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+html[data-theme="dark"] .fm-drop {
+  border-color: #e2783a;
+  background: rgba(226, 120, 58, 0.16);
+  color: #ff9a55;
 }
 
 .fm-toolbar {

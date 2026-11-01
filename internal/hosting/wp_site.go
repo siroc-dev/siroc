@@ -4,11 +4,27 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/siroc-dev/siroc/internal/layout"
 	"github.com/siroc-dev/siroc/internal/rpc"
 )
+
+var phpFPMSockRe = regexp.MustCompile(`/run/php/php(\d+\.\d+)-`)
+
+func phpVerFromApacheConf(conf string) string {
+	m := phpFPMSockRe.FindStringSubmatch(conf)
+	if len(m) < 2 {
+		return ""
+	}
+	return m[1]
+}
+
+func wpLoaderNoise(s string) bool {
+	return strings.Contains(strings.ToLower(s), "ioncube loader")
+}
 
 var wpSiteCacheDir = filepath.Join(layout.Cache, "wp-sites")
 
@@ -64,6 +80,9 @@ func readWPSiteCache(user, root string) (wpSiteCacheFile, bool) {
 func loadWPSiteCache(user, root string, now time.Time) (wpSiteCacheFile, bool) {
 	c, ok := readWPSiteCache(user, root)
 	if !ok || !wpUserCacheFresh(c.At, now) {
+		return wpSiteCacheFile{}, false
+	}
+	if wpLoaderNoise(c.Name) || wpLoaderNoise(c.URL) || wpLoaderNoise(c.Home) || wpLoaderNoise(c.Version) || wpLoaderNoise(c.Prefix) {
 		return wpSiteCacheFile{}, false
 	}
 	return c, true

@@ -199,9 +199,39 @@ func replaceDeb822Field(block, key, value string) string {
 		out = append(out, line)
 	}
 	if !found {
-		out = append(out, key+": "+value)
+		// Insert before any trailing blank lines so the new field stays inside
+		// this stanza instead of leaking into a phantom stanza after a "\n\n".
+		end := len(out)
+		for end > 0 && strings.TrimSpace(out[end-1]) == "" {
+			end--
+		}
+		out = append(out[:end:end], append([]string{key + ": " + value}, out[end:]...)...)
 	}
 	return strings.Join(out, "\n")
+}
+
+// deb822Junk reports whether a non-empty block is a malformed partial stanza:
+// it carries at least one "key: value" field but lacks both Types and URIs
+// (for example a stray "Enabled: no"). apt rejects the entire source file on
+// one such stanza, so these must be dropped. Comment-only blocks are kept.
+func deb822Junk(block string) bool {
+	hasField := false
+	for _, line := range strings.Split(block, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		if strings.HasPrefix(t, "deb ") || strings.HasPrefix(t, "deb-src ") {
+			return false
+		}
+		if strings.Contains(t, ":") {
+			hasField = true
+		}
+	}
+	if !hasField {
+		return false
+	}
+	return deb822Field(block, "Types") == "" && deb822Field(block, "URIs") == ""
 }
 
 func splitDeb822(text string) []string {

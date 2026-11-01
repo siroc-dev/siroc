@@ -144,30 +144,48 @@ func repairSourcesFile(path, id, code string) {
 	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
 	blocks := splitDeb822(text)
 	changed := false
-	for i, block := range blocks {
+	kept := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		// Drop stray blank blocks and partial stanzas (e.g. a lone
+		// "Enabled: no" with no Types/URIs). apt rejects the whole file on a
+		// single malformed stanza, so leaving one here breaks every update.
+		if strings.TrimSpace(block) == "" {
+			if block != "" {
+				changed = true
+			}
+			continue
+		}
+		if deb822Junk(block) {
+			changed = true
+			continue
+		}
 		url := firstField(deb822Field(block, "URIs"))
 		suite := firstField(deb822Field(block, "Suites"))
 		if url == "" || suite == "" || officialArchive(url) {
+			kept = append(kept, block)
 			continue
 		}
 		if strings.EqualFold(deb822Field(block, "Enabled"), "no") {
+			kept = append(kept, block)
 			continue
 		}
 		alt, disable := pickRepoSuite(url, id, code, repoReleaseProbe)
 		if disable {
-			blocks[i] = replaceDeb822Field(block, "Enabled", "no")
+			kept = append(kept, replaceDeb822Field(block, "Enabled", "no"))
 			changed = true
 			continue
 		}
 		if alt != "" && alt != suite {
-			blocks[i] = replaceDeb822Field(block, "Suites", alt)
+			kept = append(kept, replaceDeb822Field(block, "Suites", alt))
 			changed = true
+			continue
 		}
+		kept = append(kept, block)
 	}
 	if !changed {
 		return
 	}
-	writeRepaired(path, joinDeb822(blocks))
+	writeRepaired(path, joinDeb822(kept))
 }
 
 func writeRepaired(path, text string) {
