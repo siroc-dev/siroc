@@ -163,7 +163,7 @@ func TestStaticDirect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"location ~* \\.(ac3|avi|", "|css|", "|js|", "webp|woff|woff2|", "try_files $uri @siroc_apache;", "location @siroc_apache {", "proxy_pass http://127.0.0.1:8080;"} {
+	for _, want := range []string{"location ~* \\.(ac3|avi|", "|css|", "|js|", "webp|woff|woff2|", "try_files $uri @siroc_apache;", "location @siroc_apache {", "proxy_pass http://127.0.0.1:8080;", "proxy_set_header X-Forwarded-Host $http_host;", "proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;", "proxy_set_header CDN-Loop $http_cdn_loop;"} {
 		if !contains(body, want) {
 			t.Fatalf("missing %q\n%s", want, body)
 		}
@@ -197,7 +197,7 @@ func TestStaticDirect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !contains(proxied, "proxy_pass http://127.0.0.1:8080;") {
+	if !contains(proxied, "proxy_pass http://127.0.0.1:8080;") || !contains(proxied, "proxy_set_header X-Forwarded-Proto $scheme;") || !contains(proxied, "proxy_set_header True-Client-IP $http_true_client_ip;") {
 		t.Fatalf("hotlink off static:\n%s", proxied)
 	}
 }

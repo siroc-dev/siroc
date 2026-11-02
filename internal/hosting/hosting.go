@@ -77,7 +77,14 @@ type siteData struct {
 	Cache             string
 }
 
-const nginxTmpl = `server {
+const nginxTmpl = `{{define "cdnHeaders"}}        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        proxy_set_header CF-Ray $http_cf_ray;
+        proxy_set_header CF-Visitor $http_cf_visitor;
+        proxy_set_header CF-IPCountry $http_cf_ipcountry;
+        proxy_set_header True-Client-IP $http_true_client_ip;
+        proxy_set_header CDN-Loop $http_cdn_loop;
+{{end}}server {
     listen 80;
     listen [::]:80;
     server_name {{.AllNames}};
@@ -124,7 +131,7 @@ const nginxTmpl = `server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-{{.Cache}}    }
+{{template "cdnHeaders" .}}{{.Cache}}    }
 {{- end}}
     location ~ \.php$ {
         proxy_pass http://127.0.0.1:8080;
@@ -133,7 +140,7 @@ const nginxTmpl = `server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-{{.Cache}}    }
+{{template "cdnHeaders" .}}{{.Cache}}    }
 {{- end}}
 {{- end}}
 }
@@ -188,7 +195,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
-{{.Cache}}    }
+{{template "cdnHeaders" .}}{{.Cache}}    }
 {{- end}}
     location ~ \.php$ {
         proxy_pass http://127.0.0.1:8080;
@@ -197,7 +204,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
-{{.Cache}}    }
+{{template "cdnHeaders" .}}{{.Cache}}    }
 {{- end}}
 }
 {{- end}}

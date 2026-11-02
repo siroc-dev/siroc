@@ -376,15 +376,10 @@ func writeProxyHeaders(b *strings.Builder, target, host string, https, websocket
 	fmt.Fprintf(b, "        proxy_set_header Host %s;\n", host)
 	b.WriteString("        proxy_set_header X-Real-IP $remote_addr;\n")
 	b.WriteString("        proxy_set_header X-Real-Port $remote_port;\n")
-	// Cloudflare rejects a second pass when this chain is over 100 characters,
-	// when the header is repeated, or when CF-Connecting-IP is already set.
 	b.WriteString("        proxy_set_header X-Forwarded-For $remote_addr;\n")
-	b.WriteString("        proxy_set_header CF-Connecting-IP \"\";\n")
-	b.WriteString("        proxy_set_header CF-Ray \"\";\n")
-	b.WriteString("        proxy_set_header CF-Visitor \"\";\n")
-	b.WriteString("        proxy_set_header CF-IPCountry \"\";\n")
-	b.WriteString("        proxy_set_header True-Client-IP \"\";\n")
-	b.WriteString("        proxy_set_header CDN-Loop \"\";\n")
+	b.WriteString("        proxy_set_header X-Forwarded-Proto $scheme;\n")
+	b.WriteString("        proxy_set_header X-Forwarded-Host $http_host;\n")
+	b.WriteString(forwardCDNProxyHeaders())
 	b.WriteString("        proxy_set_header REMOTE-HOST $remote_addr;\n")
 	if https {
 		b.WriteString("        proxy_ssl_server_name on;\n")
@@ -410,6 +405,16 @@ func writeProxyHeaders(b *strings.Builder, target, host string, https, websocket
 
 // proxyPassTarget keeps a hostname such as https://doujinfast.com and drops a
 // trailing slash so nginx forwards the original request URI.
+func forwardCDNProxyHeaders() string {
+	return "" +
+		"        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;\n" +
+		"        proxy_set_header CF-Ray $http_cf_ray;\n" +
+		"        proxy_set_header CF-Visitor $http_cf_visitor;\n" +
+		"        proxy_set_header CF-IPCountry $http_cf_ipcountry;\n" +
+		"        proxy_set_header True-Client-IP $http_true_client_ip;\n" +
+		"        proxy_set_header CDN-Loop $http_cdn_loop;\n"
+}
+
 func proxyPassTarget(raw string) string {
 	raw = strings.TrimSpace(raw)
 	u, err := url.Parse(raw)

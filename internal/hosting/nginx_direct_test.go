@@ -27,7 +27,7 @@ func TestDirectNginxTemplate(t *testing.T) {
 	if !strings.Contains(body, "try_files $uri $uri/ =404;") {
 		t.Fatalf("missing try_files:\n%s", body)
 	}
-	if strings.Contains(body, "proxy_pass http://127.0.0.1:8080;") {
+	if strings.Contains(body, "proxy_pass http://127.0.0.1:8080;") || strings.Contains(body, "CF-Connecting-IP") {
 		t.Fatal("direct nginx should not proxy to Apache")
 	}
 	if !strings.Contains(body, "location ~ \\.php$ { return 404; }") {
@@ -39,6 +39,9 @@ func TestPHPTemplateStillProxies(t *testing.T) {
 	body := renderSite(t, siteData{Domain: "site.test", AllNames: "site.test", DocRoot: "/var/www/site", PostMaxSize: "64M"})
 	if !strings.Contains(body, "proxy_pass http://127.0.0.1:8080;") {
 		t.Fatal("php site should proxy to Apache")
+	}
+	if strings.Count(body, "proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;") != 2 || !strings.Contains(body, "proxy_set_header X-Forwarded-Host $http_host;") || !strings.Contains(body, "proxy_set_header CDN-Loop $http_cdn_loop;") {
+		t.Fatalf("php proxy should forward the host and Cloudflare headers:\n%s", body)
 	}
 	if strings.Count(body, "proxy_hide_header Strict-Transport-Security;") != 1 {
 		t.Fatalf("http site should hide HSTS once:\n%s", body)
