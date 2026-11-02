@@ -15,6 +15,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/security"
 	"github.com/siroc-dev/siroc/internal/siteopts"
 	"github.com/siroc-dev/siroc/internal/software"
+	"github.com/siroc-dev/siroc/internal/store"
 	"github.com/siroc-dev/siroc/internal/validate"
 	"github.com/siroc-dev/siroc/internal/weblog"
 )
@@ -64,6 +65,7 @@ type siteData struct {
 	ProxyLoc          string
 	WAF               bool
 	WAFRemove         []int
+	WAFPathRules      string
 	Extra             string
 	Access            string
 	Index             string
@@ -246,6 +248,7 @@ const apacheTmpl = `<VirtualHost 127.0.0.1:8080>
 {{- range .WAFRemove}}
         SecRuleRemoveById {{.}}
 {{- end}}
+{{.WAFPathRules}}
 {{- end}}
     </IfModule>
 </VirtualHost>
@@ -379,6 +382,7 @@ func (m *Manager) Write(req rpc.SiteWriteReq) error {
 		ProxyPass:     "",
 		WAF:           req.WAF,
 		WAFRemove:     req.WAFRemove,
+		WAFPathRules:  store.WAFPathRules(req.WAFPaths),
 	}
 	if err := applyGuards(&data, req.Options, ""); err != nil {
 		return err

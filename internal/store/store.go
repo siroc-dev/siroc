@@ -85,6 +85,7 @@ type Site struct {
 	AppCmd         string           `json:"appCmd,omitempty"`
 	WAFEnabled     bool             `json:"wafEnabled"`
 	WAFDisabledIDs []int            `json:"wafDisabledIds,omitempty"`
+	WAFPaths       []string         `json:"wafPaths,omitempty"`
 	Options        siteopts.Options `json:"options,omitempty"`
 	CreatedAt      time.Time        `json:"createdAt"`
 }
@@ -255,6 +256,7 @@ CREATE TABLE IF NOT EXISTS settings (
 		`ALTER TABLE accounts ADD COLUMN waf_enabled INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE sites ADD COLUMN waf_enabled INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE sites ADD COLUMN waf_disabled_json TEXT NOT NULL DEFAULT '[]'`,
+		`ALTER TABLE sites ADD COLUMN waf_paths_json TEXT NOT NULL DEFAULT '[]'`,
 		`ALTER TABLE sites ADD COLUMN site_opts_json TEXT NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE sites ADD COLUMN nginx_conf TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE sites ADD COLUMN apache_conf TEXT NOT NULL DEFAULT ''`,
@@ -695,19 +697,20 @@ func (s *Store) CreateSite(accountID int64, domain, docroot, php string, aliases
 	return s.GetSite(id)
 }
 
-const siteCols = `s.id, s.account_id, a.username, s.domain, s.docroot, s.php_version, s.enabled, s.aliases_json, s.ssl_enabled, s.ssl_expiry, s.ssl_kind, s.nginx_rewrites_json, s.kind, s.proxy_pass, s.app_port, s.app_cmd, s.waf_enabled, s.waf_disabled_json, s.site_opts_json, s.created_at, s.nginx_conf, s.apache_conf`
+const siteCols = `s.id, s.account_id, a.username, s.domain, s.docroot, s.php_version, s.enabled, s.aliases_json, s.ssl_enabled, s.ssl_expiry, s.ssl_kind, s.nginx_rewrites_json, s.kind, s.proxy_pass, s.app_port, s.app_cmd, s.waf_enabled, s.waf_disabled_json, s.waf_paths_json, s.site_opts_json, s.created_at, s.nginx_conf, s.apache_conf`
 
 func scanSite(scan func(dest ...any) error) (*Site, error) {
 	st := &Site{}
 	var en, ssl, waf int
-	var created, aliases, rewrites, disabled, opts string
-	if err := scan(&st.ID, &st.AccountID, &st.Username, &st.Domain, &st.DocRoot, &st.PHPVersion, &en, &aliases, &ssl, &st.SSLExpiry, &st.SSLKind, &rewrites, &st.Kind, &st.ProxyPass, &st.AppPort, &st.AppCmd, &waf, &disabled, &opts, &created, &st.NginxConf, &st.ApacheConf); err != nil {
+	var created, aliases, rewrites, disabled, paths, opts string
+	if err := scan(&st.ID, &st.AccountID, &st.Username, &st.Domain, &st.DocRoot, &st.PHPVersion, &en, &aliases, &ssl, &st.SSLExpiry, &st.SSLKind, &rewrites, &st.Kind, &st.ProxyPass, &st.AppPort, &st.AppCmd, &waf, &disabled, &paths, &opts, &created, &st.NginxConf, &st.ApacheConf); err != nil {
 		return nil, err
 	}
 	st.Enabled = en == 1
 	st.SSL = ssl == 1
 	st.WAFEnabled = waf == 1
 	st.WAFDisabledIDs = parseWAFRuleIDs(disabled)
+	st.WAFPaths = parseWAFPaths(paths)
 	st.Options = siteopts.Parse(opts)
 	st.Aliases, st.AliasAdded = parseAliasStore(aliases)
 	st.DisplayName = validate.DisplayDomain(st.Domain)
@@ -847,6 +850,101 @@ func (s *Store) UpdateSiteWAFRules(id int64, ids []int) error {
 	}
 	_, err = s.DB.Exec(`UPDATE sites SET waf_disabled_json = ? WHERE id = ?`, string(raw), id)
 	return err
+}
+
+func (s *Store) UpdateSiteWAFPaths(id int64, paths []string) error {
+	norm, err := NormalizeWAFPaths(paths)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(norm)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.Exec(`UPDATE sites SET waf_paths_json = ? WHERE id = ?`, string(raw), id)
+	return err
+}
+
+func NormalizeWAFPaths(paths []string) ([]string, error) {
+	if len(paths) > 30 {
+		return nil, fmt.Errorf("at most 30 excluded paths per website")
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, raw := range paths {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			continue
+		}
+		if err := validWAFPath(p); err != nil {
+			return nil, err
+		}
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	if out == nil {
+		out = []string{}
+	}
+	return out, nil
+}
+
+func validWAFPath(p string) error {
+	if p == "/" {
+		return fmt.Errorf("use the WAF switch to turn off the whole website")
+	}
+	if len(p) > 120 || !strings.HasPrefix(p, "/") || strings.Contains(p, "//") {
+		return fmt.Errorf("invalid path %s", p)
+	}
+	for _, part := range strings.Split(p, "/") {
+		if part == ".." {
+			return fmt.Errorf("invalid path %s", p)
+		}
+	}
+	for _, r := range p {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '/' || r == '-' || r == '_' || r == '.' || r == '~':
+		default:
+			return fmt.Errorf("invalid path %s", p)
+		}
+	}
+	return nil
+}
+
+func parseWAFPaths(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []string{}
+	}
+	var paths []string
+	if err := json.Unmarshal([]byte(raw), &paths); err != nil {
+		return []string{}
+	}
+	norm, err := NormalizeWAFPaths(paths)
+	if err != nil {
+		return []string{}
+	}
+	return norm
+}
+
+func WAFPathRules(paths []string) string {
+	norm, err := NormalizeWAFPaths(paths)
+	if err != nil || len(norm) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i, p := range norm {
+		fmt.Fprintf(&b, "        SecRule REQUEST_URI \"@rx ^%s(?:/|$)\" \"id:%d,phase:1,pass,nolog,ctl:ruleEngine=Off\"\n", wafPathPattern(p), 2100001+i)
+	}
+	return b.String()
+}
+
+func wafPathPattern(p string) string {
+	return strings.NewReplacer(`.`, `\.`, `-`, `\-`).Replace(p)
 }
 
 func NormalizeWAFRuleIDs(ids []int) ([]int, error) {

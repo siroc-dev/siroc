@@ -1339,6 +1339,7 @@ func (s *Server) userBackupManifest(acc *store.Account) *rpc.BackupManifest {
 			AppCmd:     st.AppCmd,
 			WAF:        st.WAFEnabled,
 			WAFRemove:  append([]int(nil), st.WAFDisabledIDs...),
+			WAFPaths:   append([]string(nil), st.WAFPaths...),
 		}
 		if !siteopts.IsZero(st.Options) {
 			opt := st.Options
@@ -1483,6 +1484,9 @@ func (s *Server) applyBackupManifest(man *rpc.BackupManifest) error {
 			if st.WAFRemove != nil {
 				_ = s.Store.UpdateSiteWAFRules(existing.ID, st.WAFRemove)
 			}
+			if st.WAFPaths != nil {
+				_ = s.Store.UpdateSiteWAFPaths(existing.ID, st.WAFPaths)
+			}
 			if st.GitRepo != "" {
 				_ = s.Store.UpsertSiteGit(&store.SiteGit{
 					SiteID: existing.ID, Repo: st.GitRepo, Branch: st.GitBranch, Path: st.GitPath, Command: st.GitCommand, Token: st.GitToken,
@@ -1502,6 +1506,9 @@ func (s *Server) applyBackupManifest(man *rpc.BackupManifest) error {
 		}
 		if st.WAFRemove != nil {
 			_ = s.Store.UpdateSiteWAFRules(created.ID, st.WAFRemove)
+		}
+		if st.WAFPaths != nil {
+			_ = s.Store.UpdateSiteWAFPaths(created.ID, st.WAFPaths)
 		}
 		if st.GitRepo != "" {
 			token := st.GitToken
@@ -1562,6 +1569,7 @@ func (s *Server) writeRestoredSite(acc *store.Account, st rpc.BackupSite) error 
 		AppCmd:     st.AppCmd,
 		WAF:        st.WAF,
 		WAFRemove:  append([]int(nil), st.WAFRemove...),
+		WAFPaths:   append([]string(nil), st.WAFPaths...),
 		Options:    opt,
 		FPM:        s.accountFPMPtr(acc),
 	})

@@ -210,6 +210,7 @@ func (s *Server) Router() http.Handler {
 		r.Put("/api/sites/{id}/waf", s.setSiteWAF)
 		r.Get("/api/sites/{id}/waf/rules", s.siteWAFRules)
 		r.Put("/api/sites/{id}/waf/rules", s.siteWAFRules)
+		r.Put("/api/sites/{id}/waf/paths", s.setSiteWAFPaths)
 		r.Get("/api/sites/{id}/git", s.getSiteGit)
 		r.Put("/api/sites/{id}/git", s.putSiteGit)
 		r.Post("/api/sites/{id}/git/branches", s.gitBranches)
@@ -2157,6 +2158,7 @@ func (s *Server) siteWriteReq(st store.Site, php string, enabled bool, aliases [
 		AppCmd:     st.AppCmd,
 		WAF:        s.siteWAF(st),
 		WAFRemove:  append([]int(nil), st.WAFDisabledIDs...),
+		WAFPaths:   append([]string(nil), st.WAFPaths...),
 		Options:    st.Options,
 		NginxConf:  st.NginxConf,
 		ApacheConf: st.ApacheConf,

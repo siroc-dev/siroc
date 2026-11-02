@@ -2,6 +2,7 @@ package store
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -58,6 +59,32 @@ func TestWAFDefaultsAndToggle(t *testing.T) {
 	}
 	if err := st.UpdateSiteWAFRules(site.ID, []int{1}); err == nil {
 		t.Fatal("expected invalid rule id")
+	}
+	if err := st.UpdateSiteWAFPaths(site.ID, []string{"/wp-admin", "/api/upload", "/wp-admin"}); err != nil {
+		t.Fatal(err)
+	}
+	site, err = st.GetSite(site.ID)
+	if err != nil || len(site.WAFPaths) != 2 || site.WAFPaths[0] != "/api/upload" || site.WAFPaths[1] != "/wp-admin" {
+		t.Fatalf("paths: %+v %v", site.WAFPaths, err)
+	}
+	if len(site.WAFDisabledIDs) != 2 {
+		t.Fatal("saving paths must keep disabled rules")
+	}
+}
+
+func TestNormalizeWAFPaths(t *testing.T) {
+	got, err := NormalizeWAFPaths([]string{" /wp-admin ", "/file.php"})
+	if err != nil || len(got) != 2 || got[1] != "/wp-admin" {
+		t.Fatalf("normalize: %+v %v", got, err)
+	}
+	rules := WAFPathRules([]string{"/wp-admin", "/file.php"})
+	if !strings.Contains(rules, `^/wp\-admin(?:/|$)`) || !strings.Contains(rules, `^/file\.php(?:/|$)`) || !strings.Contains(rules, "ctl:ruleEngine=Off") || !strings.Contains(rules, "id:2100001") {
+		t.Fatalf("rules:\n%s", rules)
+	}
+	for _, bad := range []string{"/", "/../etc", "/a?x=1", "/a b", "wp-admin", "/ok<script>"} {
+		if _, err := NormalizeWAFPaths([]string{bad}); err == nil {
+			t.Fatalf("accepted %q", bad)
+		}
 	}
 }
 

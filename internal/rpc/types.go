@@ -189,6 +189,7 @@ type SiteWriteReq struct {
 	AppCmd     string           `json:"appCmd,omitempty"`
 	WAF        bool             `json:"waf"`
 	WAFRemove  []int            `json:"wafRemove,omitempty"`
+	WAFPaths   []string         `json:"wafPaths,omitempty"`
 	Options    siteopts.Options `json:"options,omitempty"`
 	NginxConf  string           `json:"nginxConf,omitempty"`
 	ApacheConf string           `json:"apacheConf,omitempty"`
@@ -1542,6 +1543,7 @@ type BackupSite struct {
 	AppCmd     string            `json:"appCmd,omitempty"`
 	WAF        bool              `json:"waf,omitempty"`
 	WAFRemove  []int             `json:"wafRemove,omitempty"`
+	WAFPaths   []string          `json:"wafPaths,omitempty"`
 	Options    *siteopts.Options `json:"options,omitempty"`
 	GitRepo    string            `json:"gitRepo,omitempty"`
 	GitBranch  string            `json:"gitBranch,omitempty"`

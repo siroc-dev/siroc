@@ -31,6 +31,7 @@ export type SiteDashSite = {
   appPort?: number;
   wafEnabled?: boolean;
   wafDisabledIds?: number[];
+  wafPaths?: string[];
 };
 
 export type SiteDashAction =
@@ -261,7 +262,7 @@ export function SiteDash({
         </div>
         {onRules ? (
           <Button style={{ marginTop: 12 }} onClick={onRules}>
-            Rule exceptions{site.wafDisabledIds?.length ? ` (${site.wafDisabledIds.length} off)` : ""}
+            Rule exceptions{site.wafDisabledIds?.length ? ` (${site.wafDisabledIds.length} off)` : ""}{site.wafPaths?.length ? ` · ${site.wafPaths.length} path${site.wafPaths.length === 1 ? "" : "s"}` : ""}
           </Button>
         ) : null}
       </section>

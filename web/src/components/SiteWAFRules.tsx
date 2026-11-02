@@ -3,7 +3,7 @@ import { App, Button, Input, Select, Space, Table, Tag, Typography } from "antd"
 import { api } from "@/lib/api";
 
 type Rule = { id: number; msg: string; file: string; pack: string; disabled: boolean };
-type Resp = { rules?: Rule[]; total?: number; disabledIds?: number[] };
+type Resp = { rules?: Rule[]; total?: number; disabledIds?: number[]; paths?: string[] };
 
 export function ruleExceptionRows(rules: Rule[], off: number[], q = "", pack = ""): Rule[] {
   const query = q.trim().toLowerCase();
@@ -24,27 +24,30 @@ export function ruleExceptionRows(rules: Rule[], off: number[], q = "", pack = "
   });
 }
 
-export function SiteWAFRules({ siteId, domain }: { siteId: number; domain?: string }) {
+export function SiteWAFRules({ siteId, domain, onPaths }: { siteId: number; domain?: string; onPaths?: (paths: string[]) => void }) {
   const { message } = App.useApp();
   const [rules, setRules] = useState<Rule[]>([]);
   const [total, setTotal] = useState(0);
   const [off, setOff] = useState<number[]>([]);
+  const [paths, setPaths] = useState<string[]>([]);
+  const [pathDraft, setPathDraft] = useState("");
   const [q, setQ] = useState("");
   const [pack, setPack] = useState("");
   const [newId, setNewId] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function load(query = q, nextPack = pack) {
+  async function load(query = q, nextPack = pack, withPaths = false) {
     const data = await api.get<Resp>(
       `/api/sites/${siteId}/waf/rules?q=${encodeURIComponent(query)}&pack=${encodeURIComponent(nextPack)}`,
     );
     setRules(data.rules || []);
     setTotal(data.total || 0);
     setOff(data.disabledIds || []);
+    if (withPaths) setPaths(data.paths || []);
   }
 
   useEffect(() => {
-    load().catch((e) => message.error(e instanceof Error ? e.message : "Failed to load rules"));
+    load(q, pack, true).catch((e) => message.error(e instanceof Error ? e.message : "Failed to load rules"));
   }, [siteId]);
 
   async function save(ids: number[]) {
@@ -66,6 +69,29 @@ export function SiteWAFRules({ siteId, domain }: { siteId: number; domain?: stri
     return save(next);
   }
 
+  function addPath(e?: FormEvent) {
+    e?.preventDefault();
+    const next = pathDraft.trim();
+    if (!next) return;
+    if (!paths.includes(next)) setPaths([...paths, next]);
+    setPathDraft("");
+  }
+
+  async function savePaths() {
+    setBusy(true);
+    try {
+      const res = await api.put<{ paths?: string[] }>(`/api/sites/${siteId}/waf/paths`, { paths });
+      const saved = res.paths || [];
+      setPaths(saved);
+      onPaths?.(saved);
+      message.success(domain ? `Excluded paths saved for ${domain}` : "Excluded paths saved");
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "Failed to save paths");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function addId(e: FormEvent) {
     e.preventDefault();
     const id = Number(newId.trim());
@@ -82,6 +108,29 @@ export function SiteWAFRules({ siteId, domain }: { siteId: number; domain?: stri
   return (
     <div>
       <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+        Skip ModSecurity for a path on this website, such as /wp-admin. A path also covers everything under it. Other paths stay protected. This applies to sites served by Apache.
+      </Typography.Paragraph>
+      <Space wrap style={{ marginBottom: 12 }}>
+        <Input
+          style={{ width: 280 }}
+          value={pathDraft}
+          placeholder="/wp-admin"
+          onChange={(e) => setPathDraft(e.target.value)}
+          onPressEnter={(e) => addPath(e as unknown as FormEvent)}
+        />
+        <Button disabled={busy} onClick={() => addPath()}>Add path</Button>
+        <Button type="primary" disabled={busy} onClick={() => void savePaths()}>Save paths</Button>
+      </Space>
+      {paths.length ? (
+        <Space wrap style={{ marginBottom: 12 }}>
+          {paths.map((p) => (
+            <Tag key={p} closable onClose={() => setPaths(paths.filter((x) => x !== p))}>{p}</Tag>
+          ))}
+        </Space>
+      ) : (
+        <Typography.Paragraph type="secondary">No excluded paths.</Typography.Paragraph>
+      )}
+      <Typography.Paragraph type="secondary">
         Turn off individual ModSecurity rules for this website only. Other websites keep the global rules.
       </Typography.Paragraph>
       <Space wrap style={{ marginBottom: 12 }}>

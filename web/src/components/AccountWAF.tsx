@@ -77,7 +77,7 @@ export function AccountWAF({ admin, onChanged }: { admin?: boolean; onChanged?: 
       </Card>
       <Card title="Rule exceptions">
         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-          Disable a rule on one website when it blocks a real request. The same rule stays on for every other site.
+          Skip a path, or disable a rule, on one website when it blocks a real request. Other websites stay protected.
         </Typography.Paragraph>
         <Select
           style={{ minWidth: 260, marginBottom: 12 }}

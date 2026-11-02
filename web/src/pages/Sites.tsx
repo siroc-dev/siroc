@@ -116,6 +116,8 @@ type Site = {
   appPort?: number;
   appCmd?: string;
   wafEnabled?: boolean;
+  wafDisabledIds?: number[];
+  wafPaths?: string[];
   createdAt?: string;
   options?: SiteOptions;
 };
@@ -1260,7 +1262,13 @@ export function Sites() {
         width={760}
         destroyOnHidden
       >
-        {openSite ? <SiteWAFRules siteId={openSite.id} domain={openSite.domain} /> : null}
+        {openSite ? (
+          <SiteWAFRules
+            siteId={openSite.id}
+            domain={openSite.domain}
+            onPaths={(paths) => setSites((cur) => cur.map((s) => (s.id === openSite.id ? { ...s, wafPaths: paths } : s)))}
+          />
+        ) : null}
       </Modal>
       {settingsOn || openSite ? null : admin ? (
         <Tabs

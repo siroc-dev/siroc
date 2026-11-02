@@ -123,7 +123,46 @@ func (s *Server) siteWAFRules(w http.ResponseWriter, r *http.Request) {
 		Rules       []rpc.WAFRule `json:"rules"`
 		Total       int           `json:"total"`
 		DisabledIDs []int         `json:"disabledIds"`
-	}{Rules: out.Rules, Total: out.Total, DisabledIDs: st.WAFDisabledIDs})
+		Paths       []string      `json:"paths"`
+	}{Rules: out.Rules, Total: out.Total, DisabledIDs: st.WAFDisabledIDs, Paths: st.WAFPaths})
+}
+
+func (s *Server) setSiteWAFPaths(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
+		return
+	}
+	st, err := s.Store.GetSite(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, fmt.Errorf("site not found"))
+		return
+	}
+	if !s.allowAccount(w, r, st.Username) {
+		return
+	}
+	var body struct {
+		Paths []string `json:"paths"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	paths, err := store.NormalizeWAFPaths(body.Paths)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	st.WAFPaths = paths
+	req := s.siteWriteReq(*st, st.PHPVersion, st.Enabled, st.Aliases, st.SSL, st.SSLKind, st.Rewrite)
+	if err := s.Agent.SiteWrite(req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.Store.UpdateSiteWAFPaths(st.ID, paths); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"paths": paths})
 }
 
 func (s *Server) rewriteAccountSites(acc store.Account) error {
