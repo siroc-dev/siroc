@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/siroc-dev/siroc/internal/dbmgmt"
 	"github.com/siroc-dev/siroc/internal/siteopts"
 	"github.com/siroc-dev/siroc/internal/validate"
 	_ "modernc.org/sqlite"
@@ -103,6 +104,9 @@ type Database struct {
 	Engine      string    `json:"engine"`
 	CanCreate   bool      `json:"canCreate"`
 	HasPassword bool      `json:"hasPassword"`
+	AccessHosts string    `json:"-"`
+	Access      string    `json:"access"`
+	Hosts       []string  `json:"hosts,omitempty"`
 	Size        int64     `json:"size"`
 	PasswordEnc string    `json:"-"`
 	CreatedAt   time.Time `json:"createdAt"`
@@ -247,6 +251,7 @@ CREATE TABLE IF NOT EXISTS settings (
 		`ALTER TABLE accounts ADD COLUMN disk_quota_mb INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE databases ADD COLUMN password_enc TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE databases ADD COLUMN can_create INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE databases ADD COLUMN access_hosts TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE accounts ADD COLUMN waf_enabled INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE sites ADD COLUMN waf_enabled INTEGER NOT NULL DEFAULT 1`,
 		`ALTER TABLE sites ADD COLUMN waf_disabled_json TEXT NOT NULL DEFAULT '[]'`,
@@ -1077,7 +1082,9 @@ func (s *Store) DeleteSite(id int64) error {
 }
 
 func (s *Store) CreateDatabase(accountID int64, name, user, engine, passwordEnc string) (*Database, error) {
-	res, err := s.DB.Exec(`INSERT INTO databases (account_id, db_name, db_user, engine, password_enc) VALUES (?, ?, ?, ?, ?)`, accountID, name, user, engine, passwordEnc)
+	var access string
+	_ = s.DB.QueryRow(`SELECT access_hosts FROM databases WHERE account_id = ? AND db_user = ? ORDER BY id LIMIT 1`, accountID, user).Scan(&access)
+	res, err := s.DB.Exec(`INSERT INTO databases (account_id, db_name, db_user, engine, password_enc, access_hosts) VALUES (?, ?, ?, ?, ?, ?)`, accountID, name, user, engine, passwordEnc, access)
 	if err != nil {
 		return nil, err
 	}
@@ -1099,14 +1106,15 @@ func (s *Store) GetDatabase(id int64) (*Database, error) {
 	var created string
 	var canCreate int
 	err := s.DB.QueryRow(`
-SELECT d.id, d.account_id, a.username, d.db_name, d.db_user, d.engine, d.password_enc, d.can_create, d.created_at
+SELECT d.id, d.account_id, a.username, d.db_name, d.db_user, d.engine, d.password_enc, d.can_create, d.access_hosts, d.created_at
 FROM databases d JOIN accounts a ON a.id = d.account_id WHERE d.id = ?`, id).
-		Scan(&d.ID, &d.AccountID, &d.Username, &d.DBName, &d.DBUser, &d.Engine, &d.PasswordEnc, &canCreate, &created)
+		Scan(&d.ID, &d.AccountID, &d.Username, &d.DBName, &d.DBUser, &d.Engine, &d.PasswordEnc, &canCreate, &d.AccessHosts, &created)
 	if err != nil {
 		return nil, err
 	}
 	d.CanCreate = canCreate == 1
 	d.HasPassword = d.PasswordEnc != ""
+	fillDBAccess(d)
 	d.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
 	return d, nil
 }
@@ -1120,6 +1128,18 @@ func (s *Store) SetDatabaseCreate(accountID int64, dbUser string, on bool) error
 	return err
 }
 
+func (s *Store) SetDatabaseAccess(accountID int64, dbUser, stored string) error {
+	_, err := s.DB.Exec(`UPDATE databases SET access_hosts = ? WHERE account_id = ? AND db_user = ?`, stored, accountID, dbUser)
+	return err
+}
+
+func fillDBAccess(d *Database) {
+	if d == nil {
+		return
+	}
+	d.Access, d.Hosts = dbmgmt.DescribeStored(d.AccessHosts)
+}
+
 func (s *Store) UpdateDatabasePassword(id int64, passwordEnc string) error {
 	_, err := s.DB.Exec(`UPDATE databases SET password_enc = ? WHERE id = ?`, passwordEnc, id)
 	return err
@@ -1127,7 +1147,7 @@ func (s *Store) UpdateDatabasePassword(id int64, passwordEnc string) error {
 
 func (s *Store) ListDatabases() ([]Database, error) {
 	rows, err := s.DB.Query(`
-SELECT d.id, d.account_id, a.username, d.db_name, d.db_user, d.engine, d.password_enc, d.can_create, d.created_at
+SELECT d.id, d.account_id, a.username, d.db_name, d.db_user, d.engine, d.password_enc, d.can_create, d.access_hosts, d.created_at
 FROM databases d JOIN accounts a ON a.id = d.account_id ORDER BY d.db_name`)
 	if err != nil {
 		return nil, err
@@ -1138,11 +1158,12 @@ FROM databases d JOIN accounts a ON a.id = d.account_id ORDER BY d.db_name`)
 		var d Database
 		var created string
 		var canCreate int
-		if err := rows.Scan(&d.ID, &d.AccountID, &d.Username, &d.DBName, &d.DBUser, &d.Engine, &d.PasswordEnc, &canCreate, &created); err != nil {
+		if err := rows.Scan(&d.ID, &d.AccountID, &d.Username, &d.DBName, &d.DBUser, &d.Engine, &d.PasswordEnc, &canCreate, &d.AccessHosts, &created); err != nil {
 			return nil, err
 		}
 		d.CanCreate = canCreate == 1
 		d.HasPassword = d.PasswordEnc != ""
+		fillDBAccess(&d)
 		d.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
 		out = append(out, d)
 	}

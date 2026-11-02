@@ -56,9 +56,13 @@ func (m *Manager) Create(req rpc.DBCreateReq) error {
 	if m.Engine() == "" {
 		return fmt.Errorf("MySQL/MariaDB is not installed")
 	}
+	hosts, err := hostsOrLocal(req.Hosts)
+	if err != nil {
+		return err
+	}
 	sql := strings.Join(append(
 		[]string{fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`;", req.DBName)},
-		userHostSQL(req.DBUser, req.Password, req.DBName)...,
+		userHostSQL(req.DBUser, req.Password, req.DBName, hosts)...,
 	), "\n")
 	return mysqlExec(sql)
 }
@@ -75,17 +79,21 @@ func (m *Manager) Drop(req rpc.DBDropReq) error {
 	if m.Engine() == "" {
 		return fmt.Errorf("MySQL/MariaDB is not installed")
 	}
+	hosts, err := hostsOrLocal(req.Hosts)
+	if err != nil {
+		return err
+	}
 	parts := []string{fmt.Sprintf("DROP DATABASE IF EXISTS `%s`;", req.DBName)}
 	if req.DBUser != "" {
-		for _, host := range clientHosts {
-			parts = append(parts, fmt.Sprintf("DROP USER IF EXISTS '%s'@'%s';", escape(req.DBUser), host))
+		for _, host := range hosts {
+			parts = append(parts, DropUserSQL(req.DBUser, host))
 		}
 	}
 	parts = append(parts, "FLUSH PRIVILEGES;")
 	return mysqlExec(strings.Join(parts, "\n"))
 }
 
-func (m *Manager) SetPassword(user, password, dbName, account string) error {
+func (m *Manager) SetPassword(user, password, dbName string, hosts []string) error {
 	if err := validate.DBIdent(user); err != nil {
 		return err
 	}
@@ -100,15 +108,109 @@ func (m *Manager) SetPassword(user, password, dbName, account string) error {
 	if m.Engine() == "" {
 		return fmt.Errorf("MySQL/MariaDB is not installed")
 	}
-	return mysqlExec(strings.Join(userHostSQL(user, password, dbName), "\n"))
+	list, err := hostsOrLocal(hosts)
+	if err != nil {
+		return err
+	}
+	return mysqlExec(strings.Join(userHostSQL(user, password, dbName, list), "\n"))
+}
+
+func (m *Manager) SetAccess(req rpc.DBAccessReq) error {
+	if err := validate.DBIdent(req.DBUser); err != nil {
+		return err
+	}
+	if len(req.Password) < 8 {
+		return fmt.Errorf("database password must be at least 8 characters")
+	}
+	if m.Engine() == "" {
+		return fmt.Errorf("MySQL/MariaDB is not installed")
+	}
+	hosts, err := hostsOrLocal(req.Hosts)
+	if err != nil {
+		return err
+	}
+	old, err := hostsOrLocal(req.OldHosts)
+	if err != nil {
+		return err
+	}
+	var names []string
+	for _, name := range req.DBNames {
+		if err := validate.DBIdent(name); err != nil {
+			return err
+		}
+		names = append(names, name)
+	}
+	var parts []string
+	for _, host := range HostsToDrop(old, hosts) {
+		parts = append(parts, DropUserSQL(req.DBUser, host))
+	}
+	parts = append(parts, AccessSQL(req.DBUser, req.Password, names, hosts, req.CanCreate)...)
+	return mysqlExec(strings.Join(parts, "\n"))
+}
+
+func (m *Manager) Grant(user, db string, hosts []string) error {
+	if err := validate.DBIdent(user); err != nil {
+		return err
+	}
+	if err := validate.DBIdent(db); err != nil {
+		return err
+	}
+	list, err := hostsOrLocal(hosts)
+	if err != nil {
+		return err
+	}
+	if m.Engine() == "" {
+		return fmt.Errorf("MySQL/MariaDB is not installed")
+	}
+	var parts []string
+	for _, host := range list {
+		parts = append(parts, GrantDatabaseSQL(user, host, db))
+	}
+	parts = append(parts, "FLUSH PRIVILEGES;")
+	return mysqlExec(strings.Join(parts, "\n"))
 }
 
 // clientHosts covers the socket login (localhost) and the TCP login phpMyAdmin uses (127.0.0.1).
 var clientHosts = []string{"localhost", "127.0.0.1"}
 
-func userHostSQL(user, password, dbName string) []string {
+func hostsOrLocal(hosts []string) ([]string, error) {
+	if len(hosts) == 0 {
+		return append([]string{}, clientHosts...), nil
+	}
+	var out []string
+	seen := map[string]struct{}{}
+	for _, host := range hosts {
+		host = strings.TrimSpace(host)
+		if host == "" {
+			continue
+		}
+		if !safeMySQLHost(host) {
+			return nil, fmt.Errorf("invalid database host %s", host)
+		}
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		out = append(out, host)
+	}
+	if len(out) == 0 {
+		return append([]string{}, clientHosts...), nil
+	}
+	return out, nil
+}
+
+func safeMySQLHost(host string) bool {
+	switch host {
+	case "localhost", "127.0.0.1", "%":
+		return true
+	}
+	_, err := cleanAccessIP(host)
+	return err == nil
+}
+
+func userHostSQL(user, password, dbName string, hosts []string) []string {
 	var parts []string
-	for _, host := range clientHosts {
+	for _, host := range hosts {
 		parts = append(parts,
 			fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY '%s';", escape(user), host, escape(password)),
 			fmt.Sprintf("ALTER USER '%s'@'%s' IDENTIFIED BY '%s';", escape(user), host, escape(password)),
@@ -296,14 +398,18 @@ func (m *Manager) Sizes() (map[string]int64, error) {
 }
 
 // SetCreate lets one database user create databases with any name, or removes that right.
-func (m *Manager) SetCreate(user, account string, on bool) error {
+func (m *Manager) SetCreate(user, account string, on bool, hosts []string) error {
 	if err := validate.DBIdent(user); err != nil {
 		return err
 	}
 	if m.Engine() == "" {
 		return fmt.Errorf("MySQL/MariaDB is not installed")
 	}
-	for _, host := range clientHosts {
+	hosts, err := hostsOrLocal(hosts)
+	if err != nil {
+		return err
+	}
+	for _, host := range hosts {
 		if account != "" && validate.LinuxUser(account) == nil {
 			_ = mysqlExec(PrefixRevokeSQL(user, account, host))
 		}

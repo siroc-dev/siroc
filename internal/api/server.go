@@ -30,6 +30,7 @@ import (
 
 	"github.com/siroc-dev/siroc/internal/auth"
 	"github.com/siroc-dev/siroc/internal/config"
+	"github.com/siroc-dev/siroc/internal/dbmgmt"
 	"github.com/siroc-dev/siroc/internal/files"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/secret"
@@ -221,6 +222,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/databases", s.createDatabase)
 		r.Post("/api/databases/sync", s.syncDatabases)
 		r.Put("/api/databases/{id}/create", s.setDatabaseCreate)
+		r.Put("/api/databases/{id}/access", s.setDatabaseAccess)
 		r.Delete("/api/databases/{id}", s.deleteDatabase)
 		r.Get("/api/databases/{id}/password", s.showDatabasePassword)
 		r.Put("/api/databases/{id}/password", s.setDatabasePassword)
@@ -879,7 +881,7 @@ func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	dbs, _ := s.Store.ListDatabases()
 	for _, d := range dbs {
 		if d.Username == username {
-			_ = s.Agent.DBDrop(rpc.DBDropReq{DBName: d.DBName, DBUser: d.DBUser, Engine: d.Engine})
+			_ = s.Agent.DBDrop(rpc.DBDropReq{DBName: d.DBName, DBUser: d.DBUser, Engine: d.Engine, Hosts: dbmgmt.ExpandStored(d.AccessHosts)})
 			_ = s.Store.DeleteDatabase(d.ID)
 		}
 	}
@@ -2754,10 +2756,12 @@ func (s *Server) suggestDatabase(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createDatabase(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Username string `json:"username"`
-		DBName   string `json:"dbName"`
-		DBUser   string `json:"dbUser"`
-		Password string `json:"password"`
+		Username string   `json:"username"`
+		DBName   string   `json:"dbName"`
+		DBUser   string   `json:"dbUser"`
+		Password string   `json:"password"`
+		Access   string   `json:"access"`
+		Hosts    []string `json:"hosts"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -2806,7 +2810,12 @@ func (s *Server) createDatabase(w http.ResponseWriter, r *http.Request) {
 	}
 	name := acc.Username + "_" + nameSuf
 	user := acc.Username + "_" + userSuf
-	if err := s.Agent.DBCreate(rpc.DBCreateReq{DBName: name, DBUser: user, Password: body.Password, Engine: engine, Account: acc.Username}); err != nil {
+	stored, hosts, err := dbmgmt.ResolveAccess(body.Access, body.Hosts)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.Agent.DBCreate(rpc.DBCreateReq{DBName: name, DBUser: user, Password: body.Password, Engine: engine, Account: acc.Username, Hosts: hosts}); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -2820,6 +2829,12 @@ func (s *Server) createDatabase(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	if err := s.Store.SetDatabaseAccess(acc.ID, user, stored); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	db.AccessHosts = stored
+	db.Access, db.Hosts = dbmgmt.DescribeStored(stored)
 	writeJSON(w, http.StatusOK, map[string]any{"database": db, "password": body.Password})
 }
 
@@ -2837,7 +2852,7 @@ func (s *Server) deleteDatabase(w http.ResponseWriter, r *http.Request) {
 	if !s.allowAccount(w, r, db.Username) {
 		return
 	}
-	if err := s.Agent.DBDrop(rpc.DBDropReq{DBName: db.DBName, DBUser: db.DBUser, Engine: db.Engine}); err != nil {
+	if err := s.Agent.DBDrop(rpc.DBDropReq{DBName: db.DBName, DBUser: db.DBUser, Engine: db.Engine, Hosts: dbmgmt.ExpandStored(db.AccessHosts)}); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -2886,7 +2901,7 @@ func (s *Server) setDatabasePassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("password must be at least 8 characters"))
 		return
 	}
-	if err := s.Agent.DBPasswordDB(db.DBUser, pass, db.DBName, db.Username); err != nil {
+	if err := s.Agent.DBPasswordDB(db.DBUser, pass, db.DBName, db.Username, dbmgmt.ExpandStored(db.AccessHosts)); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}

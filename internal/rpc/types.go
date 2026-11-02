@@ -572,17 +572,19 @@ type SiteMoveReq struct {
 }
 
 type DBCreateReq struct {
-	DBName   string `json:"dbName"`
-	DBUser   string `json:"dbUser"`
-	Password string `json:"password"`
-	Engine   string `json:"engine"`
-	Account  string `json:"account,omitempty"`
+	DBName   string   `json:"dbName"`
+	DBUser   string   `json:"dbUser"`
+	Password string   `json:"password"`
+	Engine   string   `json:"engine"`
+	Account  string   `json:"account,omitempty"`
+	Hosts    []string `json:"hosts,omitempty"`
 }
 
 type DBDropReq struct {
-	DBName string `json:"dbName"`
-	DBUser string `json:"dbUser"`
-	Engine string `json:"engine"`
+	DBName string   `json:"dbName"`
+	DBUser string   `json:"dbUser"`
+	Engine string   `json:"engine"`
+	Hosts  []string `json:"hosts,omitempty"`
 }
 
 type DBConfigItem struct {
@@ -1946,16 +1948,34 @@ type PMASignonResp struct {
 }
 
 type DBPasswordReq struct {
-	DBUser   string `json:"dbUser"`
-	Password string `json:"password"`
-	DBName   string `json:"dbName,omitempty"`
-	Account  string `json:"account,omitempty"`
+	DBUser   string   `json:"dbUser"`
+	Password string   `json:"password"`
+	DBName   string   `json:"dbName,omitempty"`
+	Account  string   `json:"account,omitempty"`
+	Hosts    []string `json:"hosts,omitempty"`
 }
 
 type DBCreatePrivReq struct {
-	DBUser  string `json:"dbUser"`
-	Account string `json:"account,omitempty"`
-	Enabled bool   `json:"enabled"`
+	DBUser  string   `json:"dbUser"`
+	Account string   `json:"account,omitempty"`
+	Enabled bool     `json:"enabled"`
+	Hosts   []string `json:"hosts,omitempty"`
+}
+
+type DBAccessReq struct {
+	DBUser    string   `json:"dbUser"`
+	Password  string   `json:"password"`
+	Account   string   `json:"account,omitempty"`
+	DBNames   []string `json:"dbNames,omitempty"`
+	Hosts     []string `json:"hosts,omitempty"`
+	OldHosts  []string `json:"oldHosts,omitempty"`
+	CanCreate bool     `json:"canCreate"`
+}
+
+type DBGrantReq struct {
+	DBUser string   `json:"dbUser"`
+	DBName string   `json:"dbName"`
+	Hosts  []string `json:"hosts,omitempty"`
 }
 
 type DBSyncAccount struct {

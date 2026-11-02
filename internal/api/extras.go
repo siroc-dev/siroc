@@ -17,6 +17,7 @@ import (
 
 	"github.com/siroc-dev/siroc/internal/auth"
 	"github.com/siroc-dev/siroc/internal/backup"
+	"github.com/siroc-dev/siroc/internal/dbmgmt"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/secret"
 	"github.com/siroc-dev/siroc/internal/siteopts"
@@ -458,7 +459,7 @@ func (s *Server) pmaAutologin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := s.Agent.DBPasswordDB(db.DBUser, pass, db.DBName, db.Username); err != nil {
+	if err := s.Agent.DBPasswordDB(db.DBUser, pass, db.DBName, db.Username, dbmgmt.ExpandStored(db.AccessHosts)); err != nil {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("prepare phpMyAdmin login: %w", err))
 		return
 	}

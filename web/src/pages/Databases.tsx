@@ -11,7 +11,18 @@ import { RedisStatusPanel, type RedisStatusData } from "@/pages/RedisStatus";
 import { PageSkeleton } from "@/components/PageSkeleton";
 
 type Account = { username: string };
-type DB = { id: number; username: string; dbName: string; dbUser: string; engine: string; hasPassword?: boolean; canCreate?: boolean; size?: number };
+type DB = {
+  id: number;
+  username: string;
+  dbName: string;
+  dbUser: string;
+  engine: string;
+  hasPassword?: boolean;
+  canCreate?: boolean;
+  size?: number;
+  access?: "local" | "all" | "ips";
+  hosts?: string[];
+};
 type CfgItem = { name: string; label: string; value: string; live?: string; recommend?: string };
 type DBConfig = {
   engine: string;
@@ -44,6 +55,11 @@ export function Databases() {
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
   const [passForm] = Form.useForm();
+  const [accessForm] = Form.useForm();
+  const [accessTarget, setAccessTarget] = useState<DB | null>(null);
+  const [accessBusy, setAccessBusy] = useState(false);
+  const createAccess = Form.useWatch("access", form);
+  const editAccess = Form.useWatch("access", accessForm);
   const [passTarget, setPassTarget] = useState<DB | null>(null);
   const [newPass, setNewPass] = useState("");
   const [visiblePass, setVisiblePass] = useState<Record<number, string>>({});
@@ -210,11 +226,44 @@ export function Databases() {
     }
   }
 
-  async function create(v: { username: string; dbName: string; dbUser: string; password: string }) {
+  function hostList(raw: string) {
+    return raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+  }
+
+  function accessLabel(d: DB) {
+    if (d.access === "all") return "Any IP";
+    if (d.access === "ips") return (d.hosts || []).join(", ") || "Specific IPs";
+    return "This server";
+  }
+
+  function openAccess(d: DB) {
+    setAccessTarget(d);
+    accessForm.setFieldsValue({ access: d.access || "local", hosts: (d.hosts || []).join("\n") });
+  }
+
+  async function saveAccess(v: { access: string; hosts?: string }) {
+    if (!accessTarget) return;
+    setAccessBusy(true);
+    try {
+      await api.put(`/api/databases/${accessTarget.id}/access`, { access: v.access, hosts: hostList(v.hosts || "") });
+      message.success(`Access saved for ${accessTarget.dbUser}`);
+      setAccessTarget(null);
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Could not change access");
+    } finally {
+      setAccessBusy(false);
+    }
+  }
+
+  async function create(v: { username: string; dbName: string; dbUser: string; password: string; access?: string; hosts?: string }) {
     setBusy(true);
     setCreated("");
     try {
-      const res = await api.post<{ database: DB; password: string }>("/api/databases", v);
+      const res = await api.post<{ database: DB; password: string }>("/api/databases", {
+        ...v,
+        hosts: hostList(v.hosts || ""),
+      });
       setVisiblePass((prev) => ({ ...prev, [res.database.id]: res.password }));
       setCreated(`Created ${res.database.dbName} / ${res.database.dbUser}. The password is saved and shown in the list.`);
       form.resetFields(["dbName", "dbUser", "password"]);
@@ -406,6 +455,14 @@ export function Databases() {
             { title: "Database", dataIndex: "dbName" },
             { title: "Size", dataIndex: "size", width: 110, render: (n: number) => formatBytes(n || 0) },
             { title: "User", dataIndex: "dbUser" },
+            {
+              title: "Access",
+              render: (_: unknown, d: DB) => (
+                <Button size="small" onClick={() => openAccess(d)}>
+                  {accessLabel(d)}
+                </Button>
+              ),
+            },
             {
               title: "Can create",
               width: 120,
@@ -734,6 +791,35 @@ export function Databases() {
       </Modal>
 
       <Modal
+        title={accessTarget ? `Access · ${accessTarget.dbUser}` : "Access"}
+        open={!!accessTarget}
+        onCancel={() => setAccessTarget(null)}
+        onOk={() => accessForm.submit()}
+        confirmLoading={accessBusy}
+        destroyOnHidden
+        okText="Save"
+      >
+        <Form form={accessForm} layout="vertical" onFinish={saveAccess} requiredMark={false} style={{ marginTop: 8 }}>
+          <Typography.Paragraph type="secondary">
+            Localhost stays allowed so the website and phpMyAdmin keep working. This applies to every database using this user. A remote IP can connect only when the database service listens on that network and port 3306 is open.
+          </Typography.Paragraph>
+          <Form.Item name="access" label="Connect from" rules={[{ required: true }]}>
+            <Select
+              options={[
+                { value: "local", label: "This server only" },
+                { value: "all", label: "Any IP" },
+                { value: "ips", label: "Specific IPs" },
+              ]}
+            />
+          </Form.Item>
+          {editAccess === "ips" ? (
+            <Form.Item name="hosts" label="IP addresses" rules={[{ required: true, message: "Enter at least one IP address" }]}>
+              <Input.TextArea rows={4} placeholder={"203.0.113.10\n198.51.100.8"} />
+            </Form.Item>
+          ) : null}
+        </Form>
+      </Modal>
+      <Modal
         title="Create database"
         open={open}
         onCancel={() => setOpen(false)}
@@ -759,6 +845,20 @@ export function Databases() {
           <Form.Item name="password" label="Password">
             <Input.Password placeholder="auto" />
           </Form.Item>
+          <Form.Item name="access" label="Connect from" initialValue="local">
+            <Select
+              options={[
+                { value: "local", label: "This server only" },
+                { value: "all", label: "Any IP" },
+                { value: "ips", label: "Specific IPs" },
+              ]}
+            />
+          </Form.Item>
+          {createAccess === "ips" ? (
+            <Form.Item name="hosts" label="IP addresses" rules={[{ required: true, message: "Enter at least one IP address" }]}>
+              <Input.TextArea rows={3} placeholder={"203.0.113.10\n198.51.100.8"} />
+            </Form.Item>
+          ) : null}
           <Space wrap style={{ marginBottom: 12 }}>
             <Button icon={<ReloadOutlined />} onClick={() => void fillRandom(undefined, "suffix")}>
               Random suffix
@@ -768,7 +868,7 @@ export function Databases() {
             </Button>
           </Space>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            Empty suffix or password is filled with a random value. Final names look like alice_k7m2nq.
+            Empty suffix or password is filled with a random value. Final names look like alice_k7m2nq. This server can always connect. Specific IPs are extra addresses.
           </Typography.Paragraph>
         </Form>
       </Modal>

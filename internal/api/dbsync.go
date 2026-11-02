@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/siroc-dev/siroc/internal/dbmgmt"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/store"
 	"github.com/siroc-dev/siroc/internal/validate"
@@ -86,8 +87,12 @@ func (s *Server) syncDatabases(w http.ResponseWriter, r *http.Request) {
 			if _, err := s.Store.GetDatabaseByName(row.DBName); err == nil {
 				continue
 			}
-			if _, err := s.Store.CreateDatabase(acc.ID, row.DBName, row.DBUser, engine, passByUser[row.DBUser]); err != nil {
+			created, err := s.Store.CreateDatabase(acc.ID, row.DBName, row.DBUser, engine, passByUser[row.DBUser])
+			if err != nil {
 				continue
+			}
+			if created.Access != dbmgmt.AccessLocal {
+				_ = s.Agent.DBGrant(created.DBUser, created.DBName, dbmgmt.ExpandStored(created.AccessHosts))
 			}
 			known[row.DBName] = struct{}{}
 			_ = s.Store.SetDatabaseCreate(acc.ID, row.DBUser, true)
@@ -117,7 +122,7 @@ func (s *Server) setDatabaseCreate(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	if err := s.Agent.DBCreatePriv(db.DBUser, db.Username, body.Enabled); err != nil {
+	if err := s.Agent.DBCreatePriv(db.DBUser, db.Username, body.Enabled, dbmgmt.ExpandStored(db.AccessHosts)); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -126,4 +131,69 @@ func (s *Server) setDatabaseCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"enabled": body.Enabled})
+}
+
+func (s *Server) setDatabaseAccess(w http.ResponseWriter, r *http.Request) {
+	db, ok := s.databaseForRequest(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Access string   `json:"access"`
+		Hosts  []string `json:"hosts"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if db.PasswordEnc == "" {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("reset the password before changing which IPs can connect"))
+		return
+	}
+	pass, err := s.decryptPassword(db.PasswordEnc)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	stored, hosts, err := dbmgmt.ResolveAccess(body.Access, body.Hosts)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	rows, err := s.Store.ListDatabases()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	var names []string
+	can := false
+	for _, row := range rows {
+		if row.AccountID != db.AccountID || row.DBUser != db.DBUser {
+			continue
+		}
+		names = append(names, row.DBName)
+		if row.CanCreate {
+			can = true
+		}
+	}
+	if len(names) == 0 {
+		names = []string{db.DBName}
+	}
+	if err := s.Agent.DBAccess(rpc.DBAccessReq{
+		DBUser:    db.DBUser,
+		Password:  pass,
+		Account:   db.Username,
+		DBNames:   names,
+		Hosts:     hosts,
+		OldHosts:  dbmgmt.ExpandStored(db.AccessHosts),
+		CanCreate: can,
+	}); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.Store.SetDatabaseAccess(db.AccountID, db.DBUser, stored); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	access, list := dbmgmt.DescribeStored(stored)
+	writeJSON(w, http.StatusOK, map[string]any{"access": access, "hosts": list})
 }

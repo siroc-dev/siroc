@@ -940,7 +940,7 @@ func main() {
 		if !decode(w, r, &req) {
 			return
 		}
-		if err := dbMgr.SetCreate(req.DBUser, req.Account, req.Enabled); err != nil {
+		if err := dbMgr.SetCreate(req.DBUser, req.Account, req.Enabled, req.Hosts); err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
@@ -1271,6 +1271,28 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Post("/db/access", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.DBAccessReq
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := dbMgr.SetAccess(req); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
+	r.Post("/db/grant", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.DBGrantReq
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := dbMgr.Grant(req.DBUser, req.DBName, req.Hosts); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
 	r.Post("/db/drop", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.DBDropReq
 		if !decode(w, r, &req) {
@@ -1287,7 +1309,7 @@ func main() {
 		if !decode(w, r, &req) {
 			return
 		}
-		if err := dbMgr.SetPassword(req.DBUser, req.Password, req.DBName, req.Account); err != nil {
+		if err := dbMgr.SetPassword(req.DBUser, req.Password, req.DBName, req.Hosts); err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
