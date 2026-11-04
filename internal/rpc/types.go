@@ -1399,12 +1399,18 @@ type BackupReq struct {
 	UseSSL     bool            `json:"useSSL,omitempty"`
 	IncludeDB  bool            `json:"includeDB,omitempty"`
 	Retain     int             `json:"retain,omitempty"`
+	Layout     string          `json:"layout,omitempty"`
+	RunID      string          `json:"runId,omitempty"`
 	Databases  []string        `json:"databases,omitempty"`
 	Restore    string          `json:"restore,omitempty"`
 	Inspect    bool            `json:"inspect,omitempty"`
 	Manifest   *BackupManifest `json:"manifest,omitempty"`
 	Domains    []string        `json:"domains,omitempty"`
 	PHPVersion string          `json:"phpVersion,omitempty"`
+}
+
+type BackupCancelReq struct {
+	RunID string `json:"runId"`
 }
 
 type BackupCronFile struct {

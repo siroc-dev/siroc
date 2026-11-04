@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 )
 
@@ -118,6 +119,35 @@ func (s *Store) FinishBackupJob(id int64, status, message, localPath, remote str
 	return err
 }
 
+// FinishBackupJobIfRunning records the result only while the job is still running.
+// A cancel that already finished the row is left as cancelled.
+func (s *Store) FinishBackupJobIfRunning(id int64, status, message, localPath, remote string, size int64) (bool, error) {
+	res, err := s.DB.Exec(`UPDATE backup_jobs SET status = ?, message = ?, local_path = ?, remote = ?, size = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'running'`, status, message, localPath, remote, size, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+func (s *Store) CancelBackupJob(id int64) error {
+	ok, err := s.FinishBackupJobIfRunning(id, "cancelled", "Cancelled", "", "", 0)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return nil
+	}
+	job, err := s.GetBackupJob(id)
+	if err != nil {
+		return err
+	}
+	if job.Status == "cancelled" {
+		return nil
+	}
+	return fmt.Errorf("backup is not running")
+}
+
 func (s *Store) ListBackupJobs(account string, limit int) ([]BackupJob, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -159,8 +189,8 @@ func (s *Store) CreateBackupCron(c BackupCron) (*BackupCron, error) {
 	if c.Enabled {
 		en = 1
 	}
-	res, err := s.DB.Exec(`INSERT INTO backup_crons (name, account, dest_id, include_db, cycle, minute, hour, weekday, monthday, retain, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.Name, c.Account, c.DestID, inc, c.Cycle, c.Minute, c.Hour, c.Weekday, c.Monthday, c.Retain, en)
+	res, err := s.DB.Exec(`INSERT INTO backup_crons (name, account, dest_id, include_db, cycle, minute, hour, weekday, monthday, retain, layout, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.Name, c.Account, c.DestID, inc, c.Cycle, c.Minute, c.Hour, c.Weekday, c.Monthday, c.Retain, c.Layout, en)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +212,7 @@ func (s *Store) GetBackupCron(id int64) (*BackupCron, error) {
 }
 
 func (s *Store) ListBackupCrons() ([]BackupCron, error) {
-	rows, err := s.DB.Query(`SELECT c.id, c.name, c.account, c.dest_id, COALESCE(d.name, ''), c.include_db, c.cycle, c.minute, c.hour, c.weekday, c.monthday, c.retain, c.enabled, c.last_run, c.last_status, c.created_at FROM backup_crons c LEFT JOIN backup_dests d ON d.id = c.dest_id ORDER BY c.id`)
+	rows, err := s.DB.Query(`SELECT c.id, c.name, c.account, c.dest_id, COALESCE(d.name, ''), c.include_db, c.cycle, c.minute, c.hour, c.weekday, c.monthday, c.retain, c.layout, c.enabled, c.last_run, c.last_status, c.created_at FROM backup_crons c LEFT JOIN backup_dests d ON d.id = c.dest_id ORDER BY c.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +222,7 @@ func (s *Store) ListBackupCrons() ([]BackupCron, error) {
 		var c BackupCron
 		var inc, en int
 		var created string
-		if err := rows.Scan(&c.ID, &c.Name, &c.Account, &c.DestID, &c.DestName, &inc, &c.Cycle, &c.Minute, &c.Hour, &c.Weekday, &c.Monthday, &c.Retain, &en, &c.LastRun, &c.LastStatus, &created); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Account, &c.DestID, &c.DestName, &inc, &c.Cycle, &c.Minute, &c.Hour, &c.Weekday, &c.Monthday, &c.Retain, &c.Layout, &en, &c.LastRun, &c.LastStatus, &created); err != nil {
 			return nil, err
 		}
 		c.IncludeDB = inc == 1
@@ -233,8 +263,8 @@ func (s *Store) UpdateBackupCron(c BackupCron) error {
 	if c.Enabled {
 		en = 1
 	}
-	res, err := s.DB.Exec(`UPDATE backup_crons SET name = ?, account = ?, dest_id = ?, include_db = ?, cycle = ?, minute = ?, hour = ?, weekday = ?, monthday = ?, retain = ?, enabled = ? WHERE id = ?`,
-		c.Name, c.Account, c.DestID, inc, c.Cycle, c.Minute, c.Hour, c.Weekday, c.Monthday, c.Retain, en, c.ID)
+	res, err := s.DB.Exec(`UPDATE backup_crons SET name = ?, account = ?, dest_id = ?, include_db = ?, cycle = ?, minute = ?, hour = ?, weekday = ?, monthday = ?, retain = ?, layout = ?, enabled = ? WHERE id = ?`,
+		c.Name, c.Account, c.DestID, inc, c.Cycle, c.Minute, c.Hour, c.Weekday, c.Monthday, c.Retain, c.Layout, en, c.ID)
 	if err != nil {
 		return err
 	}

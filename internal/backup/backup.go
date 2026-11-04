@@ -4,10 +4,12 @@ package backup
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -32,6 +34,15 @@ func Run(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	if req.Restore != "" {
 		return restore(req)
 	}
+	layout, err := NormalizeLayout(req.Layout)
+	if err != nil {
+		return nil, err
+	}
+	ctx, done, err := beginRun(req.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer done()
 	if err := validate.LinuxUser(req.Username); err != nil {
 		return nil, err
 	}
@@ -78,15 +89,23 @@ func Run(req rpc.BackupReq) (*rpc.BackupResp, error) {
 				}
 			}
 		}
-		if err := dumpDatabases(filepath.Join(meta, "dumps"), names); err != nil {
+		if err := dumpDatabases(ctx, filepath.Join(meta, "dumps"), names); err != nil {
 			return nil, err
 		}
 	}
-	writeCrontab(req.Username, filepath.Join(meta, "crontab"))
+	writeCrontab(ctx, req.Username, filepath.Join(meta, "crontab"))
 	copySiteCerts(man.Sites, filepath.Join(meta, "ssl"))
 	archive := filepath.Join(dir, req.Username+"-"+stamp+".tar.gz")
+	defer func() {
+		if ctx.Err() != nil {
+			_ = os.Remove(archive)
+		}
+	}()
 	args := []string{"-czf", archive, "-C", "/home", req.Username, "-C", stage, "siroc-meta"}
-	if out, err := exec.Command("tar", args...).CombinedOutput(); err != nil {
+	if out, err := cmdOut(ctx, "tar", args...); err != nil {
+		if errors.Is(err, errCancelled) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("archive: %s", strings.TrimSpace(string(out)))
 	}
 	fi, err := os.Stat(archive)
@@ -94,44 +113,76 @@ func Run(req rpc.BackupReq) (*rpc.BackupResp, error) {
 		return nil, err
 	}
 	resp := &rpc.BackupResp{OK: true, Path: archive, Size: fi.Size(), Manifest: man, Message: "saved " + filepath.Base(archive)}
+	folder, remoteFile := WeekRemote(layout, time.Now(), req.Username, filepath.Base(archive))
+	remote, err := publishArchive(ctx, req, archive, folder, remoteFile)
+	if err != nil {
+		return nil, err
+	}
+	resp.Remote = remote
+	if folder != "" && remote != "" {
+		resp.Message = "saved " + folder + "/" + remoteFile
+	}
+	if layout == "week" {
+		pruneDir(dir, req.Username, 7)
+	} else if req.Retain > 0 {
+		pruneDir(dir, req.Username, req.Retain)
+		kind := strings.ToLower(strings.TrimSpace(req.Kind))
+		if kind == "local" && req.LocalDir != "" && filepath.Clean(req.LocalDir) != filepath.Clean(dir) {
+			pruneDir(req.LocalDir, req.Username, req.Retain)
+		}
+	}
+	return resp, nil
+}
+
+func publishArchive(ctx context.Context, req rpc.BackupReq, archive, folder, remoteFile string) (string, error) {
 	kind := strings.ToLower(strings.TrimSpace(req.Kind))
 	if kind == "" {
 		kind = "local"
 	}
 	switch kind {
 	case "local":
-		if req.LocalDir != "" {
-			if err := os.MkdirAll(req.LocalDir, 0750); err != nil {
-				return nil, err
-			}
-			dest := filepath.Join(req.LocalDir, filepath.Base(archive))
-			if out, err := exec.Command("cp", "-a", archive, dest).CombinedOutput(); err != nil {
-				return nil, fmt.Errorf("copy local: %s", strings.TrimSpace(string(out)))
-			}
-			resp.Remote = dest
+		dir := req.LocalDir
+		if dir == "" {
+			dir = filepath.Dir(archive)
 		}
+		name := filepath.Base(archive)
+		if folder != "" {
+			dir = filepath.Join(dir, folder)
+			name = remoteFile
+		}
+		if err := os.MkdirAll(dir, 0750); err != nil {
+			return "", err
+		}
+		dest := filepath.Join(dir, name)
+		if filepath.Clean(dest) == filepath.Clean(archive) {
+			return "", nil
+		}
+		if out, err := cmdOut(ctx, "cp", "-a", archive, dest); err != nil {
+			if errors.Is(err, errCancelled) {
+				_ = os.Remove(dest)
+				return "", err
+			}
+			return "", fmt.Errorf("copy local: %s", strings.TrimSpace(string(out)))
+		}
+		return dest, nil
 	case "ftp":
-		remote, err := uploadFTP(req, archive)
-		if err != nil {
-			return nil, err
-		}
-		resp.Remote = remote
+		return uploadFTP(ctx, req, archive, folder, remoteFile)
 	case "s3":
-		remote, err := uploadS3(req, archive)
-		if err != nil {
-			return nil, err
-		}
-		resp.Remote = remote
+		return uploadS3(ctx, req, archive, folder, remoteFile)
 	default:
-		return nil, fmt.Errorf("unknown backup kind %q", kind)
+		return "", fmt.Errorf("unknown backup kind %q", kind)
 	}
-	if req.Retain > 0 {
-		pruneDir(dir, req.Username, req.Retain)
-		if kind == "local" && req.LocalDir != "" && filepath.Clean(req.LocalDir) != filepath.Clean(dir) {
-			pruneDir(req.LocalDir, req.Username, req.Retain)
-		}
+}
+
+func cmdOut(ctx context.Context, name string, args ...string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, errCancelled
 	}
-	return resp, nil
+	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	if ctx.Err() != nil {
+		return out, errCancelled
+	}
+	return out, err
 }
 
 func pruneDir(dir, username string, keep int) {
@@ -459,7 +510,7 @@ func extractArchive(src, dest string) error {
 	return nil
 }
 
-func dumpDatabases(dir string, names []string) error {
+func dumpDatabases(ctx context.Context, dir string, names []string) error {
 	if len(names) == 0 {
 		return nil
 	}
@@ -479,7 +530,10 @@ func dumpDatabases(dir string, names []string) error {
 		for _, extra := range [][]string{{"--skip-ssl"}, {"--ssl-mode=DISABLED"}, nil} {
 			dargs := append([]string{"--single-transaction", "--routines"}, extra...)
 			dargs = append(dargs, "--databases", name)
-			dumpOut, dumpErr = exec.Command(dumpBin, dargs...).CombinedOutput()
+			dumpOut, dumpErr = cmdOut(ctx, dumpBin, dargs...)
+			if errors.Is(dumpErr, errCancelled) {
+				return errCancelled
+			}
 			if dumpErr == nil {
 				break
 			}
@@ -565,8 +619,8 @@ func escapeSQL(s string) string {
 	return s
 }
 
-func writeCrontab(username, dest string) {
-	out, err := exec.Command("crontab", "-u", username, "-l").CombinedOutput()
+func writeCrontab(ctx context.Context, username, dest string) {
+	out, err := cmdOut(ctx, "crontab", "-u", username, "-l")
 	if err != nil {
 		return
 	}
@@ -648,7 +702,7 @@ func loadExtractedManifest(root string) (*rpc.BackupManifest, error) {
 	return &man, nil
 }
 
-func uploadFTP(req rpc.BackupReq, local string) (string, error) {
+func uploadFTP(ctx context.Context, req rpc.BackupReq, local, folder, name string) (string, error) {
 	host := strings.TrimSpace(req.Host)
 	if host == "" {
 		return "", fmt.Errorf("FTP host required")
@@ -657,7 +711,11 @@ func uploadFTP(req rpc.BackupReq, local string) (string, error) {
 	if port <= 0 {
 		port = 21
 	}
-	remotePath := strings.TrimSuffix(req.Path, "/") + "/" + filepath.Base(local)
+	remotePath := strings.TrimSuffix(req.Path, "/")
+	if folder != "" {
+		remotePath += "/" + folder
+	}
+	remotePath += "/" + name
 	if !strings.HasPrefix(remotePath, "/") {
 		remotePath = "/" + remotePath
 	}
@@ -669,14 +727,17 @@ func uploadFTP(req rpc.BackupReq, local string) (string, error) {
 	if req.User != "" {
 		u.User = url.UserPassword(req.User, req.Password)
 	}
-	cmd := exec.Command("curl", "-fsS", "--connect-timeout", "20", "--max-time", "600", "-T", local, u.String())
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := cmdOut(ctx, "curl", "-fsS", "--connect-timeout", "20", "--ftp-create-dirs", "-T", local, u.String())
+	if errors.Is(err, errCancelled) {
+		return "", err
+	}
+	if err != nil {
 		return "", fmt.Errorf("ftp upload: %s", strings.TrimSpace(string(out)))
 	}
 	return u.Scheme + "://" + host + remotePath, nil
 }
 
-func uploadS3(req rpc.BackupReq, local string) (string, error) {
+func uploadS3(ctx context.Context, req rpc.BackupReq, local, folder, name string) (string, error) {
 	if req.Bucket == "" || req.AccessKey == "" || req.SecretKey == "" {
 		return "", fmt.Errorf("S3 bucket, access key, and secret key are required")
 	}
@@ -684,7 +745,10 @@ func uploadS3(req rpc.BackupReq, local string) (string, error) {
 	if key != "" {
 		key += "/"
 	}
-	key += filepath.Base(local)
+	if folder != "" {
+		key += folder + "/"
+	}
+	key += name
 	endpoint := strings.TrimSpace(req.Endpoint)
 	endpoint = strings.TrimPrefix(endpoint, "https://")
 	endpoint = strings.TrimPrefix(endpoint, "http://")
@@ -721,7 +785,7 @@ func uploadS3(req rpc.BackupReq, local string) (string, error) {
 	signing = hmacSHA256(signing, []byte("aws4_request"))
 	sig := hex.EncodeToString(hmacSHA256(signing, []byte(stringToSign)))
 	auth := fmt.Sprintf("AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s", req.AccessKey, scope, signedHeaders, sig)
-	httpReq, err := http.NewRequest(http.MethodPut, uri, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPut, uri, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
@@ -729,8 +793,14 @@ func uploadS3(req rpc.BackupReq, local string) (string, error) {
 	httpReq.Header.Set("x-amz-date", amzDate)
 	httpReq.Header.Set("x-amz-content-sha256", payloadHash)
 	httpReq.Header.Set("Content-Type", "application/gzip")
-	client := &http.Client{Timeout: 10 * time.Minute}
+	client := &http.Client{}
 	res, err := client.Do(httpReq)
+	if errors.Is(err, errCancelled) || ctx.Err() != nil {
+		if res != nil && res.Body != nil {
+			res.Body.Close()
+		}
+		return "", errCancelled
+	}
 	if err != nil {
 		return "", err
 	}

@@ -1852,6 +1852,17 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Post("/backup/cancel", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.BackupCancelReq
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := backup.CancelRun(req.RunID); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
 	r.Post("/backup/upload", func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, backup.MaxRestoreUpload+8<<20)
 		if err := r.ParseMultipartForm(32 << 20); err != nil {

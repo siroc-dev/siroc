@@ -146,6 +146,7 @@ type BackupCron struct {
 	Weekday    int       `json:"weekday"`
 	Monthday   int       `json:"monthday"`
 	Retain     int       `json:"retain"`
+	Layout     string    `json:"layout,omitempty"`
 	Enabled    bool      `json:"enabled"`
 	LastRun    string    `json:"lastRun,omitempty"`
 	LastStatus string    `json:"lastStatus,omitempty"`
@@ -326,11 +327,13 @@ CREATE TABLE IF NOT EXISTS backup_crons (
   weekday INTEGER NOT NULL DEFAULT 0,
   monthday INTEGER NOT NULL DEFAULT 1,
   retain INTEGER NOT NULL DEFAULT 3,
+  layout TEXT NOT NULL DEFAULT '',
   enabled INTEGER NOT NULL DEFAULT 1,
   last_run TEXT NOT NULL DEFAULT '',
   last_status TEXT NOT NULL DEFAULT '',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );`)
+	_, _ = s.DB.Exec(`ALTER TABLE backup_crons ADD COLUMN layout TEXT NOT NULL DEFAULT ''`)
 	s.ensureSiteGitTable()
 	return s.ensureSecret()
 }

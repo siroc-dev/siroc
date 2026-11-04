@@ -1130,8 +1130,12 @@ func (c *Client) RcloneCancel() (*RcloneRunResp, error) {
 
 func (c *Client) BackupRun(in BackupReq) (*BackupResp, error) {
 	var out BackupResp
-	err := c.do(http.MethodPost, "/backup/run", in, &out)
+	err := c.doTimeout(6*time.Hour, http.MethodPost, "/backup/run", in, &out)
 	return &out, err
+}
+
+func (c *Client) BackupCancel(runID string) error {
+	return c.do(http.MethodPost, "/backup/cancel", BackupCancelReq{RunID: runID}, nil)
 }
 
 func (c *Client) BackupUpload(filename string, r io.Reader) (*BackupResp, error) {

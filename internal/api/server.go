@@ -239,6 +239,7 @@ func (s *Server) Router() http.Handler {
 		r.Put("/api/backup/dests/{id}", s.updateBackupDest)
 		r.Delete("/api/backup/dests/{id}", s.deleteBackupDest)
 		r.Get("/api/backup/jobs", s.listBackupJobs)
+		r.Post("/api/backup/jobs/{id}/cancel", s.cancelBackupJob)
 		r.Post("/api/backup/run", s.runBackup)
 		r.Get("/api/backup/crons", s.listBackupCrons)
 		r.Post("/api/backup/crons", s.createBackupCron)

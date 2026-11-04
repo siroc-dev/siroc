@@ -659,6 +659,7 @@ func (s *Server) runBackup(w http.ResponseWriter, r *http.Request) {
 		Username  string `json:"username"`
 		DestID    int64  `json:"destId"`
 		IncludeDB *bool  `json:"includeDB"`
+		Layout    string `json:"layout"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -666,6 +667,11 @@ func (s *Server) runBackup(w http.ResponseWriter, r *http.Request) {
 	includeDB := true
 	if body.IncludeDB != nil {
 		includeDB = *body.IncludeDB
+	}
+	layout, err := backup.NormalizeLayout(body.Layout)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
 	}
 	dest, ok := s.ownedBackupDest(w, r, body.DestID)
 	if !ok {
@@ -681,15 +687,30 @@ func (s *Server) runBackup(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	jobs, err := s.executeBackup(names, dest, includeDB, 0)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err)
-		return
+	var jobs []*store.BackupJob
+	for _, name := range names {
+		job, err := s.Store.CreateBackupJob(name, dest.ID, dest.Name)
+		if err != nil {
+			for _, created := range jobs {
+				_, _ = s.Store.FinishBackupJobIfRunning(created.ID, "error", "could not start backup", "", "", 0)
+			}
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		jobs = append(jobs, job)
 	}
+	saved := *dest
+	go s.runBackupJobs(jobs, &saved, includeDB, layout)
 	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
 }
 
-func (s *Server) executeBackup(names []string, dest *store.BackupDest, includeDB bool, retain int) ([]*store.BackupJob, error) {
+func (s *Server) runBackupJobs(jobs []*store.BackupJob, dest *store.BackupDest, includeDB bool, layout string) {
+	for _, job := range jobs {
+		_ = s.runOneBackup(job, dest, includeDB, 0, layout)
+	}
+}
+
+func (s *Server) executeBackup(names []string, dest *store.BackupDest, includeDB bool, retain int, layout string) ([]*store.BackupJob, error) {
 	var jobs []*store.BackupJob
 	var firstErr error
 	okN := 0
@@ -703,17 +724,7 @@ func (s *Server) executeBackup(names []string, dest *store.BackupDest, includeDB
 			firstErr = err
 			continue
 		}
-		req := s.backupDestReq(dest)
-		req.Username = acc.Username
-		req.IncludeDB = includeDB
-		req.Retain = retain
-		req.Manifest = s.userBackupManifest(acc)
-		for _, d := range req.Manifest.Databases {
-			req.Databases = append(req.Databases, d.DBName)
-		}
-		out, err := s.Agent.BackupRun(req)
-		if err != nil {
-			_ = s.Store.FinishBackupJob(job.ID, "error", err.Error(), "", "", 0)
+		if err := s.runOneBackup(job, dest, includeDB, retain, layout); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -722,7 +733,6 @@ func (s *Server) executeBackup(names []string, dest *store.BackupDest, includeDB
 			continue
 		}
 		okN++
-		_ = s.Store.FinishBackupJob(job.ID, "ok", out.Message, out.Path, out.Remote, out.Size)
 		job, _ = s.Store.GetBackupJob(job.ID)
 		jobs = append(jobs, job)
 	}
@@ -730,6 +740,84 @@ func (s *Server) executeBackup(names []string, dest *store.BackupDest, includeDB
 		return jobs, firstErr
 	}
 	return jobs, nil
+}
+
+func (s *Server) runOneBackup(job *store.BackupJob, dest *store.BackupDest, includeDB bool, retain int, layout string) error {
+	if job == nil {
+		return fmt.Errorf("backup job missing")
+	}
+	cur, err := s.Store.GetBackupJob(job.ID)
+	if err != nil {
+		return err
+	}
+	if cur.Status != "running" {
+		return nil
+	}
+	acc, err := s.Store.GetAccountByName(job.Account)
+	if err != nil {
+		_, _ = s.Store.FinishBackupJobIfRunning(job.ID, "error", "account not found", "", "", 0)
+		return err
+	}
+	req := s.backupDestReq(dest)
+	req.Username = acc.Username
+	req.IncludeDB = includeDB
+	req.Retain = retain
+	req.Layout = layout
+	req.RunID = strconv.FormatInt(job.ID, 10)
+	req.Manifest = s.userBackupManifest(acc)
+	if req.Manifest != nil {
+		for _, d := range req.Manifest.Databases {
+			req.Databases = append(req.Databases, d.DBName)
+		}
+	}
+	out, err := s.Agent.BackupRun(req)
+	if err != nil {
+		status, msg := "error", err.Error()
+		if backupCancelled(err) {
+			status, msg = "cancelled", "Cancelled"
+		}
+		_, _ = s.Store.FinishBackupJobIfRunning(job.ID, status, msg, "", "", 0)
+		return err
+	}
+	_, _ = s.Store.FinishBackupJobIfRunning(job.ID, "ok", out.Message, out.Path, out.Remote, out.Size)
+	return nil
+}
+
+func backupCancelled(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "backup cancelled")
+}
+
+func (s *Server) cancelBackupJob(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("invalid id"))
+		return
+	}
+	job, err := s.Store.GetBackupJob(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, fmt.Errorf("backup not found"))
+		return
+	}
+	if !s.allowAccount(w, r, job.Account) {
+		return
+	}
+	if job.Status == "cancelled" {
+		writeJSON(w, http.StatusOK, job)
+		return
+	}
+	if job.Status != "running" {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("backup is not running"))
+		return
+	}
+	if err := s.Store.CancelBackupJob(id); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if s.Agent != nil {
+		_ = s.Agent.BackupCancel(strconv.FormatInt(id, 10))
+	}
+	job, _ = s.Store.GetBackupJob(id)
+	writeJSON(w, http.StatusOK, job)
 }
 
 func (s *Server) listBackupCrons(w http.ResponseWriter, r *http.Request) {
@@ -848,6 +936,7 @@ type backupCronBody struct {
 	Weekday   int    `json:"weekday"`
 	Monthday  int    `json:"monthday"`
 	Retain    int    `json:"retain"`
+	Layout    string `json:"layout"`
 	Enabled   *bool  `json:"enabled"`
 }
 
@@ -894,6 +983,10 @@ func (s *Server) buildBackupCron(body backupCronBody, prev *store.BackupCron) (s
 	}
 	if retain < 1 || retain > 30 {
 		return store.BackupCron{}, fmt.Errorf("retain must be 1-30")
+	}
+	layout, err := backup.NormalizeLayout(body.Layout)
+	if err != nil {
+		return store.BackupCron{}, err
 	}
 	minute, hour, weekday := body.Minute, body.Hour, body.Weekday
 	monthday := body.Monthday
@@ -948,7 +1041,7 @@ func (s *Server) buildBackupCron(body backupCronBody, prev *store.BackupCron) (s
 	return store.BackupCron{
 		Name: name, Account: account, DestID: destID, IncludeDB: includeDB,
 		Cycle: cycle, Minute: minute, Hour: hour, Weekday: weekday, Monthday: monthday,
-		Retain: retain, Enabled: enabled,
+		Retain: retain, Layout: layout, Enabled: enabled,
 	}, nil
 }
 
@@ -1025,14 +1118,17 @@ func (s *Server) RunScheduledBackup(id int64) error {
 		_ = s.Store.TouchBackupCron(id, "error", "no hosting accounts")
 		return fmt.Errorf("no hosting accounts to back up")
 	}
-	jobs, err := s.executeBackup(names, dest, c.IncludeDB, c.Retain)
+	jobs, err := s.executeBackup(names, dest, c.IncludeDB, c.Retain, c.Layout)
 	status, msg := "ok", ""
 	if err != nil {
 		status = "error"
+		if backupCancelled(err) {
+			status = "cancelled"
+		}
 		msg = err.Error()
 	} else {
 		for _, j := range jobs {
-			if j != nil && j.Status == "error" {
+			if j != nil && (j.Status == "error" || j.Status == "cancelled") {
 				status = "error"
 				msg = j.Message
 				break

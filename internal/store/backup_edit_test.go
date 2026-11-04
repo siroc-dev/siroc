@@ -32,12 +32,27 @@ func TestUpdateBackupDestAndCron(t *testing.T) {
 	cron.Cycle = "weekly"
 	cron.Weekday = 1
 	cron.Retain = 5
+	cron.Layout = "week"
 	if err := st.UpdateBackupCron(*cron); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := st.GetBackupCron(cron.ID)
-	if err != nil || updated.Name != "Weekly" || updated.Cycle != "weekly" || updated.Retain != 5 || !updated.Enabled {
+	if err != nil || updated.Name != "Weekly" || updated.Cycle != "weekly" || updated.Retain != 5 || updated.Layout != "week" || !updated.Enabled {
 		t.Fatalf("%+v %v", updated, err)
+	}
+	job, err := st.CreateBackupJob("alice", dest.ID, dest.Name)
+	if err != nil || job.Status != "running" {
+		t.Fatalf("job %+v %v", job, err)
+	}
+	if err := st.CancelBackupJob(job.ID); err != nil {
+		t.Fatal(err)
+	}
+	job, err = st.GetBackupJob(job.ID)
+	if err != nil || job.Status != "cancelled" {
+		t.Fatalf("cancel %+v %v", job, err)
+	}
+	if wrote, err := st.FinishBackupJobIfRunning(job.ID, "ok", "late", "", "", 1); err != nil || wrote {
+		t.Fatalf("cancelled job was overwritten: %v %v", wrote, err)
 	}
 	if err := st.UpdateBackupDest(*got); err != nil {
 		t.Fatal(err)

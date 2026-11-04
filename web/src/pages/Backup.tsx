@@ -48,6 +48,7 @@ type Cron = {
   weekday: number;
   monthday: number;
   retain: number;
+  layout?: string;
   enabled: boolean;
   lastRun?: string;
   lastStatus?: string;
@@ -79,7 +80,7 @@ function destFormValues(d: Dest | null) {
 
 function cronFormValues(c: Cron | null) {
   if (!c) {
-    return { name: "", username: "*", cycle: "daily", hour: 1, minute: 30, weekday: 0, monthday: 1, retain: 3, includeDB: true };
+    return { name: "", username: "*", cycle: "daily", hour: 1, minute: 30, weekday: 0, monthday: 1, retain: 3, layout: "", includeDB: true };
   }
   return {
     name: c.name,
@@ -91,6 +92,7 @@ function cronFormValues(c: Cron | null) {
     weekday: c.weekday,
     monthday: c.monthday || 1,
     retain: c.retain,
+    layout: c.layout || "",
     includeDB: c.includeDB,
   };
 }
@@ -126,6 +128,8 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
   const [cronForm] = Form.useForm();
   const kind = Form.useWatch("kind", form);
   const cronCycle = Form.useWatch("cycle", cronForm);
+  const cronLayout = Form.useWatch("layout", cronForm);
+  const runLayout = Form.useWatch("layout", runForm);
   const [ready, setReady] = useState(false);
 
   async function load() {
@@ -145,6 +149,14 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
       .catch((e) => message.error(e.message))
       .finally(() => setReady(true));
   }, []);
+  const jobRunning = jobs.some((j) => j.status === "running");
+  useEffect(() => {
+    if (!jobRunning) return;
+    const timer = window.setInterval(() => {
+      load().catch(() => {});
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [jobRunning]);
 
   async function saveDest(values: Record<string, unknown>) {
     setBusy(true);
@@ -179,18 +191,28 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
     }
   }
 
-  async function run(values: { username: string; destId: number; includeDB: boolean }) {
+  async function run(values: { username: string; destId: number; includeDB: boolean; layout?: string }) {
     setBusy(true);
     try {
       await api.post("/api/backup/run", values);
       setRunOpen(false);
-      message.success(values.username === "*" ? "Created one archive per account" : "Backup finished");
+      message.success("Backup started");
       await load();
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
       await load();
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function cancelJob(j: Job) {
+    try {
+      await api.post(`/api/backup/jobs/${j.id}/cancel`);
+      message.success("Backup cancelled");
+      await load();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
     }
   }
 
@@ -329,7 +351,7 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
             { title: "Account", dataIndex: "account", width: 120, render: (v) => (v === "*" ? "All" : v) },
             { title: "When", render: (_, c) => cronWhen(c) },
             { title: "Destination", dataIndex: "destName" },
-            { title: "Keep", dataIndex: "retain", width: 70 },
+            { title: "Keep", width: 90, render: (_, c) => (c.layout === "week" ? "7 days" : c.retain) },
             {
               title: "Auto",
               width: 80,
@@ -371,16 +393,22 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
               title: "Status",
               dataIndex: "status",
               width: 100,
-              render: (v) => <Tag color={v === "ok" ? "success" : v === "error" ? "error" : "processing"}>{v}</Tag>,
+              render: (v) => <Tag color={v === "ok" ? "success" : v === "error" ? "error" : v === "cancelled" ? "default" : "processing"}>{v}</Tag>,
             },
             { title: "Size", render: (_, j) => (j.size ? formatBytes(j.size) : "—"), width: 110 },
             { title: "Remote", dataIndex: "remote", ellipsis: true },
             { title: "Message", dataIndex: "message", ellipsis: true },
             {
               title: "",
-              width: 110,
+              width: 120,
               render: (_, j) =>
-                admin && j.localPath && j.status === "ok" ? (
+                j.status === "running" ? (
+                  <Popconfirm title="Cancel this backup?" onConfirm={() => void cancelJob(j)}>
+                    <Button size="small" danger>
+                      Cancel
+                    </Button>
+                  </Popconfirm>
+                ) : admin && j.localPath && j.status === "ok" ? (
                   <Popconfirm
                     title={`Restore ${j.account}?`}
                     description="Creates the Linux user if it is missing, then restores home, databases, and sites."
@@ -574,9 +602,22 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
               </Form.Item>
             ) : null}
           </Space>
-          <Form.Item name="retain" label="Retain the latest" extra="Older local archives for each account are deleted.">
-            <InputNumber min={1} max={30} />
+          <Form.Item name="layout" label="Folders">
+            <Select
+              options={[
+                { value: "", label: "One folder" },
+                { value: "week", label: "7 days (monday–sunday)" },
+              ]}
+            />
           </Form.Item>
+          <div style={{ display: cronLayout === "week" ? "none" : undefined }}>
+            <Form.Item name="retain" label="Retain the latest" extra="Older local archives for each account are deleted.">
+              <InputNumber min={1} max={30} />
+            </Form.Item>
+          </div>
+          {cronLayout === "week" ? (
+            <Alert style={{ marginBottom: 16 }} type="info" showIcon message="Each weekday has its own folder: monday, tuesday, wednesday, thursday, friday, saturday, sunday. The next backup on that day replaces the previous file." />
+          ) : null}
           <Form.Item name="includeDB" label="Include MySQL dumps" valuePropName="checked">
             <Switch />
           </Form.Item>
@@ -584,7 +625,7 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
         </Form>
       </Modal>
       <Modal title="Run backup" open={runOpen} onCancel={() => setRunOpen(false)} onOk={() => runForm.submit()} confirmLoading={busy} destroyOnHidden>
-        <Form form={runForm} layout="vertical" onFinish={run} initialValues={{ includeDB: true, username: accounts[0]?.username, destId: dests[0]?.id }}>
+        <Form form={runForm} layout="vertical" onFinish={run} initialValues={{ includeDB: true, layout: "", username: accounts[0]?.username, destId: dests[0]?.id }}>
           <Form.Item name="username" label="Account" rules={[{ required: true }]}>
             <Select
               options={[
@@ -599,7 +640,23 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
           <Form.Item name="includeDB" label="Include MySQL dumps" valuePropName="checked">
             <Switch />
           </Form.Item>
-          <Alert type="info" showIcon message="Writes one tar.gz per user: home, databases, sites, FTP, crontab, and account settings. Restore can create the user if it is gone." />
+          <Form.Item name="layout" label="Folders">
+            <Select
+              options={[
+                { value: "", label: "One folder" },
+                { value: "week", label: "7 days (monday–sunday)" },
+              ]}
+            />
+          </Form.Item>
+          <Alert
+            type="info"
+            showIcon
+            message={
+              runLayout === "week"
+                ? "Runs in the background. Stores one file per account in monday, tuesday, wednesday, thursday, friday, saturday, or sunday. The next backup on that weekday replaces it. You can cancel a running job."
+                : "Runs in the background. Writes one tar.gz per user: home, databases, sites, FTP, crontab, and account settings. You can cancel a running job."
+            }
+          />
         </Form>
       </Modal>
       <Modal
