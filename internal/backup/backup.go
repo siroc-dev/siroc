@@ -727,7 +727,10 @@ func uploadFTP(ctx context.Context, req rpc.BackupReq, local, folder, name strin
 	if req.User != "" {
 		u.User = url.UserPassword(req.User, req.Password)
 	}
-	out, err := cmdOut(ctx, "curl", "-fsS", "--connect-timeout", "20", "--ftp-create-dirs", "-T", local, u.String())
+	args := []string{"-sS", "--connect-timeout", "20", "--ftp-create-dirs", "--ftp-method", "multicwd"}
+	args = append(args, ftpMkdirQuotes(remotePath)...)
+	args = append(args, "-T", local, u.String())
+	out, err := cmdOut(ctx, "curl", args...)
 	if errors.Is(err, errCancelled) {
 		return "", err
 	}
