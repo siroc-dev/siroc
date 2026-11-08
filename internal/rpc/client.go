@@ -368,6 +368,10 @@ func (c *Client) Install(name, version string) (*OKResp, error) {
 	return &out, err
 }
 
+func (c *Client) SetNginxVOD(on bool) error {
+	return c.do(http.MethodPost, "/software/nginx-vod", NginxVODReq{Enabled: on}, nil)
+}
+
 func (c *Client) InstallLog(name string, offset int64) (*InstallLogResp, error) {
 	var out InstallLogResp
 	path := "/software/log?name=" + url.QueryEscape(name) + "&offset=" + fmt.Sprint(offset)

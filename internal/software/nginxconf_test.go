@@ -47,6 +47,14 @@ func TestStripSirocLoadModules(t *testing.T) {
 	}
 }
 
+func TestStripLoadLine(t *testing.T) {
+	conf := "load_module /usr/lib/nginx/modules/ndk_http_module.so;\nload_module /usr/lib/nginx/modules/ngx_http_vod_module.so;\nevents {}\n"
+	got, changed := stripLoadLine(conf, sirocLoadModules[2])
+	if !changed || nginxHasDirective(got, sirocLoadModules[2]) || !nginxHasDirective(got, sirocLoadModules[0]) {
+		t.Fatalf("strip vod:\n%s", got)
+	}
+}
+
 func stringsContains(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || len(sub) == 0 || indexOf(s, sub) >= 0)
 }

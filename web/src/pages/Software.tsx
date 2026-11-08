@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Alert, App, Button, Card, Flex, Input, Modal, Popconfirm, Progress, Select, Space, Table, Tag, Typography } from "antd";
+import { Alert, App, Button, Card, Flex, Input, Modal, Popconfirm, Progress, Select, Space, Switch, Table, Tag, Typography } from "antd";
 import { InstallLog } from "@/components/InstallLog";
 import { api } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
@@ -19,6 +19,7 @@ type Pkg = {
   installedVersions?: string[];
   cliVersion?: string;
   exclusiveOf?: string;
+  vodInstalled?: boolean;
 };
 
 type InstallKind = "install" | "update";
@@ -37,11 +38,12 @@ export function Software() {
   const [q, setQ] = useState("");
   const [modal, setModal] = useState<{ pkg: Pkg; kind: InstallKind } | null>(null);
   const [modalVer, setModalVer] = useState("");
+  const [vodOn, setVodOn] = useState(false);
   const [pinnedLog, setPinnedLog] = useState("");
   const [ready, setReady] = useState(false);
 
   const titles = Object.fromEntries(list.map((p) => [p.name, p.title]));
-  const label = (job: InstallJob) => (job.name === "php-ext" ? jobLabel(job) : `${titles[job.name] || job.name}${job.version ? ` ${job.version}` : ""}`);
+  const label = (job: InstallJob) => (job.name === "php-ext" || job.name === "nginx-vod" ? jobLabel(job) : `${titles[job.name] || job.name}${job.version ? ` ${job.version}` : ""}`);
 
   async function loadPkgs() {
     const pkgs = await api.get<Pkg[]>("/api/software");
@@ -119,15 +121,16 @@ export function Software() {
       }
     }
     setModalVer(kind === "update" ? pkg.cliVersion || pkg.installedVersions?.[0] || versions[0] || "" : missing);
+    setVodOn(!!pkg.vodInstalled);
     setModal({ pkg, kind });
   }
 
-  async function queueJob(name: string, version = "") {
+  async function queueJob(name: string, version = "", vod?: boolean) {
     const key = jobKey(name, version);
     if (isQueued(name, version)) return;
     setLocking((cur) => (cur.includes(key) ? cur : [...cur, key]));
     try {
-      await api.post("/api/software/install", { name, version });
+      await api.post("/api/software/install", vod === undefined ? { name, version } : { name, version, vod });
       message.success(`Queued ${name} ${version}`.trim());
       setModal(null);
       await loadJobs();
@@ -139,12 +142,28 @@ export function Software() {
 
   async function confirmModal() {
     if (!modal) return;
+    const vod = modal.pkg.name === "nginx" ? vodOn : undefined;
     if (modal.kind === "update") {
       const ver = modalVer ? `upgrade:${modalVer}` : "upgrade";
-      await queueJob(modal.pkg.name, ver);
+      await queueJob(modal.pkg.name, ver, vod);
       return;
     }
-    await queueJob(modal.pkg.name, modalVer);
+    await queueJob(modal.pkg.name, modalVer, vod);
+  }
+
+  async function setVod(on: boolean) {
+    const version = on ? "on" : "off";
+    if (isQueued("nginx-vod")) return;
+    setBusy("nginx-vod");
+    try {
+      await api.post("/api/software/install", { name: "nginx-vod", version });
+      message.success(on ? "VOD module queued" : "VOD removal queued");
+      await loadJobs();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Queue failed");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function cancel(id: number) {
@@ -370,6 +389,12 @@ export function Software() {
                         Update
                       </Button>
                     ) : null}
+                    {p.name === "nginx" && p.installed ? (
+                      <Space size={6}>
+                        <Switch size="small" checked={!!p.vodInstalled} loading={busy === "nginx-vod" || isQueued("nginx-vod")} onChange={(on) => void setVod(on)} />
+                        <span>VOD</span>
+                      </Space>
+                    ) : null}
                     {p.installed && p.service ? (
                       <>
                         <Button size="small" onClick={() => svc(p.name, "start")}>
@@ -422,6 +447,15 @@ export function Software() {
                 showIcon
                 message="Databases are dumped before the packages change. The file is /var/backups/siroc/db-upgrade. The newest 3 dumps are kept. The database has to be running."
               />
+            ) : null}
+            {modal.pkg.name === "nginx" ? (
+              <Space direction="vertical" size={4}>
+                <Space size={8}>
+                  <Switch checked={vodOn} onChange={setVodOn} />
+                  <span>Install VOD module</span>
+                </Space>
+                <Typography.Text type="secondary">MP4 and HLS repackager. Leave this off when the server does not serve video.</Typography.Text>
+              </Space>
             ) : null}
             {(modal.pkg.versions || []).length > 0 ? (
               <div>

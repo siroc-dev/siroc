@@ -507,6 +507,17 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, rpc.InstallLogResp{Name: name, Text: text, Offset: next})
 	})
+	r.Post("/software/nginx-vod", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.NginxVODReq
+		if !decode(w, r, &req) {
+			return
+		}
+		if err := software.SetVodChoice(req.Enabled); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rpc.OKResp{OK: true})
+	})
 	r.Post("/software/install", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.PkgInstallReq
 		if !decode(w, r, &req) {

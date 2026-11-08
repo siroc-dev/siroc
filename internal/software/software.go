@@ -493,6 +493,9 @@ func (m *Manager) List() []rpc.PackageInfo {
 		if s.Versions != nil {
 			info.Versions = s.Versions()
 		}
+		if s.Name == "nginx" {
+			info.VodInstalled = vodEnabled()
+		}
 		if s.Service != "" && inst {
 			info.Active = serviceActive(s.Service)
 		}
@@ -582,6 +585,18 @@ func splitUpgrade(version string) (bool, string) {
 func (m *Manager) install(name, version string) error {
 	if name == "php-ext" {
 		return m.InstallPHPExt(version)
+	}
+	if name == "nginx-vod" {
+		if version != vodChoiceOn && version != vodChoiceOff {
+			return fmt.Errorf("vod choice must be on or off")
+		}
+		if _, err := exec.LookPath("nginx"); err != nil {
+			return fmt.Errorf("install nginx before the VOD module")
+		}
+		if err := SetVodChoice(version == vodChoiceOn); err != nil {
+			return err
+		}
+		return EnsureNginxModules()
 	}
 	var s *spec
 	for i := range catalog() {

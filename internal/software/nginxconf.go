@@ -43,6 +43,20 @@ func nginxHasDirective(conf, line string) bool {
 	return false
 }
 
+// stripLoadLine removes one exact directive line.
+func stripLoadLine(conf, line string) (string, bool) {
+	var out []string
+	changed := false
+	for _, raw := range strings.Split(conf, "\n") {
+		if strings.TrimSpace(raw) == line {
+			changed = true
+			continue
+		}
+		out = append(out, raw)
+	}
+	return strings.Join(out, "\n"), changed
+}
+
 // stripSirocLoadModules removes the dynamic module lines this panel adds.
 // A package reinstall starts Nginx before those modules are rebuilt, and the
 // Lua module refuses to start until resty.core is installed.

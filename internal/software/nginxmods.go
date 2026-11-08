@@ -16,18 +16,18 @@ import (
 )
 
 const (
-	nginxModDir   = "/usr/lib/nginx/modules"
-	nginxModStamp = "/var/lib/siroc/nginx-modules.stamp"
-	nginxBuildDir = "/var/lib/siroc/nginx-build"
-	vodVersion    = "1.33"
-	luaVersion    = "v0.10.26"
-	ndkVersion    = "v0.3.3"
+	nginxModDir    = "/usr/lib/nginx/modules"
+	nginxModStamp  = "/var/lib/siroc/nginx-modules.stamp"
+	nginxBuildDir  = "/var/lib/siroc/nginx-build"
+	nginxVodChoice = "/var/lib/siroc/nginx-vod"
+	luaVersion     = "v0.10.26"
+	ndkVersion     = "v0.3.3"
 )
 
 var nginxModMu sync.Mutex
 
-// EnsureNginxModules configures the core thread pool and builds the Kaltura
-// VOD module plus ngx_http_lua_module for the installed Nginx.
+// EnsureNginxModules configures the core thread pool and builds ngx_http_lua_module
+// for the installed Nginx. The VOD module is included only when it is enabled.
 func EnsureNginxModules() error {
 	nginxModMu.Lock()
 	defer nginxModMu.Unlock()
@@ -59,6 +59,11 @@ func EnsureNginxModules() error {
 	loaded, err := ensureLoadModules()
 	if err != nil {
 		return err
+	}
+	if !vodEnabled() {
+		if err := os.Remove(vodModuleFile()); err == nil {
+			changed = true
+		}
 	}
 	vodConf, err := ensureVodRuntime()
 	if err != nil {
@@ -100,7 +105,36 @@ func nginxModuleStamp() (string, error) {
 }
 
 func nginxModuleStampFor(ver string) string {
-	return ver + " vod=" + vodVersion + " lua=" + luaVersion + " ndk=" + ndkVersion + " cc=" + vodCompilerOpt(cpuFlags())
+	vod := vodChoiceOff
+	if vodEnabled() {
+		vod = vodModuleStamp()
+	}
+	return ver + " vod=" + vod + " lua=" + luaVersion + " ndk=" + ndkVersion + " cc=" + vodCompilerOpt(cpuFlags())
+}
+
+func vodModuleFile() string {
+	return filepath.Join(nginxModDir, "ngx_http_vod_module.so")
+}
+
+func vodEnabled() bool {
+	b, err := os.ReadFile(nginxVodChoice)
+	_, statErr := os.Stat(vodModuleFile())
+	if err != nil {
+		return statErr == nil
+	}
+	return parseVodChoice(string(b), statErr == nil)
+}
+
+// SetVodChoice records whether the next module build includes nginx-vod-module.
+func SetVodChoice(on bool) error {
+	if err := os.MkdirAll(filepath.Dir(nginxVodChoice), 0750); err != nil {
+		return err
+	}
+	v := vodChoiceOff
+	if on {
+		v = vodChoiceOn
+	}
+	return os.WriteFile(nginxVodChoice, []byte(v+"\n"), 0644)
 }
 
 const nginxModuleHookPath = "/etc/apt/apt.conf.d/99siroc-nginx"
@@ -233,11 +267,23 @@ func nginxModuleABIMismatch() bool {
 
 func nginxModulesReady(stamp string) bool {
 	b, err := os.ReadFile(nginxModStamp)
-	if err != nil || strings.TrimSpace(string(b)) != stamp {
+	saved := ""
+	if err == nil {
+		saved = strings.TrimSpace(string(b))
+	}
+	if err != nil || stampBase(saved) != stampBase(stamp) {
 		return false
 	}
-	for _, name := range []string{"ndk_http_module.so", "ngx_http_lua_module.so", "ngx_http_vod_module.so"} {
+	for _, name := range []string{"ndk_http_module.so", "ngx_http_lua_module.so"} {
 		if _, err := os.Stat(filepath.Join(nginxModDir, name)); err != nil {
+			return false
+		}
+	}
+	if vodEnabled() {
+		if stampVod(saved) != vodModuleStamp() {
+			return false
+		}
+		if _, err := os.Stat(vodModuleFile()); err != nil {
 			return false
 		}
 	}
@@ -296,19 +342,27 @@ func ensureLoadModules() (bool, error) {
 	lines := []string{
 		"load_module /usr/lib/nginx/modules/ndk_http_module.so;",
 		"load_module /usr/lib/nginx/modules/ngx_http_lua_module.so;",
-		"load_module /usr/lib/nginx/modules/ngx_http_vod_module.so;",
 	}
 	conf := string(b)
+	changed := false
+	if vodEnabled() {
+		lines = append(lines, sirocLoadModules[2])
+	} else if next, dropped := stripLoadLine(conf, sirocLoadModules[2]); dropped {
+		conf = next
+		changed = true
+	}
 	var missing []string
 	for _, line := range lines {
 		if !nginxHasDirective(conf, line) {
 			missing = append(missing, line)
 		}
 	}
-	if len(missing) == 0 {
+	if len(missing) == 0 && !changed {
 		return false, nil
 	}
-	conf = strings.Join(missing, "\n") + "\n" + conf
+	if len(missing) > 0 {
+		conf = strings.Join(missing, "\n") + "\n" + conf
+	}
 	if err := os.WriteFile(path, []byte(conf), 0644); err != nil {
 		return false, err
 	}
@@ -415,54 +469,62 @@ func buildNginxModules(ver string) error {
 		return err
 	}
 	defer os.RemoveAll(nginxBuildDir)
+	withVod := vodEnabled()
 	sources := []struct{ url, dir string }{
 		{"https://nginx.org/download/nginx-" + ver + ".tar.gz", "nginx"},
-		{"https://github.com/kaltura/nginx-vod-module/archive/refs/tags/" + vodVersion + ".tar.gz", "vod"},
 		{"https://github.com/vision5/ngx_devel_kit/archive/refs/tags/" + ndkVersion + ".tar.gz", "ndk"},
 		{"https://github.com/openresty/lua-nginx-module/archive/refs/tags/" + luaVersion + ".tar.gz", "lua"},
+	}
+	if withVod {
+		sources = append(sources, struct{ url, dir string }{vodModuleArchive(), "vod"})
 	}
 	for _, src := range sources {
 		if err := fetchTar(src.url, filepath.Join(nginxBuildDir, src.dir)); err != nil {
 			return err
 		}
 	}
-	vodSrc := filepath.Join(nginxBuildDir, "vod", "ngx_http_vod_module.c")
-	body, err := os.ReadFile(vodSrc)
-	if err != nil {
-		return err
-	}
-	patched, err := patchVodSource(string(body))
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(vodSrc, []byte(patched), 0644); err != nil {
-		return err
-	}
-	dfxp, err := findNamedFile(filepath.Join(nginxBuildDir, "vod"), "dfxp_format.c")
-	if err != nil {
-		return err
-	}
-	dfxpBody, err := os.ReadFile(dfxp)
-	if err != nil {
-		return err
-	}
-	dfxpPatched, err := patchVodDFXP(string(dfxpBody))
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(dfxp, []byte(dfxpPatched), 0644); err != nil {
-		return err
+	if withVod {
+		vodSrc := filepath.Join(nginxBuildDir, "vod", "ngx_http_vod_module.c")
+		body, err := os.ReadFile(vodSrc)
+		if err != nil {
+			return err
+		}
+		patched, err := patchVodSource(string(body))
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(vodSrc, []byte(patched), 0644); err != nil {
+			return err
+		}
+		dfxp, err := findNamedFile(filepath.Join(nginxBuildDir, "vod"), "dfxp_format.c")
+		if err != nil {
+			return err
+		}
+		dfxpBody, err := os.ReadFile(dfxp)
+		if err != nil {
+			return err
+		}
+		dfxpPatched, err := patchVodDFXP(string(dfxpBody))
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(dfxp, []byte(dfxpPatched), 0644); err != nil {
+			return err
+		}
 	}
 	cc := vodCompilerOpt(cpuFlags())
 	noteInstall("vod cc-opt: " + cc)
-	cmd := exec.Command("./configure", "--with-compat",
+	args := []string{"./configure", "--with-compat",
 		"--with-file-aio",
 		"--with-threads",
-		"--with-cc-opt="+cc,
-		"--add-dynamic-module="+filepath.Join(nginxBuildDir, "ndk"),
-		"--add-dynamic-module="+filepath.Join(nginxBuildDir, "lua"),
-		"--add-dynamic-module="+filepath.Join(nginxBuildDir, "vod"),
-	)
+		"--with-cc-opt=" + cc,
+		"--add-dynamic-module=" + filepath.Join(nginxBuildDir, "ndk"),
+		"--add-dynamic-module=" + filepath.Join(nginxBuildDir, "lua"),
+	}
+	if withVod {
+		args = append(args, "--add-dynamic-module="+filepath.Join(nginxBuildDir, "vod"))
+	}
+	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = filepath.Join(nginxBuildDir, "nginx")
 	cmd.Env = append(os.Environ(), luaEnv...)
 	if out, err := combinedTimeout(cmd, 5*time.Minute); err != nil {
@@ -482,7 +544,11 @@ func buildNginxModules(ver string) error {
 		return err
 	}
 	objs := filepath.Join(nginxBuildDir, "nginx", "objs")
-	for _, name := range []string{"ndk_http_module.so", "ngx_http_lua_module.so", "ngx_http_vod_module.so"} {
+	names := []string{"ndk_http_module.so", "ngx_http_lua_module.so"}
+	if withVod {
+		names = append(names, "ngx_http_vod_module.so")
+	}
+	for _, name := range names {
 		src := filepath.Join(objs, name)
 		if _, err := os.Stat(src); err != nil {
 			return fmt.Errorf("missing %s", name)
@@ -490,6 +556,9 @@ func buildNginxModules(ver string) error {
 		if err := copyFile(src, filepath.Join(nginxModDir, name)); err != nil {
 			return err
 		}
+	}
+	if !withVod {
+		_ = os.Remove(vodModuleFile())
 	}
 	return nil
 }

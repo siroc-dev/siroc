@@ -1,7 +1,7 @@
 package software
 
 var descriptions = map[string]string{
-	"nginx":      "Public HTTP frontend. Terminates TLS and proxies each site to Apache or an app port.",
+	"nginx":      "Public HTTP frontend. Terminates TLS and proxies each site to Apache or an app port. The VOD module is optional.",
 	"apache":     "PHP backend behind Nginx. Serves document roots and runs ModSecurity.",
 	"php":        "PHP-FPM pools per website. Extra versions come from Ondrej Sury (packages.sury.org) when that release has a repo.",
 	"mysql":      "MySQL from Oracle's apt packages. Cannot sit next to MariaDB.",

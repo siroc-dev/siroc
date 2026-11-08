@@ -131,6 +131,10 @@ type PkgInstallReq struct {
 	Version string `json:"version"`
 }
 
+type NginxVODReq struct {
+	Enabled bool `json:"enabled"`
+}
+
 type InstallLogResp struct {
 	Name   string `json:"name"`
 	Text   string `json:"text"`
@@ -150,6 +154,7 @@ type PackageInfo struct {
 	CLIVersion        string          `json:"cliVersion,omitempty"`
 	ExclusiveOf       string          `json:"exclusiveOf,omitempty"`
 	VersionActive     map[string]bool `json:"versionActive,omitempty"`
+	VodInstalled      bool            `json:"vodInstalled,omitempty"`
 }
 
 type CLISetReq struct {

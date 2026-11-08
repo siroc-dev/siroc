@@ -110,6 +110,12 @@ func (s *Server) enqueueInstall(name, version string) (*store.InstallJob, error)
 }
 
 func (s *Server) checkInstallAllowed(name, version string) error {
+	if name == "nginx-vod" {
+		if version != "on" && version != "off" {
+			return fmt.Errorf("vod choice must be on or off")
+		}
+		return nil
+	}
 	if name == "php-ext" {
 		ver, ext, _, err := rpc.ParsePHPExtJob(version)
 		if err != nil {
@@ -180,6 +186,7 @@ func (s *Server) installSoftware(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name    string `json:"name"`
 		Version string `json:"version"`
+		Vod     *bool  `json:"vod,omitempty"`
 		Items   []struct {
 			Name    string `json:"name"`
 			Version string `json:"version"`
@@ -198,6 +205,12 @@ func (s *Server) installSoftware(w http.ResponseWriter, r *http.Request) {
 	if len(items) == 0 {
 		writeErr(w, http.StatusBadRequest, fmt.Errorf("nothing to install"))
 		return
+	}
+	if body.Name == "nginx" && body.Vod != nil {
+		if err := s.Agent.SetNginxVOD(*body.Vod); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
 	}
 	var jobs []store.InstallJob
 	for _, it := range items {

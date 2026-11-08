@@ -17,6 +17,9 @@ export type InstallQueue = {
 };
 
 export function jobLabel(job: Pick<InstallJob, "name" | "version">) {
+  if (job.name === "nginx-vod") {
+    return job.version === "off" ? "Nginx VOD off" : "Nginx VOD on";
+  }
   if (job.name === "php-ext") {
     const [ver, ext, src] = (job.version || "").split(":");
     const bits = [ver && `PHP ${ver}`, ext, src && src !== "auto" ? src : ""].filter(Boolean);
