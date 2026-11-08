@@ -7,6 +7,7 @@ import { PageSkeleton } from "@/components/PageSkeleton";
 import { asList } from "@/lib/lists";
 import { formatBytes, type UserUsage } from "@/lib/usage";
 import { SiteDash, type SiteDashAction } from "@/components/SiteDash";
+import { SiteFTP } from "@/components/SiteFTP";
 import { matchNginxRewrite, nginxRewriteBody, NGINX_REWRITE_OPTIONS } from "@/lib/nginxRewrites";
 import { AppPackages, type PkgHit, type PkgRow } from "@/components/AppPackages";
 import { WebOptimize } from "@/components/WebOptimize";
@@ -386,6 +387,7 @@ export function Sites() {
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<number[]>([]);
   const [infoSite, setInfoSite] = useState<Site | null>(null);
+  const [ftpSite, setFtpSite] = useState<Site | null>(null);
   const [phps, setPhps] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [rebuildBusy, setRebuildBusy] = useState(false);
@@ -929,6 +931,7 @@ export function Sites() {
 
   function runDash(s: Site, key: SiteDashAction) {
     if (key === "files") nav(`/files?user=${encodeURIComponent(s.username)}&path=${encodeURIComponent(siteFilesPath(s))}`);
+    if (key === "ftp") setFtpSite(s);
     if (key === "databases") nav(`/databases?user=${encodeURIComponent(s.username)}&domain=${encodeURIComponent(s.domain)}`);
     if (key === "backup") nav("/backup");
     if (key === "info") setInfoSite(s);
@@ -1227,7 +1230,7 @@ export function Sites() {
             Websites & domains
           </Typography.Title>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            Open a domain for files, databases, Git, SSL, and logs. New sites start on HTTP. Add HTTPS from the SSL tab.
+            Open a domain for files, FTP, databases, Git, SSL, and logs. New sites start on HTTP. Add HTTPS from the SSL tab.
           </Typography.Paragraph>
         </div>
         <Button type="primary" onClick={() => setCreateOpen(true)} disabled={phps.length === 0}>
@@ -1290,6 +1293,16 @@ export function Sites() {
         sitesTable
       )}
 
+      <Modal
+        title={ftpSite ? `FTP · ${ftpSite.displayName || ftpSite.domain}` : "FTP"}
+        open={!!ftpSite}
+        onCancel={() => setFtpSite(null)}
+        footer={<Button onClick={() => setFtpSite(null)}>Close</Button>}
+        destroyOnHidden
+        width={760}
+      >
+        {ftpSite ? <SiteFTP username={ftpSite.username} domain={ftpSite.domain} docRoot={ftpSite.docRoot} admin={admin} /> : null}
+      </Modal>
       <Modal
         title={infoSite ? `Connection · ${infoSite.domain}` : "Connection"}
         open={!!infoSite}

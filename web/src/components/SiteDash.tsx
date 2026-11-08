@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   CloudDownloadOutlined,
+  CloudServerOutlined,
   CodeOutlined,
   DatabaseOutlined,
   FileTextOutlined,
@@ -36,6 +37,7 @@ export type SiteDashSite = {
 
 export type SiteDashAction =
   | "files"
+  | "ftp"
   | "databases"
   | "backup"
   | "info"
@@ -124,6 +126,7 @@ export function SiteDash({
   const phpSite = !APP_KINDS.has(site.kind || "") && site.kind !== "proxy" && site.kind !== "nginx";
   const files: Tile[] = [
     { key: "files", title: "File manager", desc: "Browse and edit the site root", icon: <FolderOutlined />, color: "#52c41a" },
+    { key: "ftp", title: "FTP", desc: "Users for this website", icon: <CloudServerOutlined />, color: "#08979c" },
     { key: "databases", title: "Databases", desc: "MySQL / MariaDB for this account", icon: <DatabaseOutlined />, color: "#1677ff" },
     { key: "backup", title: "Backup", desc: "Backup and restore", icon: <CloudDownloadOutlined />, color: "#13c2c2" },
     { key: "info", title: "Connection info", desc: "Linux user, path, and PHP", icon: <InfoCircleOutlined />, color: "#722ed1" },
