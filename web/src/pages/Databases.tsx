@@ -69,6 +69,7 @@ export function Databases() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [cfgBusy, setCfgBusy] = useState(false);
   const [cfgErr, setCfgErr] = useState("");
+  const [timezones, setTimezones] = useState<string[]>([]);
   const [redis, setRedis] = useState<RedisStatusData | null>(null);
   const [redisErr, setRedisErr] = useState("");
   const [redisBusy, setRedisBusy] = useState(false);
@@ -112,8 +113,8 @@ export function Databases() {
       setValues((prev) => {
         const next: Record<string, string> = {};
         for (const s of st.settings || []) {
-          if (s.name === "bind_address") {
-            next[s.name] = gb && prev.bind_address ? prev.bind_address : s.value;
+          if (s.name === "bind_address" || s.name === "default_time_zone") {
+            next[s.name] = gb && prev[s.name] ? prev[s.name] : s.value;
           } else if (gb && s.recommend) {
             next[s.name] = s.recommend;
           } else {
@@ -171,6 +172,7 @@ export function Databases() {
   useEffect(() => {
     if (!admin) return;
     loadConfig().catch(() => undefined);
+    api.get<{ timezones?: string[] }>("/api/sysops").then((st) => setTimezones(st.timezones || [])).catch(() => undefined);
     loadRedis().catch(() => undefined);
     const t = setInterval(() => {
       loadRedis().catch(() => undefined);
@@ -431,6 +433,11 @@ export function Databases() {
   const tab = search.get("tab") || "list";
   const adminTab = tab === "redis" || tab === "monitor" || tab === "config" ? tab : "list";
   const engineLabel = engine === "mariadb" ? "MariaDB" : engine === "mysql" ? "MySQL" : "";
+  const tzOptions = useMemo(() => {
+    const names = new Set<string>(["SYSTEM", ...timezones.filter(Boolean)]);
+    if (values.default_time_zone) names.add(values.default_time_zone);
+    return [...names].map((z) => ({ value: z, label: z === "SYSTEM" ? "SYSTEM — server timezone" : z }));
+  }, [timezones, values.default_time_zone]);
   const ramSelect = useMemo(
     () =>
       ramOptions.map((n) => ({
@@ -627,6 +634,23 @@ export function Databases() {
                   Live {cfg.settings?.find((s) => s.name === "bind_address")?.live || "—"}
                 </Typography.Text>
               </Space>
+              <Space wrap align="center">
+                <Typography.Text>Timezone</Typography.Text>
+                <AutoComplete
+                  style={{ width: 320 }}
+                  value={values.default_time_zone || "SYSTEM"}
+                  onChange={(v) => setValues((cur) => ({ ...cur, default_time_zone: v }))}
+                  options={tzOptions}
+                  placeholder="SYSTEM or +07:00"
+                  filterOption={(input, opt) => String(opt?.value || "").toLowerCase().includes(input.trim().toLowerCase())}
+                />
+                <Typography.Text type="secondary">
+                  Live {cfg.settings?.find((s) => s.name === "default_time_zone")?.live || "—"}
+                </Typography.Text>
+              </Space>
+              <Typography.Text type="secondary">
+                SYSTEM follows the server clock. A name such as Asia/Bangkok applies to every new database connection. Apply restarts the database.
+              </Typography.Text>
               <Typography.Text type="secondary">
                 Value shows the current setting. Changing Optimize for RAM fills the preset for that amount.
               </Typography.Text>
@@ -637,7 +661,7 @@ export function Databases() {
               size="small"
               rowKey="name"
               pagination={false}
-              dataSource={(cfg.settings || []).filter((s) => s.name !== "bind_address")}
+              dataSource={(cfg.settings || []).filter((s) => s.name !== "bind_address" && s.name !== "default_time_zone")}
               columns={[
                 { title: "Setting", dataIndex: "label", width: 220, render: (v: string, r: CfgItem) => (
                   <span>

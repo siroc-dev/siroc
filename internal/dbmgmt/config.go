@@ -4,6 +4,8 @@ package dbmgmt
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -29,6 +31,7 @@ type dbKnob struct {
 func dbKnobs(mariadb bool) []dbKnob {
 	out := []dbKnob{
 		{Name: "bind_address", Label: "Bind address"},
+		{Name: "default_time_zone", Label: "Timezone"},
 		{Name: "innodb_buffer_pool_size", Label: "InnoDB buffer pool"},
 		{Name: "innodb_log_buffer_size", Label: "InnoDB log buffer"},
 	}
@@ -104,12 +107,22 @@ func (m *Manager) Config(ramGB int) *rpc.DBConfig {
 	fileVals := readConfSettings(st.ConfPath)
 	for _, k := range dbKnobs(mariadb) {
 		item := rpc.DBConfigItem{Name: k.Name, Label: k.Label, Recommend: rec[k.Name]}
-		if lv := live[k.Name]; lv != "" {
-			item.Live = prettyMySQLValue(k.Name, lv)
+		liveRaw := live[k.Name]
+		fileRaw := fileVals[k.Name]
+		if k.Name == "default_time_zone" {
+			liveRaw = live["time_zone"]
+			fileRaw = unquoteMySQL(fileRaw)
+			liveRaw = unquoteMySQL(liveRaw)
 		}
-		item.Value = dbShownValue(item.Live, fileVals[k.Name], rec[k.Name], preset)
+		if liveRaw != "" {
+			item.Live = prettyMySQLValue(k.Name, liveRaw)
+		}
+		item.Value = dbShownValue(item.Live, fileRaw, rec[k.Name], preset)
 		if item.Value == "" && k.Name == "bind_address" {
 			item.Value = "127.0.0.1"
+		}
+		if item.Value == "" && k.Name == "default_time_zone" {
+			item.Value = "SYSTEM"
 		}
 		st.Settings = append(st.Settings, item)
 	}
@@ -137,10 +150,23 @@ func (m *Manager) ApplyConfig(in rpc.DBConfigApply) error {
 		if !allowed[name] {
 			return fmt.Errorf("unknown setting %s", name)
 		}
+		if name == "default_time_zone" {
+			norm, ok := normalizeDBTimezone(v)
+			if !ok {
+				return fmt.Errorf("invalid value for %s", name)
+			}
+			vals[name] = norm
+			continue
+		}
 		if v == "" || !validDBValue(name, v) {
 			return fmt.Errorf("invalid value for %s", name)
 		}
 		vals[name] = v
+	}
+	if dbTimezoneNeedsTables(vals["default_time_zone"]) {
+		if err := loadMySQLTimezones(engine); err != nil {
+			return err
+		}
 	}
 	if vals["bind_address"] == "" {
 		vals["bind_address"] = "127.0.0.1"
@@ -167,6 +193,10 @@ func (m *Manager) ApplyConfig(in rpc.DBConfigApply) error {
 			fmt.Fprintf(&b, "bind-address = %s\n", v)
 			continue
 		}
+		if k.Name == "default_time_zone" {
+			fmt.Fprintf(&b, "default-time-zone = %s\n", mysqlTimezoneConf(v))
+			continue
+		}
 		fmt.Fprintf(&b, "%s = %s\n", k.Name, v)
 	}
 	if err := os.WriteFile(path, []byte(b.String()), 0644); err != nil {
@@ -187,6 +217,52 @@ func (m *Manager) ApplyConfig(in rpc.DBConfigApply) error {
 		return fmt.Errorf("%v (the previous config was restored and the server is running)", err)
 	}
 	return nil
+}
+
+func loadMySQLTimezones(engine string) error {
+	if !mysqlServiceActive(engine) {
+		if err := restartMySQL(engine); err != nil {
+			return fmt.Errorf("start the database before setting a named timezone: %w", err)
+		}
+	}
+	bin := ""
+	for _, name := range []string{"mysql_tzinfo_to_sql", "mariadb-tzinfo-to-sql"} {
+		if p, err := exec.LookPath(name); err == nil {
+			bin = p
+			break
+		}
+	}
+	if bin == "" {
+		return fmt.Errorf("mysql_tzinfo_to_sql is not installed")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	sql, err := exec.CommandContext(ctx, bin, "/usr/share/zoneinfo").Output()
+	if len(bytes.TrimSpace(sql)) == 0 {
+		if err == nil {
+			err = fmt.Errorf("empty timezone list")
+		}
+		return fmt.Errorf("read timezones: %w", err)
+	}
+	flagSets := [][]string{
+		{"--batch", "--skip-ssl", "mysql"},
+		{"--batch", "--ssl-mode=DISABLED", "mysql"},
+		{"--batch", "mysql"},
+	}
+	var last error
+	for _, flags := range flagSets {
+		cmd := exec.CommandContext(ctx, mysqlBin(), flags...)
+		cmd.Stdin = bytes.NewReader(sql)
+		out, err := cmd.CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		last = fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	if last == nil {
+		last = fmt.Errorf("could not load timezone tables")
+	}
+	return last
 }
 
 func validDBValue(name, v string) bool {
