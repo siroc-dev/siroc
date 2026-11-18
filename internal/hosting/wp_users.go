@@ -114,3 +114,20 @@ func saveWPUserCache(user, root string, at time.Time, users []rpc.WPUser) error 
 func dropWPUserCache(user, root string) {
 	_ = os.Remove(wpUserCachePath(user, root))
 }
+
+func validWPPassword(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if strings.ContainsAny(p, "\x00\n\r") {
+		return "", fmt.Errorf("password has invalid characters")
+	}
+	if len(p) < 8 || len(p) > 128 {
+		return "", fmt.Errorf("password must be 8–128 characters")
+	}
+	return p, nil
+}
+
+func phpSingleQuote(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `'`, `\'`)
+	return "'" + s + "'"
+}

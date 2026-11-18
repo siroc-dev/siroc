@@ -2,11 +2,31 @@ package hosting
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/siroc-dev/siroc/internal/rpc"
 )
+
+func TestValidWPPassword(t *testing.T) {
+	got, err := validWPPassword("  secret12  ")
+	if err != nil || got != "secret12" {
+		t.Fatalf("trim: %q %v", got, err)
+	}
+	if _, err := validWPPassword("short"); err == nil {
+		t.Fatal("short password should be rejected")
+	}
+	if _, err := validWPPassword("line\nbreak1"); err == nil {
+		t.Fatal("newline password should be rejected")
+	}
+	if _, err := validWPPassword(strings.Repeat("a", 129)); err == nil {
+		t.Fatal("long password should be rejected")
+	}
+	if phpSingleQuote(`it's a\b`) != `'it\'s a\\b'` {
+		t.Fatalf("php quote %s", phpSingleQuote(`it's a\b`))
+	}
+}
 
 func TestWPStaffRole(t *testing.T) {
 	if !wpStaffRole("administrator") || !wpStaffRole("editor") || !wpStaffRole("author, editor") || !wpStaffRole("[administrator]") {

@@ -575,6 +575,13 @@ func wpAction(req rpc.SiteAppReq, out *rpc.SiteAppResp) (*rpc.SiteAppResp, error
 			out.WordPress = st
 			return out, nil
 		}
+	case "reset-password":
+		pass, login, err := resetWPPassword(user, root, req.UserID, req.Password)
+		if err != nil {
+			return nil, err
+		}
+		out.Password = pass
+		out.Message = "Password updated for " + login
 	default:
 		return nil, fmt.Errorf("unknown wordpress action %q", req.Action)
 	}

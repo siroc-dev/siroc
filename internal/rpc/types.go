@@ -367,6 +367,7 @@ type SiteAppReq struct {
 	Prefix       string            `json:"prefix,omitempty"`
 	WPCLI        string            `json:"wpcli,omitempty"`
 	Login        string            `json:"login,omitempty"`
+	Password     string            `json:"password,omitempty"`
 	XMLRPC       *bool             `json:"xmlrpc,omitempty"`
 	Pingbacks    *bool             `json:"pingbacks,omitempty"`
 	Cron         *bool             `json:"cron,omitempty"`
@@ -385,6 +386,7 @@ type SiteAppResp struct {
 	Message      string         `json:"message,omitempty"`
 	Output       string         `json:"output,omitempty"`
 	LoginURLs    []string       `json:"loginUrls,omitempty"`
+	Password     string         `json:"password,omitempty"`
 	Laravel      *LaravelStatus `json:"laravel,omitempty"`
 	WordPress    *WPStatus      `json:"wordpress,omitempty"`
 	PkgHits      []PkgHit       `json:"pkgHits,omitempty"`

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -358,6 +359,61 @@ func renameWPUser(user, root string, id int64, login string) (string, error) {
 	_, _ = wpRun(user, root, "cache", "flush")
 	dropWPUserCache(user, root)
 	return "username is now " + login, nil
+}
+
+func resetWPPassword(user, root string, id int64, password string) (string, string, error) {
+	if id < 1 {
+		return "", "", fmt.Errorf("user id required")
+	}
+	password, err := validWPPassword(password)
+	if err != nil {
+		return "", "", err
+	}
+	var row map[string]any
+	if err := wpJSON(user, root, &row, "user", "get", strconv.FormatInt(id, 10), "--fields=user_login,roles", "--format=json"); err != nil {
+		low := strings.ToLower(err.Error())
+		if strings.Contains(low, "invalid user") || strings.Contains(low, "could not find") {
+			return "", "", fmt.Errorf("user %d not found", id)
+		}
+		return "", "", err
+	}
+	login := strings.TrimSpace(fmt.Sprint(row["user_login"]))
+	if login == "" || login == "<nil>" || !wpStaffRole(wpRoleText(row["roles"])) {
+		return "", "", fmt.Errorf("only administrator and editor passwords can be reset")
+	}
+	f, err := os.CreateTemp("", "siroc-wp-pass-*.php")
+	if err != nil {
+		return "", "", err
+	}
+	path := f.Name()
+	defer func() {
+		_ = os.WriteFile(path, make([]byte, 256), 0600)
+		_ = os.Remove(path)
+	}()
+	body := "<?php\nwp_set_password(" + phpSingleQuote(password) + ", " + strconv.FormatInt(id, 10) + ");\n"
+	if _, err := f.WriteString(body); err != nil {
+		f.Close()
+		return "", "", err
+	}
+	if err := f.Close(); err != nil {
+		return "", "", err
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		return "", "", err
+	}
+	if err := exec.Command("chown", user+":"+user, path).Run(); err != nil {
+		return "", "", fmt.Errorf("prepare password reset: %w", err)
+	}
+	if msg, err := wpRun(user, root, "eval-file", shellQuote(path), "--skip-plugins"); err != nil {
+		if strings.Contains(msg, password) || strings.Contains(err.Error(), password) {
+			return "", "", fmt.Errorf("could not update the WordPress password")
+		}
+		if strings.TrimSpace(msg) == "" {
+			return "", "", err
+		}
+		return "", "", fmt.Errorf("%s", strings.TrimSpace(msg))
+	}
+	return password, login, nil
 }
 
 func dropXMLRPCSnippet(domain string) {

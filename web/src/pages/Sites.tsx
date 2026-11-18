@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useMatch, useNavigate, useOutletContext, useParams, useSearchParams } from "react-router-dom";
-import { MoreOutlined } from "@ant-design/icons";
+import { MoreOutlined, ReloadOutlined } from "@ant-design/icons";
 import { Alert, App, Button, Card, Col, Dropdown, Form, Input, InputNumber, Modal, Row, Select, Space, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { api, RequestError } from "@/lib/api";
 import { PageSkeleton } from "@/components/PageSkeleton";
@@ -251,6 +251,7 @@ type SiteApp = {
   message?: string;
   output?: string;
   loginUrls?: string[];
+  password?: string;
   laravel?: LaravelStatus;
   wordpress?: WPStatus;
   pkgHits?: PkgHit[];
@@ -415,6 +416,9 @@ export function Sites() {
   const [wpPrefix, setWpPrefix] = useState("");
   const [wpForm] = Form.useForm();
   const [loginUrls, setLoginUrls] = useState<string[]>([]);
+  const [wpPassUser, setWpPassUser] = useState<WPUser | null>(null);
+  const [wpPassShown, setWpPassShown] = useState("");
+  const [wpPassForm] = Form.useForm();
   const [leForm] = Form.useForm();
   const [leBusy, setLeBusy] = useState(false);
   const [leAccount, setLeAccount] = useState<LEConfig | null>(null);
@@ -821,6 +825,21 @@ export function Sites() {
     } finally {
       setAppBusy(false);
     }
+  }
+
+  async function randomWPPassword() {
+    try {
+      const data = await api.get<{ password: string }>("/api/password/suggest");
+      wpPassForm.setFieldValue("password", data.password);
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Cannot generate password");
+    }
+  }
+
+  async function resetWPUserPassword(values: { password: string }) {
+    if (!appSite || !wpPassUser) return;
+    const out = await runApp(appSite, { action: "reset-password", userId: wpPassUser.id, password: values.password });
+    if (out?.password) setWpPassShown(out.password);
   }
 
   async function openApp(s: Site, kind: "laravel" | "wordpress") {
@@ -1643,8 +1662,20 @@ export function Sites() {
         onCancel={() => {
           setAppSite(null);
           setAppKind(null);
+          setWpPassUser(null);
+          setWpPassShown("");
         }}
-        footer={<Button onClick={() => setAppSite(null)}>Close</Button>}
+        footer={
+          <Button
+            onClick={() => {
+              setAppSite(null);
+              setWpPassUser(null);
+              setWpPassShown("");
+            }}
+          >
+            Close
+          </Button>
+        }
         width={1040}
         destroyOnHidden
       >
@@ -1942,11 +1973,22 @@ export function Sites() {
                       { title: "Roles", dataIndex: "roles" },
                       {
                         title: "",
-                        width: 220,
+                        width: 340,
                         render: (_, u) => (
-                          <Space>
+                          <Space wrap>
                             <Button size="small" loading={appBusy} onClick={() => void runApp(appSite, { action: "login", userId: u.id })}>
                               Login as
+                            </Button>
+                            <Button
+                              size="small"
+                              loading={appBusy}
+                              onClick={() => {
+                                setWpPassShown("");
+                                wpPassForm.resetFields();
+                                setWpPassUser(u);
+                              }}
+                            >
+                              Reset password
                             </Button>
                             <Button
                               size="small"
@@ -2145,6 +2187,45 @@ export function Sites() {
             </Typography.Link>
           ))}
         </Space>
+      </Modal>
+
+      <Modal
+        title={wpPassUser ? `Reset password · ${wpPassUser.login}` : "Reset password"}
+        open={!!wpPassUser}
+        onCancel={() => {
+          setWpPassUser(null);
+          setWpPassShown("");
+        }}
+        onOk={() => (wpPassShown ? setWpPassUser(null) : wpPassForm.submit())}
+        confirmLoading={appBusy}
+        destroyOnHidden
+        okText={wpPassShown ? "Done" : "Reset password"}
+      >
+        <Form form={wpPassForm} layout="vertical" onFinish={resetWPUserPassword} requiredMark={false} style={{ marginTop: 8 }}>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="This replaces the WordPress login password and signs that user out. WordPress does not email the new password."
+          />
+          {wpPassShown ? (
+            <>
+              <Typography.Text type="secondary">New password</Typography.Text>
+              <Typography.Paragraph copyable style={{ marginBottom: 0 }}>
+                {wpPassShown}
+              </Typography.Paragraph>
+            </>
+          ) : (
+            <>
+              <Form.Item name="password" label="New password" rules={[{ required: true, min: 8, message: "Use at least 8 characters" }]}>
+                <Input.Password autoComplete="new-password" />
+              </Form.Item>
+              <Button icon={<ReloadOutlined />} onClick={() => void randomWPPassword()}>
+                Random password
+              </Button>
+            </>
+          )}
+        </Form>
       </Modal>
     </div>
   );
