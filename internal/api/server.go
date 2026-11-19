@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -380,12 +381,6 @@ func (s *Server) loginCaptcha(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"required": true, "captcha": ch})
 }
 
-func (s *Server) loginFail(w http.ResponseWriter, ip, username string, status int, err error) {
-	s.Auth.Fail(ip)
-	auth.LogFailure(ip, username)
-	s.writeLoginErr(w, ip, status, err)
-}
-
 func (s *Server) writeLoginErr(w http.ResponseWriter, ip string, status int, err error) {
 	body := map[string]any{"error": err.Error(), "captchaRequired": s.Auth.NeedCaptcha(ip)}
 	if s.Auth.NeedCaptcha(ip) {
@@ -396,43 +391,88 @@ func (s *Server) writeLoginErr(w http.ResponseWriter, ip string, status int, err
 	writeJSON(w, status, body)
 }
 
+func formLogin(r *http.Request) bool {
+	ct := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
+	if i := strings.Index(ct, ";"); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	return ct == "application/x-www-form-urlencoded" || ct == "multipart/form-data"
+}
+
+func (s *Server) replyLogin(w http.ResponseWriter, r *http.Request, browser bool, ip string, status int, err error) {
+	if !browser {
+		s.writeLoginErr(w, ip, status, err)
+		return
+	}
+	http.Redirect(w, r, "/login?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+}
+
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	ip := auth.ClientIP(r)
+	browser := formLogin(r)
 	if !s.Auth.AllowLogin(ip) {
 		auth.LogFailure(ip, "")
-		s.writeLoginErr(w, ip, http.StatusTooManyRequests, fmt.Errorf("too many login attempts"))
+		s.replyLogin(w, r, browser, ip, http.StatusTooManyRequests, fmt.Errorf("too many login attempts"))
 		return
 	}
-	var body struct {
-		Username  string `json:"username"`
-		Password  string `json:"password"`
-		CaptchaID string `json:"captchaId"`
-		Captcha   string `json:"captcha"`
+	var username, password, captchaID, captcha string
+	if browser {
+		if err := r.ParseForm(); err != nil {
+			s.replyLogin(w, r, true, ip, http.StatusBadRequest, fmt.Errorf("invalid form"))
+			return
+		}
+		username = strings.TrimSpace(r.FormValue("username"))
+		password = r.FormValue("password")
+		captchaID = strings.TrimSpace(r.FormValue("captchaId"))
+		captcha = strings.TrimSpace(r.FormValue("captcha"))
+	} else {
+		var body struct {
+			Username  string `json:"username"`
+			Password  string `json:"password"`
+			CaptchaID string `json:"captchaId"`
+			Captcha   string `json:"captcha"`
+		}
+		if !decode(w, r, &body) {
+			return
+		}
+		username = body.Username
+		password = body.Password
+		captchaID = body.CaptchaID
+		captcha = body.Captcha
 	}
-	if !decode(w, r, &body) {
+	if s.Auth.NeedCaptcha(ip) && !s.Auth.CheckCaptcha(ip, captchaID, captcha) {
+		s.replyLogin(w, r, browser, ip, http.StatusBadRequest, fmt.Errorf("captcha required"))
 		return
 	}
-	if s.Auth.NeedCaptcha(ip) && !s.Auth.CheckCaptcha(ip, body.CaptchaID, body.Captcha) {
-		s.writeLoginErr(w, ip, http.StatusBadRequest, fmt.Errorf("captcha required"))
-		return
-	}
-	u, err := s.Store.GetPanelUserByName(body.Username)
-	if err != nil || !auth.Check(u.PasswordHash, body.Password) {
-		s.loginFail(w, ip, body.Username, http.StatusUnauthorized, fmt.Errorf("invalid credentials"))
+	u, err := s.Store.GetPanelUserByName(username)
+	if err != nil || !auth.Check(u.PasswordHash, password) {
+		s.Auth.Fail(ip)
+		auth.LogFailure(ip, username)
+		s.replyLogin(w, r, browser, ip, http.StatusUnauthorized, fmt.Errorf("invalid credentials"))
 		return
 	}
 	s.Auth.OK(ip)
 	if acc, err := s.Store.GetAccountByName(u.Username); err == nil && acc.Suspended {
-		s.loginFail(w, ip, body.Username, http.StatusUnauthorized, fmt.Errorf("account is suspended"))
+		s.Auth.Fail(ip)
+		auth.LogFailure(ip, username)
+		s.replyLogin(w, r, browser, ip, http.StatusUnauthorized, fmt.Errorf("account is suspended"))
 		return
 	}
 	sid, err := s.Store.CreateSession(u.ID, 0, 7*24*time.Hour)
 	if err != nil {
+		if browser {
+			s.replyLogin(w, r, true, ip, http.StatusInternalServerError, err)
+			return
+		}
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	s.Auth.SetCookie(w, sid, !s.Cfg.DisableTLS)
 	s.Auth.ClearReturnCookie(w, !s.Cfg.DisableTLS)
+	if browser {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"username": u.Username, "role": u.Role})
 }
 
