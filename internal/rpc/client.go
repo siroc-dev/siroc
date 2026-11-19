@@ -455,6 +455,18 @@ func (c *Client) RegisterLEAccount(in LEAccountReq) (*LEAccountResp, error) {
 	return &out, err
 }
 
+func (c *Client) PanelCertStatus(in PanelCertReq) (*PanelCertStatus, error) {
+	var out PanelCertStatus
+	err := c.do(http.MethodPost, "/panel/certificate/status", in, &out)
+	return &out, err
+}
+
+func (c *Client) IssuePanelCert(in PanelCertReq) (*PanelCertStatus, error) {
+	var out PanelCertStatus
+	err := c.do(http.MethodPost, "/panel/certificate/issue", in, &out)
+	return &out, err
+}
+
 func (c *Client) LEAccountStatus(in LEAccountReq) (*LEAccountResp, error) {
 	var out LEAccountResp
 	err := c.do(http.MethodPost, "/ssl/letsencrypt/account/status", in, &out)

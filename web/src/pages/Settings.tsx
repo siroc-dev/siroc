@@ -1,11 +1,21 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { DesktopOutlined, MoonOutlined, SunOutlined } from "@ant-design/icons";
-import { App, Button, Card, ColorPicker, Form, Select, Space, Switch, Typography } from "antd";
+import { Alert, App, Button, Card, ColorPicker, Form, Select, Space, Switch, Tag, Typography } from "antd";
 import { api } from "@/lib/api";
 import { setPanelTimezone } from "@/lib/panelTime";
 import { useBrand } from "@/components/ThemeProvider";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { THEME_COLORS, type Brand, type ThemeColor, type ThemeStyle } from "@/lib/theme";
+
+type PanelCert = {
+  ip: string;
+  email: string;
+  issuer: string;
+  notAfter: string;
+  coversIp: boolean;
+  letsEncrypt: boolean;
+  message?: string;
+};
 
 type Sys = {
   time: string;
@@ -43,6 +53,8 @@ export function Settings() {
   const { message } = App.useApp();
   const { brand, setBrand } = useBrand();
   const [sys, setSys] = useState<Sys | null>(null);
+  const [cert, setCert] = useState<PanelCert | null>(null);
+  const [certError, setCertError] = useState("");
   const [busy, setBusy] = useState("");
   const [tzForm] = Form.useForm();
   const logoInput = useRef<HTMLInputElement>(null);
@@ -55,11 +67,34 @@ export function Settings() {
     tzForm.setFieldsValue({ timezone: data.timezone, ntp: data.ntp });
   }
 
+  async function loadCert() {
+    try {
+      setCert(await api.get<PanelCert>("/api/settings/certificate"));
+      setCertError("");
+    } catch (err) {
+      setCertError(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
   useEffect(() => {
-    loadSys()
+    Promise.all([loadSys(), loadCert()])
       .catch((e) => message.error(e.message))
       .finally(() => setReady(true));
   }, []);
+
+  async function issueCert() {
+    setBusy("cert");
+    try {
+      const saved = await api.post<PanelCert>("/api/settings/certificate", {});
+      setCert(saved);
+      setCertError("");
+      message.success(saved.message || "Certificate issued");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function saveTheme(next: Brand) {
     setBrand(next);
@@ -126,6 +161,31 @@ export function Settings() {
       <Typography.Title level={3} style={{ margin: 0 }}>
         Settings
       </Typography.Title>
+
+      <Card title="Panel certificate">
+        <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+          Let's Encrypt certificate for this server's public IP, registered as ssl@siroc.dev. It lasts about 6 days and renews on its own. Browsers offer to save the sign-in password once this certificate is trusted.
+        </Typography.Paragraph>
+        {certError ? <Alert type="error" showIcon message={certError} style={{ marginBottom: 16 }} /> : null}
+        <Space direction="vertical" size={8}>
+          <div>
+            Public IP: {cert?.ip || "—"}
+            {cert?.letsEncrypt && cert.coversIp ? (
+              <Tag color="success" style={{ marginLeft: 8 }}>
+                Trusted
+              </Tag>
+            ) : (
+              <Tag style={{ marginLeft: 8 }}>Not trusted for this IP</Tag>
+            )}
+          </div>
+          <div>Email: {cert?.email || "ssl@siroc.dev"}</div>
+          <div>Issuer: {cert?.issuer || "—"}</div>
+          <div>Expires: {cert?.notAfter ? new Date(cert.notAfter).toLocaleString() : "—"}</div>
+          <Button type="primary" onClick={() => void issueCert()} loading={busy === "cert"}>
+            {cert?.letsEncrypt && cert.coversIp ? "Renew certificate" : "Issue certificate"}
+          </Button>
+        </Space>
+      </Card>
 
       <Card title="Server Timezone">
         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>

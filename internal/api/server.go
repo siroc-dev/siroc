@@ -33,6 +33,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/config"
 	"github.com/siroc-dev/siroc/internal/dbmgmt"
 	"github.com/siroc-dev/siroc/internal/files"
+	"github.com/siroc-dev/siroc/internal/panelcert"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/secret"
 	"github.com/siroc-dev/siroc/internal/siteopts"
@@ -306,6 +307,8 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/supervisor/programs/{name}/{action}", s.supervisorCtl)
 		r.Get("/api/supervisor/programs/{name}/log", s.supervisorLog)
 		r.Put("/api/settings/panel", s.putPanelSettings)
+		r.Get("/api/settings/certificate", s.panelCertificate)
+		r.Post("/api/settings/certificate", s.issuePanelCertificate)
 		r.Post("/api/settings/brand/{kind}", s.uploadBrand)
 		r.Delete("/api/settings/brand/{kind}", s.deleteBrand)
 		r.Get("/api/settings/services", s.listPanelServices)
@@ -336,11 +339,12 @@ func (s *Server) ListenAndServe() error {
 		Addr:    s.Cfg.ListenAddr,
 		Handler: h,
 		TLSConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
+			MinVersion:     tls.VersionTLS12,
+			GetCertificate: panelcert.NewLoader(s.Cfg.TLSCert, s.Cfg.TLSKey),
 		},
 	}
 	log.Printf("siroc-panel listening https://%s", s.Cfg.ListenAddr)
-	return srv.ListenAndServeTLS(s.Cfg.TLSCert, s.Cfg.TLSKey)
+	return srv.ListenAndServeTLS("", "")
 }
 
 type ctxKey int

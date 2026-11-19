@@ -797,6 +797,25 @@ func main() {
 		}
 		writeJSON(w, http.StatusOK, out)
 	})
+	r.Post("/panel/certificate/status", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.PanelCertReq
+		if !decode(w, r, &req) {
+			return
+		}
+		writeJSON(w, http.StatusOK, panelCertStatus(req))
+	})
+	r.Post("/panel/certificate/issue", func(w http.ResponseWriter, r *http.Request) {
+		var req rpc.PanelCertReq
+		if !decode(w, r, &req) {
+			return
+		}
+		out, err := issuePanelCert(req)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})
 	r.Post("/ssl/letsencrypt/account/status", func(w http.ResponseWriter, r *http.Request) {
 		var req rpc.LEAccountReq
 		if !decode(w, r, &req) {

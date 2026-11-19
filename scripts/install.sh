@@ -118,6 +118,13 @@ RestartSec=2
 WantedBy=multi-user.target
 EOF
 
+if [ "$TLS" != "0" ]; then
+  echo "Requesting a Let's Encrypt certificate for the public IP..."
+  if ! SIROC_DATA_DIR="$DATA_DIR" SIROC_TLS="$TLS" "$ROOT/bin/siroc-panel" issue-cert; then
+    echo "Public certificate was not issued. The panel will use its own certificate until you issue one from Settings."
+  fi
+fi
+
 systemctl daemon-reload
 systemctl enable --now siroc-agent.service
 sleep 1

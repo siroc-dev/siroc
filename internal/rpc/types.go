@@ -295,6 +295,23 @@ type LEAccountReq struct {
 	NoVerify  bool   `json:"noVerify,omitempty"`
 }
 
+type PanelCertReq struct {
+	DataDir  string `json:"dataDir"`
+	CertFile string `json:"certFile"`
+	KeyFile  string `json:"keyFile"`
+}
+
+type PanelCertStatus struct {
+	IP          string   `json:"ip"`
+	Email       string   `json:"email"`
+	Issuer      string   `json:"issuer"`
+	NotAfter    string   `json:"notAfter"`
+	IPs         []string `json:"ips"`
+	CoversIP    bool     `json:"coversIp"`
+	LetsEncrypt bool     `json:"letsEncrypt"`
+	Message     string   `json:"message,omitempty"`
+}
+
 type LEAccountResp struct {
 	OK               bool   `json:"ok"`
 	Registered       bool   `json:"registered"`

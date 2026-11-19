@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"golang.org/x/term"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/siroc-dev/siroc/internal/api"
 	"github.com/siroc-dev/siroc/internal/auth"
 	"github.com/siroc-dev/siroc/internal/config"
+	"github.com/siroc-dev/siroc/internal/panelcert"
 	"github.com/siroc-dev/siroc/internal/rpc"
 	"github.com/siroc-dev/siroc/internal/store"
 	"github.com/siroc-dev/siroc/internal/version"
@@ -28,6 +30,11 @@ func main() {
 			return
 		case "passwd-admin", "reset-admin":
 			if err := runPasswdAdmin(os.Args[2:]); err != nil {
+				log.Fatal(err)
+			}
+			return
+		case "issue-cert":
+			if err := runIssueCert(); err != nil {
 				log.Fatal(err)
 			}
 			return
@@ -71,6 +78,25 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func runIssueCert() error {
+	cfg := config.Load()
+	if cfg.DisableTLS {
+		fmt.Println("TLS is off. Skipping the panel certificate.")
+		return nil
+	}
+	if err := panelcert.InstallRenewTimer(cfg.DataDir); err != nil {
+		fmt.Fprintf(os.Stderr, "certificate renewal timer: %s\n", err)
+	}
+	st, err := panelcert.Ensure("", panelcert.Paths{DataDir: cfg.DataDir, CertFile: cfg.TLSCert, KeyFile: cfg.TLSKey})
+	if st.Message != "" {
+		fmt.Println(st.Message)
+	}
+	if !st.NotAfter.IsZero() {
+		fmt.Printf("certificate for %s expires %s\n", st.IP, st.NotAfter.UTC().Format(time.RFC3339))
+	}
+	return err
 }
 
 func runBackupCron(args []string) error {
