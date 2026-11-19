@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Card, Form, Input, Typography } from "antd";
-import { api, RequestError, type Captcha } from "@/lib/api";
+import { api, type Captcha } from "@/lib/api";
 import { Mark } from "@/components/Mark";
 import { useBrand } from "@/components/ThemeProvider";
 
@@ -24,12 +24,10 @@ export function AuthForm({
   const [error, setError] = useState(() => (setup ? "" : new URLSearchParams(window.location.search).get("error") || ""));
   const [busy, setBusy] = useState(false);
   const [captcha, setCaptcha] = useState<Captcha | null>(null);
-  const [form] = Form.useForm();
   const { brand } = useBrand();
 
   function applyCaptcha(next?: Captcha | null) {
     setCaptcha(next || null);
-    form.setFieldValue("captcha", "");
   }
 
   async function loadCaptcha() {
