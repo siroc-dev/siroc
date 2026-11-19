@@ -131,8 +131,59 @@ PORT="${LISTEN##*:}"
 if [ -z "$PORT" ] || [ "$PORT" = "$LISTEN" ]; then
   PORT=8443
 fi
-IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
-IP="${IP:-127.0.0.1}"
+private_ip() {
+  local ip
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  printf '%s' "${ip:-127.0.0.1}"
+}
+
+valid_ipv4() {
+  local ip="$1" octet
+  [[ "$ip" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || return 1
+  for octet in "${BASH_REMATCH[@]:1}"; do
+    if [ "$octet" -gt 255 ]; then
+      return 1
+    fi
+  done
+}
+
+lookup_public_ip() {
+  local ip
+  if ! command -v curl >/dev/null 2>&1; then
+    return 0
+  fi
+  ip="$(curl -4 -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+  ip="${ip//$'\r'/}"
+  ip="${ip//$'\n'/}"
+  ip="${ip// /}"
+  if valid_ipv4 "$ip"; then
+    printf '%s' "$ip"
+  fi
+}
+
+host_url() {
+  local host="$1"
+  if { [ "$TLS" = "0" ] && [ "$PORT" = "80" ]; } || { [ "$TLS" != "0" ] && [ "$PORT" = "443" ]; }; then
+    printf '%s://%s' "$SCHEME" "$host"
+  else
+    printf '%s://%s:%s' "$SCHEME" "$host" "$PORT"
+  fi
+}
+
+print_addresses() {
+  local priv pub
+  priv="$(private_ip)"
+  pub="$(lookup_public_ip)"
+  if [ -z "$pub" ]; then
+    echo "  Private: $(host_url "$priv")"
+    echo "  Public:  could not detect a public IP"
+  elif [ "$pub" = "$priv" ]; then
+    echo "  $(host_url "$priv")"
+  else
+    echo "  Private: $(host_url "$priv")"
+    echo "  Public:  $(host_url "$pub")"
+  fi
+}
 
 TOKEN=""
 for _ in $(seq 1 20); do
@@ -145,21 +196,34 @@ for _ in $(seq 1 20); do
   fi
   sleep 0.5
 done
+if [ -n "$TOKEN" ]; then
+  for _ in $(seq 1 30); do
+    if [ -s "$DATA_DIR/setup.url" ]; then
+      break
+    fi
+    sleep 0.5
+  done
+fi
 
 echo
 echo "============================================================"
 if [ -n "$TOKEN" ]; then
-  URL="${SCHEME}://${IP}:${PORT}/setup?token=${TOKEN}"
   echo "  Siroc is ready. Create the first admin here:"
   echo
-  echo "    $URL"
+  if [ -s "$DATA_DIR/setup.url" ]; then
+    sed 's/^/  /' "$DATA_DIR/setup.url"
+  else
+    echo "  Private: $(host_url "$(private_ip)")/setup?token=${TOKEN}"
+    echo "  Public:  could not detect a public IP"
+  fi
   echo
   echo "  This one-time link is token-protected."
   echo "  Saved at $DATA_DIR/setup.url"
   echo "============================================================"
 elif systemctl is-active --quiet siroc-panel.service; then
-  echo "  Siroc is running: ${SCHEME}://${IP}:${PORT}"
-  echo "  Admin already exists — open the panel and sign in."
+  echo "  Siroc is running. Open the panel and sign in."
+  echo
+  print_addresses
   echo "============================================================"
 else
   echo "  Panel failed to start. Check: journalctl -u siroc-panel -u siroc-agent -e" >&2

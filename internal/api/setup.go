@@ -27,11 +27,11 @@ func (s *Server) prepareFirstRun() {
 		log.Printf("setup: cannot create first-run token: %v", err)
 		return
 	}
-	url := setup.PublicURL(s.Cfg.ListenAddr, !s.Cfg.DisableTLS, tok)
-	if err := setup.WriteURL(s.Cfg.DataDir, url); err != nil {
+	text, err := setup.SaveLinks(s.Cfg.DataDir, s.Cfg.ListenAddr, !s.Cfg.DisableTLS, tok)
+	if err != nil {
 		log.Printf("setup: cannot write setup url: %v", err)
 	}
-	log.Printf("First-run admin setup (token-protected): %s", url)
+	log.Printf("First-run admin setup (token-protected):\n%s", text)
 }
 
 func setupTokenFrom(r *http.Request, bodyToken string) string {

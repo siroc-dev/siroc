@@ -27,35 +27,35 @@ cd siroc
 sudo ./install.sh
 ```
 
-The installer prints a **one-time, token-protected** URL:
+The installer checks the server's public IPv4 address first, then prints a **one-time, token-protected** setup link for the private address and, when it differs, another for the public address:
 
-`https://<server-ip>:8443/setup?token=<secret>`
+```
+Private: https://10.0.0.8:8443/setup?token=<secret>
+Public:  https://203.0.113.10:8443/setup?token=<secret>
+```
 
-Open that link to create the first panel admin and a Let's Encrypt account email. Visiting the panel without the token does not show the setup form. The link is also saved at `/var/lib/siroc/setup.url` until setup completes. If Certbot is already installed, the ACME account is registered during setup; otherwise it is created when you install Certbot or click **Create Let's Encrypt account**.
+Open either link to create the first panel admin and a Let's Encrypt account email. Visiting the panel without the token does not show the setup form. Both lines are saved at `/siroc/data/setup.url` until setup completes. If the public address cannot be detected, installation continues and only the private link is usable. If Certbot is already installed, the ACME account is registered during setup; otherwise it is created when you install Certbot or click **Create Let's Encrypt account**.
 
 If binaries are already built in this tree (`bin/siroc-agent`, `bin/siroc-panel`, `web/dist`), you can run `sudo ./scripts/install.sh` directly.
 
-### Reset the admin password
+### Command line
 
-On the server, as root:
+On the server, as root, `sudo siroc` opens a menu: reset the admin password, check for updates, restart the agent and panel, or show the version. The same actions are available as commands:
 
 ```bash
 sudo siroc passwd-admin
-# or: sudo siroc-panel passwd-admin [username] [password]
+sudo siroc update              # check, and on a terminal ask before installing
+sudo siroc upgrade             # download, install, restart
+sudo siroc restart             # restart agent, then panel
 ```
 
-A random password is printed if you omit one. Existing admin sessions are signed out.
+On a terminal, `passwd-admin` confirms the administrator and reads the new password without showing it or putting it on the command line. Leave the password empty to generate one. From a script, `sudo siroc-panel passwd-admin [username] [password]` still accepts the password as an argument and generates one when it is omitted. Existing admin sessions are signed out.
+
+`siroc update` only installs after a yes answer when a newer version is available. `siroc upgrade` installs immediately. Automatic updates still use `update --apply` and are unchanged.
 
 ### Update the panel
 
-On the server:
-
-```bash
-sudo siroc update              # check https://get.siroc.dev
-sudo siroc upgrade             # download, install, restart
-```
-
-Or open **System tools → Updates**. The current version is shown in the sidebar.
+Open **System tools → Updates**. The current version is shown in the sidebar.
 
 - **Check for updates** reads `latest.json` from an HTTPS channel (`SIROC_UPDATE_URL` or the channel field). When automatic updates are on, the agent checks every hour and installs a newer version. Turn that off under **System tools → Updates**. Check and Apply still work either way.
 - **Apply update** installs a `siroc-linux-amd64.tar.gz` from that URL, or from a local path such as `/var/lib/siroc/updates/…`.
@@ -65,8 +65,8 @@ Example `latest.json` (published to Cloudflare R2 by CI):
 
 ```json
 {
-  "version": "0.3.41",
-  "url": "https://get.siroc.dev/0.3.41/siroc-linux-amd64.tar.gz",
+  "version": "0.3.42",
+  "url": "https://get.siroc.dev/0.3.42/siroc-linux-amd64.tar.gz",
   "sha256": "optional"
 }
 ```

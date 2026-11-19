@@ -1,44 +1,145 @@
 #!/bin/bash
 # Siroc command-line helper. Installed as /usr/local/bin/siroc
 set -euo pipefail
-cmd="${1:-}"
-shift || true
-case "$cmd" in
-  passwd-admin|reset-admin|passwd)
-    exec /usr/local/bin/siroc-panel passwd-admin "$@"
-    ;;
-  update|check|check-update)
-    exec /usr/local/bin/siroc-agent update "$@"
-    ;;
-  upgrade|apply)
-    exec /usr/local/bin/siroc-agent upgrade "$@"
-    ;;
-  version|-v|--version)
-    exec /usr/local/bin/siroc-agent version
-    ;;
-  ""|-h|--help|help)
-    cat <<'EOF'
+
+PANEL="${SIROC_PANEL:-/usr/local/bin/siroc-panel}"
+AGENT="${SIROC_AGENT:-/usr/local/bin/siroc-agent}"
+
+usage() {
+  cat <<'EOF'
 Siroc command line
 
+  sudo siroc
+      Open the menu on a terminal. Without a terminal, this help is printed.
+
   siroc passwd-admin [user] [password]
-      Reset a panel administrator password. Omit the password to generate one.
+      Reset a panel administrator password. On a terminal the name is confirmed
+      and the password is typed without being shown. Leave it empty to generate one.
+      Omit both arguments in a script to generate a password.
 
   siroc update [channel]
-      Check https://get.siroc.dev (or SIROC_UPDATE_URL) for a newer package.
+      Check https://get.siroc.dev (or SIROC_UPDATE_URL). On a terminal, a newer
+      version asks before it is installed.
 
   siroc upgrade [channel]
       Download and install the latest package, then restart the services.
+
+  siroc restart
+      Restart siroc-agent, then siroc-panel.
 
   siroc version
       Print the installed version.
 
 Examples
+  sudo siroc
   sudo siroc passwd-admin
   sudo siroc update
   sudo siroc upgrade
+  sudo siroc restart
   sudo siroc upgrade --url https://get.siroc.dev/siroc-linux-amd64.tar.gz
   sudo siroc upgrade --path /var/lib/siroc/updates/siroc-linux-amd64.tar.gz
 EOF
+}
+
+ask_yes() {
+  local answer
+  printf '%s' "$1"
+  if ! read -r answer; then
+    echo
+    return 1
+  fi
+  case "$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')" in
+    y|yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+restart_services() {
+  systemctl restart siroc-agent.service
+  sleep 1
+  systemctl restart siroc-panel.service
+  local agent_state panel_state
+  agent_state="$(systemctl is-active siroc-agent.service || true)"
+  panel_state="$(systemctl is-active siroc-panel.service || true)"
+  echo "siroc-agent: ${agent_state}"
+  echo "siroc-panel: ${panel_state}"
+}
+
+menu() {
+  local choice
+  while true; do
+    cat <<'EOF'
+Siroc
+
+  1  Reset admin password
+  2  Check for updates
+  3  Restart agent and panel
+  4  Show version
+  q  Quit
+
+EOF
+    printf 'Select: '
+    if ! read -r choice; then
+      echo
+      return 0
+    fi
+    case "$choice" in
+      1)
+        "$PANEL" passwd-admin || true
+        ;;
+      2)
+        "$AGENT" update || true
+        ;;
+      3)
+        if ask_yes "Restart agent and panel? [y/N] "; then
+          restart_services
+        else
+          echo "Cancelled."
+        fi
+        ;;
+      4)
+        "$AGENT" version || true
+        ;;
+      q|Q|quit)
+        return 0
+        ;;
+      "")
+        ;;
+      *)
+        echo "unknown choice: $choice" >&2
+        ;;
+    esac
+    echo
+  done
+}
+
+cmd="${1:-}"
+shift || true
+case "$cmd" in
+  passwd-admin|reset-admin|passwd)
+    exec "$PANEL" passwd-admin "$@"
+    ;;
+  update|check|check-update)
+    exec "$AGENT" update "$@"
+    ;;
+  upgrade|apply)
+    exec "$AGENT" upgrade "$@"
+    ;;
+  restart|restart-services)
+    restart_services
+    ;;
+  version|-v|--version)
+    exec "$AGENT" version
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  "")
+    if [ -t 0 ]; then
+      menu
+    else
+      usage
+    fi
     ;;
   *)
     echo "unknown command: $cmd" >&2

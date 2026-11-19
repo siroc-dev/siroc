@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	TokenFile = "setup.token"
-	URLFile   = "setup.url"
+	TokenFile  = "setup.token"
+	URLFile    = "setup.url"
 	tokenBytes = 32
 )
 
@@ -72,35 +72,14 @@ func Clear(dataDir string) {
 }
 
 func AdvertiseHost() string {
-	if h := os.Getenv("SIROC_PUBLIC_HOST"); h != "" {
+	if h := strings.TrimSpace(os.Getenv("SIROC_PUBLIC_HOST")); h != "" {
 		return h
 	}
-	addrs, err := net.InterfaceAddrs()
-	if err == nil {
-		for _, a := range addrs {
-			ipn, ok := a.(*net.IPNet)
-			if !ok || ipn.IP.IsLoopback() {
-				continue
-			}
-			if v4 := ipn.IP.To4(); v4 != nil {
-				return v4.String()
-			}
-		}
-	}
-	return "127.0.0.1"
+	return PrivateHost()
 }
 
 func PublicURL(listenAddr string, tlsOn bool, token string) string {
-	scheme := "https"
-	if !tlsOn {
-		scheme = "http"
-	}
-	host := AdvertiseHost()
-	port := listenPort(listenAddr)
-	if (tlsOn && port == "443") || (!tlsOn && port == "80") {
-		return fmt.Sprintf("%s://%s/setup?token=%s", scheme, host, token)
-	}
-	return fmt.Sprintf("%s://%s:%s/setup?token=%s", scheme, host, port, token)
+	return PanelURL(listenAddr, tlsOn, AdvertiseHost(), token)
 }
 
 func WriteURL(dataDir, url string) error {

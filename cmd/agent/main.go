@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/term"
 
 	"github.com/siroc-dev/siroc/internal/backup"
 	"github.com/siroc-dev/siroc/internal/config"
@@ -2141,18 +2143,45 @@ func printUpdateStatus(st *rpc.PanelUpdateStatus) {
 
 func runUpdateCheck(args []string) error {
 	channel, _, _ := parseUpdateArgs(args)
-	var st *rpc.PanelUpdateStatus
-	var err error
 	if updateApplyFlag(args) {
-		st, err = update.CheckApply(channel)
-	} else {
-		st, err = update.Check(channel)
+		st, err := update.CheckApply(channel)
+		if err != nil {
+			return err
+		}
+		printUpdateStatus(st)
+		return nil
 	}
+	st, err := update.Check(channel)
 	if err != nil {
 		return err
 	}
 	printUpdateStatus(st)
+	if !update.OfferInstall(st != nil && st.Available, term.IsTerminal(int(os.Stdin.Fd())), false) {
+		return nil
+	}
+	ver := strings.TrimSpace(st.Latest)
+	if ver == "" {
+		ver = "update"
+	}
+	ok, err := confirmInstall(ver)
+	if err != nil || !ok {
+		return err
+	}
+	applied, err := update.Apply(channel, "", "")
+	if err != nil {
+		return err
+	}
+	printUpdateStatus(applied)
 	return nil
+}
+
+func confirmInstall(version string) (bool, error) {
+	fmt.Printf("Install %s? [y/N] ", version)
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil && err != io.EOF {
+		return false, err
+	}
+	return update.Accepted(line), nil
 }
 
 func updateApplyFlag(args []string) bool {

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"golang.org/x/term"
 
 	"github.com/siroc-dev/siroc/internal/admincli"
 	"github.com/siroc-dev/siroc/internal/api"
@@ -99,10 +102,25 @@ func runPasswdAdmin(args []string) error {
 	if len(args) > 0 {
 		username = args[0]
 	}
-	if len(args) > 1 {
-		password = args[1]
+	var user, pass string
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		user, pass, err = admincli.ResetInteractive(st, username, os.Stdin, os.Stdout, func() (string, error) {
+			secret, rerr := term.ReadPassword(int(os.Stdin.Fd()))
+			if rerr != nil {
+				return "", rerr
+			}
+			return string(secret), nil
+		})
+		if errors.Is(err, admincli.ErrAborted) {
+			fmt.Println("Cancelled.")
+			return nil
+		}
+	} else {
+		if len(args) > 1 {
+			password = args[1]
+		}
+		user, pass, err = admincli.ResetAdmin(st, username, password)
 	}
-	user, pass, err := admincli.ResetAdmin(st, username, password)
 	if err != nil {
 		return err
 	}
