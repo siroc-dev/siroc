@@ -1046,6 +1046,10 @@ html[data-theme="dark"] .ant-table-thead > tr > th {
   color: #a89884;
 }
 
+#siroc-sign-in .ant-form-item {
+  margin-bottom: 24px;
+}
+
 .siroc-login-card .ant-typography:not(.ant-typography-danger) {
   color: #f4eadc;
 }

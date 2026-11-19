@@ -312,6 +312,7 @@ func (s *Server) Router() http.Handler {
 		r.Put("/api/settings/services/monitor", s.putServiceMonitor)
 	})
 
+	r.Get("/login", loginPage)
 	if s.Static != nil {
 		fileServer(r, "/", s.Static)
 	}

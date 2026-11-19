@@ -37,6 +37,23 @@ function setupTokenFromURL() {
   return (q.get("token") || "").trim();
 }
 
+function FullLogin() {
+  const onLogin = window.location.pathname === "/login";
+  useEffect(() => {
+    if (window.location.pathname !== "/login") window.location.replace("/login");
+  }, []);
+  if (!onLogin) return <BootSkeleton />;
+  return (
+    <AuthForm
+      title="Sign in"
+      subtitle="Siroc control panel"
+      submitLabel="Sign in"
+      endpoint="/api/login"
+      onDone={() => window.location.replace("/")}
+    />
+  );
+}
+
 function AdminOnly({ admin, children }: { admin?: boolean; children: ReactNode }) {
   const loc = useLocation();
   if (!canUsePath(admin, loc.pathname)) {
@@ -131,24 +148,9 @@ export function App() {
 
   return (
     <Routes>
-      <Route path="/setup" element={<Navigate to="/login" replace />} />
-      <Route
-        path="/login"
-        element={
-          user ? (
-            <Navigate to="/" replace />
-          ) : (
-            <AuthForm
-              title="Sign in"
-              subtitle="Siroc control panel"
-              submitLabel="Sign in"
-              endpoint="/api/login"
-              onDone={() => boot()}
-            />
-          )
-        }
-      />
-      <Route element={user ? <Layout user={user} admin={admin} version={version} stackPrompt={stackPrompt} onStackDone={() => setStackPrompt(false)} /> : <Navigate to="/login" replace />}>
+      <Route path="/setup" element={<FullLogin />} />
+      <Route path="/login" element={user ? <Navigate to="/" replace /> : <FullLogin />} />
+      <Route element={user ? <Layout user={user} admin={admin} version={version} stackPrompt={stackPrompt} onStackDone={() => setStackPrompt(false)} /> : <FullLogin />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/accounts" element={<AdminOnly admin={admin}><Accounts /></AdminOnly>} />
         <Route path="/files" element={<Files />} />
