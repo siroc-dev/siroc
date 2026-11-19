@@ -44,7 +44,24 @@ func RestorePathOK(src, username string) bool {
 	if user != "" && strings.HasPrefix(src, "/home/"+user+"/") {
 		return true
 	}
-	return false
+	return archiveOutsideSystem(src)
+}
+
+// archiveOutsideSystem allows a finished .tar.gz that is not under a system directory.
+func archiveOutsideSystem(src string) bool {
+	if path.Base(src) == ".tar.gz" || !strings.HasSuffix(src, ".tar.gz") {
+		return false
+	}
+	// /home is decided above: the account home and /home/tmp are allowed, other homes are not.
+	if strings.HasPrefix(src, "/home/") {
+		return false
+	}
+	for _, prefix := range []string{"/etc", "/proc", "/sys", "/dev", "/boot", "/root", "/usr", "/bin", "/sbin"} {
+		if src == prefix || strings.HasPrefix(src, prefix+"/") {
+			return false
+		}
+	}
+	return true
 }
 
 func sirocTmpPath(src string) bool {

@@ -39,6 +39,37 @@ function siteLabel(s: { domain: string; displayName?: string }) {
   return s.displayName || s.domain;
 }
 
+type AccountCron = {
+  id: number;
+  account: string;
+  enabled: boolean;
+  cycle?: string;
+  minute?: number;
+  hour?: number;
+  weekday?: number;
+  monthday?: number;
+};
+
+const backupWeekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function cronSummary(c: AccountCron) {
+  const hour = c.hour ?? 0;
+  const minute = c.minute ?? 0;
+  const hm = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  if (c.cycle === "hourly") return `Hourly at :${String(minute).padStart(2, "0")}`;
+  if (c.cycle === "weekly") return `Weekly on ${backupWeekdays[c.weekday ?? 0] || "Sunday"} at ${hm}`;
+  if (c.cycle === "monthly") return `Monthly on day ${c.monthday || 1} at ${hm}`;
+  return `Daily at ${hm}`;
+}
+
+function accountBackupState(username: string, crons: AccountCron[]) {
+  const own = crons.find((c) => c.account === username && c.enabled);
+  const allOn = crons.some((c) => c.account === "*" && c.enabled);
+  if (own) return { on: true, locked: false, summary: cronSummary(own) };
+  if (allOn) return { on: true, locked: true, summary: "Included in the all-accounts schedule" };
+  return { on: false, locked: false, summary: "Off for this account" };
+}
+
 function defaultDoc(domain: string) {
   const d = (domain || "").trim().toLowerCase();
   return d ? `domains/${d}/public_html` : "";
@@ -428,7 +459,7 @@ export function Sites() {
   const [wafBusy, setWafBusy] = useState("");
   const [sslLog, setSslLog] = useState("");
   const [rulesOpen, setRulesOpen] = useState(false);
-  const [accountCrons, setAccountCrons] = useState<{ id: number; account: string; enabled: boolean }[]>([]);
+  const [accountCrons, setAccountCrons] = useState<AccountCron[]>([]);
   const [backupBusy, setBackupBusy] = useState(false);
   const [ready, setReady] = useState(false);
 
@@ -902,13 +933,12 @@ export function Sites() {
   }
 
   const openSite = sites.find((s) => String(s.id) === siteIdParam) || null;
-  const siteCrons = openSite ? accountCrons.filter((c) => c.account === openSite.username) : [];
-  const autoBackup = siteCrons.some((c) => c.enabled);
+  const backupState = openSite ? accountBackupState(openSite.username, accountCrons) : { on: false, locked: false, summary: "Off for this account" };
   useEffect(() => {
     if (!admin || !openSite) return;
     let stop = false;
     api
-      .get<{ id: number; account: string; enabled: boolean }[]>("/api/backup/crons")
+      .get<AccountCron[]>("/api/backup/crons")
       .then((rows) => {
         if (!stop) setAccountCrons(rows || []);
       })
@@ -921,16 +951,12 @@ export function Sites() {
   }, [admin, openSite?.id]);
 
   async function setAutoBackup(on: boolean) {
-    if (!openSite) return;
-    if (!siteCrons.length) {
-      message.info("Add a backup schedule for this account on the Backup page first");
-      nav("/backup");
-      return;
-    }
+    if (!openSite || backupState.locked) return;
     setBackupBusy(true);
     try {
-      await Promise.all(siteCrons.map((c) => api.put(`/api/backup/crons/${c.id}`, { enabled: on })));
-      setAccountCrons((cur) => cur.map((c) => (c.account === openSite.username ? { ...c, enabled: on } : c)));
+      await api.put(`/api/backup/accounts/${encodeURIComponent(openSite.username)}`, { enabled: on });
+      const rows = await api.get<AccountCron[]>("/api/backup/crons");
+      setAccountCrons(rows || []);
       message.success(on ? "Automatic backup is on" : "Automatic backup is off");
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed");
@@ -1270,8 +1296,10 @@ export function Sites() {
             onOpen={(key) => runDash(openSite, key)}
             onWaf={(v) => void setSiteWAF(openSite, v)}
             onRules={() => setRulesOpen(true)}
-            autoBackup={autoBackup}
+            autoBackup={backupState.on}
             autoBackupBusy={backupBusy}
+            autoBackupSummary={backupState.summary}
+            autoBackupLocked={backupState.locked}
             onAutoBackup={admin ? (on) => void setAutoBackup(on) : undefined}
           />
         </Card>

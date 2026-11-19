@@ -126,6 +126,40 @@ func cronNum(s string) bool {
 	return true
 }
 
+// AccountCron is one schedule used to describe automatic backup for an account.
+type AccountCron struct {
+	Account  string
+	Enabled  bool
+	Cycle    string
+	Minute   int
+	Hour     int
+	Weekday  int
+	Monthday int
+}
+
+// AccountAuto reports the site-dashboard switch for one account.
+// An enabled schedule for that account wins. An all-accounts schedule leaves the switch on and locked.
+func AccountAuto(username string, crons []AccountCron) (enabled, locked bool, summary string) {
+	var own *AccountCron
+	allOn := false
+	for i := range crons {
+		c := &crons[i]
+		if c.Account == "*" && c.Enabled {
+			allOn = true
+		}
+		if c.Account == username && c.Enabled && own == nil {
+			own = c
+		}
+	}
+	if own != nil {
+		return true, false, Describe(CronTask{Cycle: own.Cycle, Minute: own.Minute, Hour: own.Hour, Weekday: own.Weekday, Monthday: own.Monthday})
+	}
+	if allOn {
+		return true, true, "Included in the all-accounts schedule"
+	}
+	return false, false, "Off for this account"
+}
+
 // Describe is the schedule shown in the panel.
 func Describe(t CronTask) string {
 	hm := fmt.Sprintf("%02d:%02d", t.Hour, t.Minute)

@@ -50,11 +50,8 @@ func Run(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	if st, err := os.Stat(home); err != nil || !st.IsDir() {
 		return nil, fmt.Errorf("home directory not found")
 	}
-	stamp := time.Now().UTC().Format("20060102-150405")
-	dir := filepath.Join("/var/backups/siroc", req.Username)
-	if err := os.MkdirAll(dir, 0750); err != nil {
-		return nil, err
-	}
+	now := time.Now()
+	stamp := now.UTC().Format("20060102-150405")
 	stage := filepath.Join("/var/backups/siroc", ".work", req.Username+"-"+stamp)
 	meta := filepath.Join(stage, "siroc-meta")
 	if err := os.MkdirAll(filepath.Join(meta, "dumps"), 0750); err != nil {
@@ -95,12 +92,8 @@ func Run(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	}
 	writeCrontab(ctx, req.Username, filepath.Join(meta, "crontab"))
 	copySiteCerts(man.Sites, filepath.Join(meta, "ssl"))
-	archive := filepath.Join(dir, req.Username+"-"+stamp+".tar.gz")
-	defer func() {
-		if ctx.Err() != nil {
-			_ = os.Remove(archive)
-		}
-	}()
+	archive := filepath.Join("/var/backups/siroc", ".work", req.Username+"-"+stamp+".tar.gz")
+	defer os.Remove(archive)
 	args := []string{"-czf", archive, "-C", "/home", req.Username, "-C", stage, "siroc-meta"}
 	if out, err := cmdOut(ctx, "tar", args...); err != nil {
 		if errors.Is(err, errCancelled) {
@@ -112,24 +105,35 @@ func Run(req rpc.BackupReq) (*rpc.BackupResp, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp := &rpc.BackupResp{OK: true, Path: archive, Size: fi.Size(), Manifest: man, Message: "saved " + filepath.Base(archive)}
-	folder, remoteFile := WeekRemote(layout, time.Now(), req.Username, filepath.Base(archive))
-	remote, err := publishArchive(ctx, req, archive, folder, remoteFile)
-	if err != nil {
-		return nil, err
-	}
-	resp.Remote = remote
-	if folder != "" && remote != "" {
+	stampName := filepath.Base(archive)
+	folder, remoteFile := WeekRemote(layout, now, req.Username, stampName)
+	resp := &rpc.BackupResp{OK: true, Size: fi.Size(), Manifest: man, Message: "saved " + remoteFile}
+	if folder != "" {
 		resp.Message = "saved " + folder + "/" + remoteFile
 	}
-	if layout == "week" {
-		pruneDir(dir, req.Username, 7)
-	} else if req.Retain > 0 {
-		pruneDir(dir, req.Username, req.Retain)
-		kind := strings.ToLower(strings.TrimSpace(req.Kind))
-		if kind == "local" && req.LocalDir != "" && filepath.Clean(req.LocalDir) != filepath.Clean(dir) {
-			pruneDir(req.LocalDir, req.Username, req.Retain)
+	kind := strings.ToLower(strings.TrimSpace(req.Kind))
+	if kind == "" {
+		kind = "local"
+	}
+	switch kind {
+	case "local":
+		dir, name := DurableLocal(req.LocalDir, layout, now, req.Username, stampName)
+		final := filepath.Join(filepath.FromSlash(dir), name)
+		if err := placeLocal(ctx, archive, final); err != nil {
+			return nil, err
 		}
+		resp.Path = final
+		if layout != "week" && req.Retain > 0 {
+			pruneDir(filepath.FromSlash(dir), req.Username, req.Retain)
+		}
+	case "ftp", "s3":
+		remote, err := publishArchive(ctx, req, archive, folder, remoteFile)
+		if err != nil {
+			return nil, err
+		}
+		resp.Remote = remote
+	default:
+		return nil, fmt.Errorf("unknown backup kind %q", kind)
 	}
 	return resp, nil
 }
@@ -140,31 +144,6 @@ func publishArchive(ctx context.Context, req rpc.BackupReq, archive, folder, rem
 		kind = "local"
 	}
 	switch kind {
-	case "local":
-		dir := req.LocalDir
-		if dir == "" {
-			dir = filepath.Dir(archive)
-		}
-		name := filepath.Base(archive)
-		if folder != "" {
-			dir = filepath.Join(dir, folder)
-			name = remoteFile
-		}
-		if err := os.MkdirAll(dir, 0750); err != nil {
-			return "", err
-		}
-		dest := filepath.Join(dir, name)
-		if filepath.Clean(dest) == filepath.Clean(archive) {
-			return "", nil
-		}
-		if out, err := cmdOut(ctx, "cp", "-a", archive, dest); err != nil {
-			if errors.Is(err, errCancelled) {
-				_ = os.Remove(dest)
-				return "", err
-			}
-			return "", fmt.Errorf("copy local: %s", strings.TrimSpace(string(out)))
-		}
-		return dest, nil
 	case "ftp":
 		return uploadFTP(ctx, req, archive, folder, remoteFile)
 	case "s3":
@@ -183,6 +162,28 @@ func cmdOut(ctx context.Context, name string, args ...string) ([]byte, error) {
 		return out, errCancelled
 	}
 	return out, err
+}
+
+// placeLocal moves the staged archive to its only durable path.
+func placeLocal(ctx context.Context, archive, dest string) error {
+	if filepath.Clean(dest) == filepath.Clean(archive) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0750); err != nil {
+		return err
+	}
+	if err := os.Rename(archive, dest); err == nil {
+		return nil
+	}
+	out, err := cmdOut(ctx, "cp", "-a", archive, dest)
+	if err != nil {
+		_ = os.Remove(dest)
+		if errors.Is(err, errCancelled) {
+			return err
+		}
+		return fmt.Errorf("copy local: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func pruneDir(dir, username string, keep int) {

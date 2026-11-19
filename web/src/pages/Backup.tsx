@@ -611,12 +611,12 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
             />
           </Form.Item>
           <div style={{ display: cronLayout === "week" ? "none" : undefined }}>
-            <Form.Item name="retain" label="Retain the latest" extra="Older local archives for each account are deleted.">
+            <Form.Item name="retain" label="Retain the latest" extra="Older archives in a local destination are deleted. FTP and S3 keep each upload, except the 7-day layout, which replaces that weekday's file.">
               <InputNumber min={1} max={30} />
             </Form.Item>
           </div>
           {cronLayout === "week" ? (
-            <Alert style={{ marginBottom: 16 }} type="info" showIcon message="Each weekday has its own folder: monday, tuesday, wednesday, thursday, friday, saturday, sunday. The next backup on that day replaces the previous file." />
+            <Alert style={{ marginBottom: 16 }} type="info" showIcon message="Each weekday has its own folder: monday, tuesday, wednesday, thursday, friday, saturday, sunday. The next backup on that day replaces the previous file. Only that file is kept." />
           ) : null}
           <Form.Item name="includeDB" label="Include MySQL dumps" valuePropName="checked">
             <Switch />
@@ -654,7 +654,7 @@ export function Backup({ admin, user }: { admin?: boolean; user?: string }) {
             message={
               runLayout === "week"
                 ? "Runs in the background. Stores one file per account in monday, tuesday, wednesday, thursday, friday, saturday, or sunday. The next backup on that weekday replaces it. You can cancel a running job."
-                : "Runs in the background. Writes one tar.gz per user: home, databases, sites, FTP, crontab, and account settings. You can cancel a running job."
+                : "Runs in the background. Stores one tar.gz per account at the destination: home, databases, sites, FTP, crontab, and account settings. You can cancel a running job."
             }
           />
         </Form>

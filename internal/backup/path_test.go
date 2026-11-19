@@ -46,4 +46,19 @@ func TestRestorePathOK(t *testing.T) {
 	if RestorePathOK("/var/backups/../etc/passwd", "alice") {
 		t.Fatal("dotdot")
 	}
+	if !RestorePathOK("/mnt/backups/alice.tar.gz", "alice") {
+		t.Fatal("archive outside the usual trees")
+	}
+	if RestorePathOK("/etc/alice.tar.gz", "alice") {
+		t.Fatal("archive under /etc")
+	}
+	if RestorePathOK("/usr/local/alice.tar.gz", "alice") {
+		t.Fatal("archive under /usr")
+	}
+	if RestorePathOK("/root/alice.tar.gz", "alice") {
+		t.Fatal("archive under /root")
+	}
+	if RestorePathOK("/opt/backups/notes.txt", "alice") {
+		t.Fatal("non-archive")
+	}
 }

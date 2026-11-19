@@ -107,6 +107,8 @@ export function SiteDash({
   onRules,
   autoBackup,
   autoBackupBusy,
+  autoBackupSummary,
+  autoBackupLocked,
   onAutoBackup,
 }: {
   site: SiteDashSite;
@@ -121,6 +123,8 @@ export function SiteDash({
   onRules?: () => void;
   autoBackup?: boolean;
   autoBackupBusy?: boolean;
+  autoBackupSummary?: string;
+  autoBackupLocked?: boolean;
   onAutoBackup?: (enabled: boolean) => void;
 }) {
   const phpSite = !APP_KINDS.has(site.kind || "") && site.kind !== "proxy" && site.kind !== "nginx";
@@ -224,9 +228,9 @@ export function SiteDash({
               </span>
               <span className="site-dash-copy">
                 <strong>Auto backup</strong>
-                <em>{autoBackup ? "On for this account" : "Off for this account"}</em>
+                <em>{autoBackupSummary || (autoBackup ? "On for this account" : "Off for this account")}</em>
               </span>
-              <Switch checked={!!autoBackup} loading={autoBackupBusy} onChange={onAutoBackup} />
+              <Switch checked={!!autoBackup} loading={autoBackupBusy} disabled={autoBackupLocked} onChange={onAutoBackup} />
             </div>
           ) : null}
         </div>

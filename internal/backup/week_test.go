@@ -31,6 +31,18 @@ func TestWeekdayFolders(t *testing.T) {
 	if got, err := NormalizeLayout("week"); err != nil || got != "week" {
 		t.Fatalf("week: %s %v", got, err)
 	}
+	dir, name := DurableLocal("", "", monday, "blog", "blog-20261102-150405.tar.gz")
+	if dir != "/var/backups/siroc/blog" || name != "blog-20261102-150405.tar.gz" {
+		t.Fatalf("default local %s/%s", dir, name)
+	}
+	dir, name = DurableLocal("/var/backups/offsite", "week", monday, "blog", "blog-20261102-150405.tar.gz")
+	if dir != "/var/backups/offsite/monday" || name != "blog.tar.gz" {
+		t.Fatalf("week local %s/%s", dir, name)
+	}
+	dir, name = DurableLocal("/var/backups/offsite/", "", monday, "blog", "blog-20261102-150405.tar.gz")
+	if dir != "/var/backups/offsite" || name != "blog-20261102-150405.tar.gz" {
+		t.Fatalf("dest local %s/%s", dir, name)
+	}
 }
 
 func TestCancelRun(t *testing.T) {

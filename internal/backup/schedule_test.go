@@ -30,6 +30,20 @@ func TestDescribeAndPrune(t *testing.T) {
 	if got != "Daily at 01:30" {
 		t.Fatal(got)
 	}
+	on, locked, summary := AccountAuto("blog", []AccountCron{
+		{Account: "blog", Enabled: true, Cycle: "daily", Hour: 1, Minute: 30},
+	})
+	if !on || locked || summary != "Daily at 01:30" {
+		t.Fatalf("own schedule %v %v %s", on, locked, summary)
+	}
+	on, locked, summary = AccountAuto("blog", []AccountCron{{Account: "*", Enabled: true, Cycle: "daily", Hour: 2, Minute: 0}})
+	if !on || !locked || summary != "Included in the all-accounts schedule" {
+		t.Fatalf("all accounts %v %v %s", on, locked, summary)
+	}
+	on, locked, summary = AccountAuto("blog", []AccountCron{{Account: "blog", Enabled: false, Cycle: "daily", Hour: 1, Minute: 30}})
+	if on || locked || summary != "Off for this account" {
+		t.Fatalf("off %v %v %s", on, locked, summary)
+	}
 	drop := PruneNames([]string{"a-3.tar.gz", "a-1.tar.gz", "a-2.tar.gz"}, 2)
 	if len(drop) != 1 || drop[0] != "a-1.tar.gz" {
 		t.Fatalf("%v", drop)

@@ -7,6 +7,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -1043,6 +1044,182 @@ func (s *Server) buildBackupCron(body backupCronBody, prev *store.BackupCron) (s
 		Cycle: cycle, Minute: minute, Hour: hour, Weekday: weekday, Monthday: monthday,
 		Retain: retain, Layout: layout, Enabled: enabled,
 	}, nil
+}
+
+const serverArchivesPath = "/var/backups/siroc"
+
+func pickLocalDest(list []store.BackupDest) *store.BackupDest {
+	var fallback *store.BackupDest
+	for i := range list {
+		d := &list[i]
+		if d.Kind != "local" || strings.TrimSpace(d.Path) == "" {
+			continue
+		}
+		clean := path.Clean(strings.ReplaceAll(d.Path, "\\", "/"))
+		if clean == serverArchivesPath {
+			return d
+		}
+		if fallback == nil {
+			fallback = d
+		}
+	}
+	return fallback
+}
+
+func (s *Server) ensureLocalDest() (*store.BackupDest, error) {
+	list, err := s.Store.ListBackupDests()
+	if err != nil {
+		return nil, err
+	}
+	if d := pickLocalDest(list); d != nil {
+		return d, nil
+	}
+	return s.Store.CreateBackupDest(store.BackupDest{
+		Name: "Server archives",
+		Kind: "local",
+		Path: serverArchivesPath,
+	})
+}
+
+func accountCrons(list []store.BackupCron) []backup.AccountCron {
+	out := make([]backup.AccountCron, 0, len(list))
+	for _, c := range list {
+		out = append(out, backup.AccountCron{
+			Account: c.Account, Enabled: c.Enabled, Cycle: c.Cycle,
+			Minute: c.Minute, Hour: c.Hour, Weekday: c.Weekday, Monthday: c.Monthday,
+		})
+	}
+	return out
+}
+
+func (s *Server) setAccountBackup(w http.ResponseWriter, r *http.Request) {
+	if !isAdmin(currentUser(r)) {
+		writeErr(w, http.StatusForbidden, fmt.Errorf("admin only"))
+		return
+	}
+	username := strings.TrimSpace(chi.URLParam(r, "username"))
+	if err := validate.LinuxUser(username); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if _, err := s.Store.GetAccountByName(username); err != nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("account not found"))
+		return
+	}
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if body.Enabled == nil {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("enabled is required"))
+		return
+	}
+	list, err := s.Store.ListBackupCrons()
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	var mine []store.BackupCron
+	allOn := false
+	for _, c := range list {
+		if c.Account == username {
+			mine = append(mine, c)
+		}
+		if c.Account == "*" && c.Enabled {
+			allOn = true
+		}
+	}
+	if *body.Enabled {
+		if len(mine) == 0 && !allOn {
+			dest, err := s.ensureLocalDest()
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, err)
+				return
+			}
+			include := true
+			row, err := s.buildBackupCron(backupCronBody{
+				Username:  username,
+				DestID:    dest.ID,
+				IncludeDB: &include,
+				Cycle:     "daily",
+				Minute:    30,
+				Hour:      1,
+				Retain:    3,
+			}, nil)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, err)
+				return
+			}
+			row.Enabled = true
+			created, err := s.Store.CreateBackupCron(row)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, err)
+				return
+			}
+			if err := s.SyncBackupCron(); err != nil {
+				_ = s.Store.DeleteBackupCron(created.ID)
+				writeErr(w, http.StatusBadRequest, fmt.Errorf("saved schedule could not be installed in cron: %w", err))
+				return
+			}
+		} else {
+			var changed []int64
+			for _, c := range mine {
+				if c.Enabled {
+					continue
+				}
+				if err := s.Store.SetBackupCronEnabled(c.ID, true); err != nil {
+					for _, id := range changed {
+						_ = s.Store.SetBackupCronEnabled(id, false)
+					}
+					writeErr(w, http.StatusBadRequest, err)
+					return
+				}
+				changed = append(changed, c.ID)
+			}
+			if len(changed) > 0 {
+				if err := s.SyncBackupCron(); err != nil {
+					for _, id := range changed {
+						_ = s.Store.SetBackupCronEnabled(id, false)
+					}
+					writeErr(w, http.StatusBadRequest, fmt.Errorf("schedule could not be updated in cron: %w", err))
+					return
+				}
+			}
+		}
+	} else {
+		var changed []int64
+		for _, c := range mine {
+			if !c.Enabled {
+				continue
+			}
+			if err := s.Store.SetBackupCronEnabled(c.ID, false); err != nil {
+				for _, id := range changed {
+					_ = s.Store.SetBackupCronEnabled(id, true)
+				}
+				writeErr(w, http.StatusBadRequest, err)
+				return
+			}
+			changed = append(changed, c.ID)
+		}
+		if len(changed) > 0 {
+			if err := s.SyncBackupCron(); err != nil {
+				for _, id := range changed {
+					_ = s.Store.SetBackupCronEnabled(id, true)
+				}
+				writeErr(w, http.StatusBadRequest, fmt.Errorf("schedule could not be updated in cron: %w", err))
+				return
+			}
+		}
+	}
+	list, err = s.Store.ListBackupCrons()
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	enabled, locked, summary := backup.AccountAuto(username, accountCrons(list))
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": enabled, "locked": locked, "summary": summary})
 }
 
 func (s *Server) deleteBackupCron(w http.ResponseWriter, r *http.Request) {

@@ -244,6 +244,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/backup/crons", s.listBackupCrons)
 		r.Post("/api/backup/crons", s.createBackupCron)
 		r.Put("/api/backup/crons/{id}", s.setBackupCron)
+		r.Put("/api/backup/accounts/{username}", s.setAccountBackup)
 		r.Delete("/api/backup/crons/{id}", s.deleteBackupCron)
 		r.Post("/api/backup/restore", s.restoreBackup)
 		r.Post("/api/backup/restore/upload", s.uploadRestore)

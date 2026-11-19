@@ -2,6 +2,7 @@ package backup
 
 import (
 	"fmt"
+	"path"
 	"strings"
 	"time"
 )
@@ -45,4 +46,19 @@ func WeekRemote(layout string, now time.Time, username, archiveBase string) (fol
 		return "", archiveBase
 	}
 	return WeekdayDir(now), username + ".tar.gz"
+}
+
+// DurableLocal is the only directory and file name kept for a local archive.
+// An empty base uses /var/backups/siroc/<username>. The 7-day layout adds the weekday folder.
+func DurableLocal(base, layout string, now time.Time, username, stampName string) (dir, name string) {
+	base = strings.TrimSpace(strings.ReplaceAll(base, "\\", "/"))
+	if base == "" {
+		base = "/var/backups/siroc/" + username
+	}
+	base = path.Clean(base)
+	folder, file := WeekRemote(layout, now, username, stampName)
+	if folder != "" {
+		return path.Join(base, folder), file
+	}
+	return base, file
 }
