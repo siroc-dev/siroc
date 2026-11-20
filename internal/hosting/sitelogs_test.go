@@ -29,6 +29,10 @@ func TestNginxLogLines(t *testing.T) {
 	if !strings.Contains(added, "ex.com-access.log combined if=$siroc_asset_log;") || !strings.Contains(added, "error_log /dev/null emerg;") {
 		t.Fatalf("insert:\n%s", added)
 	}
+	rewritten := applyNginxLogLines(added, nginxAccessLine("ex.com", true), nginxErrorLine("ex.com", true))
+	if !strings.Contains(rewritten, "if=$siroc_asset_log;") || strings.Contains(rewritten, "if=;") {
+		t.Fatalf("rewrite ate the nginx variable:\n%s", rewritten)
+	}
 	kept := quietAssetAccessLogs("    access_log off;\n    access_log /var/log/nginx/sites/ex.com-access.log combined;\n")
 	if !strings.Contains(kept, "access_log off;") || !strings.Contains(kept, "combined if=$siroc_asset_log;") {
 		t.Fatalf("quiet:\n%s", kept)
@@ -41,8 +45,13 @@ func TestNginxLogLines(t *testing.T) {
 func TestApacheLogLines(t *testing.T) {
 	src := "<VirtualHost *:80>\n    ServerName ex.com\n    DocumentRoot /var/www\n    ErrorLog ${APACHE_LOG_DIR}/sites/ex.com-error.log\n    CustomLog ${APACHE_LOG_DIR}/sites/ex.com-access.log combined\n</VirtualHost>\n"
 	off := applyApacheLogLines(src, apacheErrorLine("ex.com", false), apacheAccessLine("ex.com", true))
-	if !strings.Contains(off, "ErrorLog /dev/null") || !strings.Contains(off, "ex.com-access.log combined") {
+	if !strings.Contains(off, "ErrorLog /dev/null") || !strings.Contains(off, "/var/log/apache2/sites/ex.com-access.log combined") {
 		t.Fatalf("apache:\n%s", off)
+	}
+	broken := "<VirtualHost *:80>\n    ErrorLog /sites/ex.com-error.log\n    CustomLog /sites/ex.com-access.log combined\n</VirtualHost>\n"
+	fixed := applyApacheLogLines(broken, apacheErrorLine("ex.com", true), apacheAccessLine("ex.com", true))
+	if strings.Contains(fixed, "ErrorLog /sites/") || strings.Contains(fixed, "${APACHE_LOG_DIR}") || !strings.Contains(fixed, "ErrorLog /var/log/apache2/sites/ex.com-error.log") {
+		t.Fatalf("apache path:\n%s", fixed)
 	}
 }
 

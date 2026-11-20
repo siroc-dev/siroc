@@ -27,18 +27,20 @@ func nginxErrorLine(domain string, on bool) string {
 	return fmt.Sprintf("    error_log /var/log/nginx/sites/%s-error.log;", domain)
 }
 
+const apacheSiteLogDir = "/var/log/apache2/sites"
+
 func apacheErrorLine(domain string, on bool) string {
 	if !on {
 		return "    ErrorLog /dev/null"
 	}
-	return fmt.Sprintf("    ErrorLog ${APACHE_LOG_DIR}/sites/%s-error.log", domain)
+	return fmt.Sprintf("    ErrorLog %s/%s-error.log", apacheSiteLogDir, domain)
 }
 
 func apacheAccessLine(domain string, on bool) string {
 	if !on {
 		return "    CustomLog /dev/null combined"
 	}
-	return fmt.Sprintf("    CustomLog ${APACHE_LOG_DIR}/sites/%s-access.log combined", domain)
+	return fmt.Sprintf("    CustomLog %s/%s-access.log combined", apacheSiteLogDir, domain)
 }
 
 var (
@@ -64,7 +66,8 @@ func replaceOrInsert(body string, re *regexp.Regexp, line, anchor, fallback stri
 		return body
 	}
 	if re.MatchString(body) {
-		return re.ReplaceAllString(body, line)
+		// Literal: log lines contain $variables. ReplaceAllString treats ${name} as a capture and deletes it.
+		return re.ReplaceAllLiteralString(body, line)
 	}
 	if next, ok := insertAfter(body, anchor, line); ok {
 		return next

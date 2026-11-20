@@ -241,7 +241,7 @@ const apacheTmpl = `<VirtualHost 127.0.0.1:8080>
 {{.ApacheAccess}}
     <IfModule security2_module>
         SecAuditLogType Serial
-        SecAuditLog ${APACHE_LOG_DIR}/sites/{{.Domain}}-modsec.log
+        SecAuditLog /var/log/apache2/sites/{{.Domain}}-modsec.log
 {{- if not .WAF}}
         SecRuleEngine Off
 {{- else}}

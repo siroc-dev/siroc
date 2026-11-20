@@ -341,33 +341,50 @@ func injectNginxLogs(content, domain string) (string, bool) {
 }
 
 func injectApacheLogs(content, domain string) (string, bool) {
-	wantErr := "${APACHE_LOG_DIR}/sites/" + domain + "-error.log"
-	if strings.Contains(content, wantErr) {
+	wantErr := "/var/log/apache2/sites/" + domain + "-error.log"
+	wantAcc := "/var/log/apache2/sites/" + domain + "-access.log"
+	if strings.Contains(content, "ErrorLog "+wantErr) && strings.Contains(content, "CustomLog "+wantAcc) {
 		return content, false
 	}
-	oldErr := "${APACHE_LOG_DIR}/" + domain + "-error.log"
-	oldAcc := "${APACHE_LOG_DIR}/" + domain + "-access.log"
-	next := strings.ReplaceAll(content, oldErr, wantErr)
-	next = strings.ReplaceAll(next, oldAcc, "${APACHE_LOG_DIR}/sites/"+domain+"-access.log")
+	next := content
+	for _, old := range []string{
+		"${APACHE_LOG_DIR}/sites/" + domain + "-error.log",
+		"${APACHE_LOG_DIR}/" + domain + "-error.log",
+		"/sites/" + domain + "-error.log",
+	} {
+		next = strings.ReplaceAll(next, "ErrorLog "+old, "ErrorLog "+wantErr)
+	}
+	for _, old := range []string{
+		"${APACHE_LOG_DIR}/sites/" + domain + "-access.log",
+		"${APACHE_LOG_DIR}/" + domain + "-access.log",
+		"/sites/" + domain + "-access.log",
+	} {
+		next = strings.ReplaceAll(next, "CustomLog "+old, "CustomLog "+wantAcc)
+	}
 	if next == content {
 		if strings.Contains(content, "ErrorLog") {
 			return content, false
 		}
-		insert := fmt.Sprintf("    ErrorLog ${APACHE_LOG_DIR}/sites/%s-error.log\n    CustomLog ${APACHE_LOG_DIR}/sites/%s-access.log combined\n", domain, domain)
+		insert := fmt.Sprintf("    ErrorLog %s\n    CustomLog %s combined\n", wantErr, wantAcc)
 		next = strings.Replace(content, "</VirtualHost>", insert+"</VirtualHost>", 1)
 	}
 	return next, next != content
 }
 
 func injectApacheWAF(content, domain string) (string, bool) {
-	marker := "sites/" + domain + "-modsec.log"
-	if strings.Contains(content, marker) {
+	want := "/var/log/apache2/sites/" + domain + "-modsec.log"
+	if strings.Contains(content, "SecAuditLog "+want) {
 		return content, false
 	}
-	if !strings.Contains(content, "</VirtualHost>") {
+	next := strings.ReplaceAll(content, "SecAuditLog ${APACHE_LOG_DIR}/sites/"+domain+"-modsec.log", "SecAuditLog "+want)
+	next = strings.ReplaceAll(next, "SecAuditLog /sites/"+domain+"-modsec.log", "SecAuditLog "+want)
+	if next != content {
+		return next, true
+	}
+	if strings.Contains(content, "SecAuditLog") || !strings.Contains(content, "</VirtualHost>") {
 		return content, false
 	}
-	block := fmt.Sprintf("    <IfModule security2_module>\n        SecAuditLogType Serial\n        SecAuditLog ${APACHE_LOG_DIR}/sites/%s-modsec.log\n    </IfModule>\n", domain)
+	block := fmt.Sprintf("    <IfModule security2_module>\n        SecAuditLogType Serial\n        SecAuditLog %s\n    </IfModule>\n", want)
 	return strings.Replace(content, "</VirtualHost>", block+"</VirtualHost>", 1), true
 }
 
