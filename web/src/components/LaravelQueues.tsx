@@ -57,6 +57,15 @@ function statusColor(status?: string) {
   return "default";
 }
 
+type QueueDraft = LaravelQueueRow & { key: string };
+
+let queueKeySeq = 0;
+
+function nextQueueKey() {
+  queueKeySeq += 1;
+  return `queue-${queueKeySeq}`;
+}
+
 function rowsFromLaravel(laravel: LaravelQueueState): LaravelQueueRow[] {
   const qs = laravel.queues?.filter((q) => q.name) || [];
   if (qs.length) {
@@ -68,6 +77,14 @@ function rowsFromLaravel(laravel: LaravelQueueState): LaravelQueueRow[] {
     .filter(Boolean);
   const workers = laravel.workers || 1;
   return names.map((name) => ({ name, workers }));
+}
+
+function draftRows(rows: LaravelQueueRow[]): QueueDraft[] {
+  return rows.map((row) => ({ ...row, key: nextQueueKey() }));
+}
+
+function publishedRows(rows: QueueDraft[]): LaravelQueueRow[] {
+  return rows.map(({ key: _key, ...row }) => row);
 }
 
 export function LaravelQueues({
@@ -83,10 +100,10 @@ export function LaravelQueues({
   onApply: (rows: LaravelQueueRow[]) => void;
   onScheduler: (on: boolean) => void;
 }) {
-  const [rows, setRows] = useState<LaravelQueueRow[]>(() => rowsFromLaravel(laravel));
+  const [rows, setRows] = useState<QueueDraft[]>(() => draftRows(rowsFromLaravel(laravel)));
 
   useEffect(() => {
-    setRows(rowsFromLaravel(laravel));
+    setRows(draftRows(rowsFromLaravel(laravel)));
   }, [laravel.queue, laravel.queueName, laravel.workers, laravel.queues]);
 
   const processes = useMemo(() => {
@@ -95,19 +112,19 @@ export function LaravelQueues({
   }, [laravel.processes, rows]);
 
   function setRow(i: number, patch: Partial<LaravelQueueRow>) {
-    setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+    setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, ...patch, key: r.key } : r)));
   }
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Space wrap align="center">
         <Typography.Text>Queue workers</Typography.Text>
-        <Switch checked={!!laravel.queue} loading={busy} onChange={(on) => onToggle(on, rows.length ? rows : [{ name: "default", workers: 1 }])} />
+        <Switch checked={!!laravel.queue} loading={busy} onChange={(on) => onToggle(on, rows.length ? publishedRows(rows) : [{ name: "default", workers: 1 }])} />
         <Typography.Text type="secondary">One supervisor program per queue name. Workers is how many processes listen to that queue.</Typography.Text>
       </Space>
       <Table
         size="small"
-        rowKey={(r, i) => `${r.name}-${i}`}
+        rowKey="key"
         pagination={false}
         dataSource={rows}
         columns={[
@@ -154,10 +171,10 @@ export function LaravelQueues({
         ]}
       />
       <Space wrap>
-        <Button disabled={busy || rows.length >= 8} onClick={() => setRows((cur) => [...cur, { name: "", workers: 1 }])}>
+        <Button disabled={busy || rows.length >= 8} onClick={() => setRows((cur) => [...cur, { key: nextQueueKey(), name: "", workers: 1 }])}>
           Add queue
         </Button>
-        <Button type="primary" disabled={busy || !laravel.queue || rows.every((r) => !r.name.trim())} onClick={() => onApply(rows.filter((r) => r.name.trim()))}>
+        <Button type="primary" disabled={busy || !laravel.queue || rows.every((r) => !r.name.trim())} onClick={() => onApply(publishedRows(rows).filter((r) => r.name.trim()))}>
           Apply queues
         </Button>
       </Space>
