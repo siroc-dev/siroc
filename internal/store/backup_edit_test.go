@@ -3,6 +3,7 @@ package store
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestUpdateBackupDestAndCron(t *testing.T) {
@@ -43,6 +44,13 @@ func TestUpdateBackupDestAndCron(t *testing.T) {
 	job, err := st.CreateBackupJob("alice", dest.ID, dest.Name)
 	if err != nil || job.Status != "running" {
 		t.Fatalf("job %+v %v", job, err)
+	}
+	if job.CreatedAt.IsZero() || time.Since(job.CreatedAt) > time.Minute {
+		t.Fatalf("job created at %v", job.CreatedAt)
+	}
+	listed, err := st.ListBackupJobs("alice", 10)
+	if err != nil || len(listed) != 1 || listed[0].CreatedAt.IsZero() {
+		t.Fatalf("listed %+v %v", listed, err)
 	}
 	if err := st.CancelBackupJob(job.ID); err != nil {
 		t.Fatal(err)

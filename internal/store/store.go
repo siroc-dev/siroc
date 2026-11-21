@@ -185,6 +185,29 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.DB.Close() }
 
+// parseStoreTime reads a SQLite DATETIME value. The driver hands DATETIME
+// columns back as RFC3339 when they are scanned into a string.
+func parseStoreTime(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty time")
+	}
+	for _, layout := range []string{
+		"2006-01-02 15:04:05",
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02T15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05 -0700 MST",
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unparsed time %q", s)
+}
+
 func (s *Store) migrate() error {
 	_, err := s.DB.Exec(`
 CREATE TABLE IF NOT EXISTS panel_users (
@@ -491,7 +514,7 @@ func scanAccount(scan func(dest ...any) error) (*Account, error) {
 	a.FTPEnabled = ftp == 1
 	a.WAFEnabled = waf == 1
 	a.HasPassword = a.PasswordEnc != ""
-	a.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+	a.CreatedAt, _ = parseStoreTime(created)
 	return a, nil
 }
 
@@ -625,7 +648,7 @@ func scanFTP(scan func(dest ...any) error) (*FTPUser, error) {
 		return nil, err
 	}
 	f.HasPassword = f.PasswordEnc != ""
-	f.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+	f.CreatedAt, _ = parseStoreTime(created)
 	return f, nil
 }
 
@@ -719,7 +742,7 @@ func scanSite(scan func(dest ...any) error) (*Site, error) {
 	st.DisplayName = validate.DisplayDomain(st.Domain)
 	st.DisplayAliases = displayAliases(st.Aliases)
 	st.Rewrite = parseRewriteText(rewrites)
-	st.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+	st.CreatedAt, _ = parseStoreTime(created)
 	return st, nil
 }
 
@@ -1216,7 +1239,7 @@ FROM databases d JOIN accounts a ON a.id = d.account_id WHERE d.id = ?`, id).
 	d.CanCreate = canCreate == 1
 	d.HasPassword = d.PasswordEnc != ""
 	fillDBAccess(d)
-	d.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+	d.CreatedAt, _ = parseStoreTime(created)
 	return d, nil
 }
 
@@ -1265,7 +1288,7 @@ FROM databases d JOIN accounts a ON a.id = d.account_id ORDER BY d.db_name`)
 		d.CanCreate = canCreate == 1
 		d.HasPassword = d.PasswordEnc != ""
 		fillDBAccess(&d)
-		d.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+		d.CreatedAt, _ = parseStoreTime(created)
 		out = append(out, d)
 	}
 	if out == nil {

@@ -3,7 +3,6 @@ package store
 import (
 	"database/sql"
 	"fmt"
-	"time"
 )
 
 func (s *Store) CreateBackupDest(d BackupDest) (*BackupDest, error) {
@@ -31,7 +30,7 @@ func (s *Store) GetBackupDest(id int64) (*BackupDest, error) {
 	}
 	d.UseSSL = ssl == 1
 	d.HasSecret = d.PasswordEnc != "" || d.SecretEnc != ""
-	d.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+	d.CreatedAt, _ = parseStoreTime(created)
 	return d, nil
 }
 
@@ -51,7 +50,7 @@ func (s *Store) ListBackupDests() ([]BackupDest, error) {
 		}
 		d.UseSSL = ssl == 1
 		d.HasSecret = d.PasswordEnc != "" || d.SecretEnc != ""
-		d.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+		d.CreatedAt, _ = parseStoreTime(created)
 		out = append(out, d)
 	}
 	if out == nil {
@@ -110,7 +109,7 @@ func (s *Store) GetBackupJob(id int64) (*BackupJob, error) {
 	if err != nil {
 		return nil, err
 	}
-	j.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+	j.CreatedAt, _ = parseStoreTime(created)
 	return j, nil
 }
 
@@ -172,7 +171,7 @@ func (s *Store) ListBackupJobs(account string, limit int) ([]BackupJob, error) {
 		if err := rows.Scan(&j.ID, &j.Account, &j.DestID, &j.DestName, &j.Status, &j.Message, &j.Size, &j.LocalPath, &j.Remote, &created, &j.FinishedAt); err != nil {
 			return nil, err
 		}
-		j.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+		j.CreatedAt, _ = parseStoreTime(created)
 		out = append(out, j)
 	}
 	if out == nil {
@@ -227,7 +226,7 @@ func (s *Store) ListBackupCrons() ([]BackupCron, error) {
 		}
 		c.IncludeDB = inc == 1
 		c.Enabled = en == 1
-		c.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", created)
+		c.CreatedAt, _ = parseStoreTime(created)
 		out = append(out, c)
 	}
 	if out == nil {
